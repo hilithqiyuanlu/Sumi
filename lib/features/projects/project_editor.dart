@@ -14,9 +14,34 @@ void showProjectEditor(
   final nameCtrl = TextEditingController(text: project?.name ?? '');
   final goalCtrl = TextEditingController(text: project?.goal ?? '');
   final levelCtrl = TextEditingController(text: project?.level ?? '');
+
+  // 周期选项
+  const cycleLabels = [
+    '1 个月', '2 个月', '3 个月', '4 个月', '5 个月',
+    '6 个月', '7 个月', '8 个月', '9 个月', '10 个月', '11 个月',
+    '1 年', '1.5 年', '2 年', '1 坤年',
+  ];
+  const cycleValues = [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    12, 18, 24, 30,
+  ];
+
+  // 投入时间选项
+  const hourLabels = [
+    '6 小时', '10 小时', '15 小时', '20 小时',
+    '30 小时', '40 小时', '50 小时', '60 小时', '70 小时',
+  ];
+  const hourValues = [6, 10, 15, 20, 30, 40, 50, 60, 70];
+
   var timeConstraint = project?.timeConstraint ?? 0;
+  if (!hourValues.contains(timeConstraint)) {
+    timeConstraint = hourValues.first;
+  }
   var color = project?.color ?? store.nextAvailableColor();
   var cycleMonths = project?.cycleMonths ?? 3;
+  if (!cycleValues.contains(cycleMonths)) {
+    cycleMonths = cycleValues.first;
+  }
 
   showDialog(
     context: context,
@@ -45,7 +70,7 @@ void showProjectEditor(
                   Wrap(
                     spacing: s6,
                     runSpacing: s6,
-                    children: ProjectColor.values.map((c) {
+                    children: ProjectColor.values.take(7).map((c) {
                       final selected = c == color;
                       final fill = projectFillColor(c);
                       return GestureDetector(
@@ -86,34 +111,23 @@ void showProjectEditor(
                   ),
                   const SizedBox(height: s12),
                   // 周期
-                  DropdownButtonFormField<int>(
-                    initialValue: cycleMonths,
-                    decoration: const InputDecoration(labelText: '周期（月）'),
-                    items: List.generate(12, (i) => i + 1)
-                        .map((m) => DropdownMenuItem(
-                            value: m, child: Text('$m 个月')))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setDialogState(() => cycleMonths = v);
-                    },
+                  const Text('周期', style: TextStyle(fontSize: 13, color: textTertiary)),
+                  const SizedBox(height: s6),
+                  _ItemWheelPicker<int>(
+                    value: cycleMonths,
+                    items: cycleValues,
+                    labels: cycleLabels,
+                    onChanged: (v) => setDialogState(() => cycleMonths = v),
                   ),
                   const SizedBox(height: s12),
-                  // 投入
-                  DropdownButtonFormField<int>(
-                    initialValue: timeConstraint,
-                    decoration: const InputDecoration(
-                      labelText: '投入（每周投入时间）',
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                          value: 0, child: Text('未设置')),
-                      for (var h = 1; h <= 40; h++)
-                        DropdownMenuItem(
-                            value: h, child: Text('$h 小时/周')),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) setDialogState(() => timeConstraint = v);
-                    },
+                  // 投入时间
+                  const Text('投入时间', style: TextStyle(fontSize: 13, color: textTertiary)),
+                  const SizedBox(height: s6),
+                  _ItemWheelPicker<int>(
+                    value: timeConstraint,
+                    items: hourValues,
+                    labels: hourLabels,
+                    onChanged: (v) => setDialogState(() => timeConstraint = v),
                   ),
                 ],
               ),
@@ -162,23 +176,110 @@ void showProjectEditor(
   });
 }
 
+/// 通用选项滚轮选择器。
+class _ItemWheelPicker<T> extends StatefulWidget {
+  final T value;
+  final List<T> items;
+  final List<String> labels;
+  final ValueChanged<T> onChanged;
+
+  const _ItemWheelPicker({
+    required this.value,
+    required this.items,
+    required this.labels,
+    required this.onChanged,
+  });
+
+  @override
+  State<_ItemWheelPicker<T>> createState() => _ItemWheelPickerState<T>();
+}
+
+class _ItemWheelPickerState<T> extends State<_ItemWheelPicker<T>> {
+  late final FixedExtentScrollController _wheelCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final idx = widget.items.indexOf(widget.value);
+    _wheelCtrl = FixedExtentScrollController(
+      initialItem: idx >= 0 ? idx : 0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _wheelCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 120,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Center(
+              child: Container(
+                height: 36,
+                decoration: BoxDecoration(
+                  color: mintDeep.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(s8),
+                ),
+              ),
+            ),
+          ),
+          ListWheelScrollView.useDelegate(
+            controller: _wheelCtrl,
+            itemExtent: 36,
+            diameterRatio: 2.5,
+            perspective: 0.005,
+            physics: const FixedExtentScrollPhysics(),
+            onSelectedItemChanged: (index) {
+              if (index >= 0 && index < widget.items.length) {
+                widget.onChanged(widget.items[index]);
+              }
+            },
+            childDelegate: ListWheelChildBuilderDelegate(
+              builder: (context, index) {
+                final label = widget.labels[index];
+                final isSelected =
+                    widget.items[index] == widget.value;
+                return Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: isSelected ? 17 : 15,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w400,
+                      color: isSelected ? mintDeep : textTertiary,
+                    ),
+                  ),
+                );
+              },
+              childCount: widget.items.length,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 月卡编辑弹窗。
 void showMonthCardEditor(
   BuildContext context,
   SumiStore store, {
-  MonthCard? card,
-  String? projectId,
-  int? monthIndex,
+  required MonthCard card,
 }) {
-  final isEditing = card != null;
-  final titleCtrl = TextEditingController(text: card?.title ?? '');
-  final summaryCtrl = TextEditingController(text: card?.summary ?? '');
+  final titleCtrl = TextEditingController(text: card.title);
+  final summaryCtrl = TextEditingController(text: card.summary ?? '');
 
   showDialog(
     context: context,
     builder: (ctx) {
       return AlertDialog(
-        title: Text(isEditing ? '编辑月卡' : '创建月卡'),
+        title: const Text('编辑月卡'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -208,25 +309,15 @@ void showMonthCardEditor(
           FilledButton(
             onPressed: () {
               if (titleCtrl.text.trim().isEmpty) return;
-              if (isEditing) {
-                store.updateMonthCard(
-                  card.id,
-                  title: titleCtrl.text.trim(),
-                  summary:
-                      summaryCtrl.text.trim().isEmpty ? null : summaryCtrl.text.trim(),
-                );
-              } else {
-                store.addMonthCard(
-                  projectId: projectId!,
-                  monthIndex: monthIndex!,
-                  title: titleCtrl.text.trim(),
-                  summary:
-                      summaryCtrl.text.trim().isEmpty ? null : summaryCtrl.text.trim(),
-                );
-              }
+              store.updateMonthCard(
+                card.id,
+                title: titleCtrl.text.trim(),
+                summary:
+                    summaryCtrl.text.trim().isEmpty ? null : summaryCtrl.text.trim(),
+              );
               Navigator.pop(ctx);
             },
-            child: Text(isEditing ? '保存' : '创建'),
+            child: const Text('保存'),
           ),
         ],
       );

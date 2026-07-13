@@ -30,14 +30,16 @@ mixin SumiStoreTodos on ChangeNotifier {
   }
 
   /// 添加系统 todo。
-  void addSystemTodo(String title, String projectId) {
+  void addSystemTodo(String title, String projectId, {String? date, String? body}) {
     if (title.trim().isEmpty) return;
     final nextOrder = _nextSortOrder();
     todoItems.add(TodoItem(
       id: newSumiId('todo'),
       source: TodoSource.system,
       projectId: projectId,
+      date: date,
       title: title.trim(),
+      body: body,
       sortOrder: nextOrder,
       createdAt: DateTime.now(),
     ));

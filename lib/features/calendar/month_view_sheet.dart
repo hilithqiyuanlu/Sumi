@@ -10,7 +10,8 @@ import 'month_calendar.dart';
 
 /// 展开的月视图层 —— 包含日历 + 项目区。
 class MonthViewSheet extends StatelessWidget {
-  const MonthViewSheet({super.key});
+  final VoidCallback onClose;
+  const MonthViewSheet({required this.onClose, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +41,7 @@ class MonthViewSheet extends StatelessWidget {
                   IconButton(
                     onPressed: () {
                       HapticFeedback.mediumImpact();
-                      store.setMonthViewExpanded(false);
+                      onClose();
                     },
                     icon: const Icon(Icons.close_rounded),
                   ),

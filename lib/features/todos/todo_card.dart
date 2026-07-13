@@ -31,10 +31,6 @@ class TodoCard extends StatelessWidget {
 
   Color _backgroundColor() {
     if (project != null) return projectCardBackground(project!.color);
-    // 用户 todo 归属项目后也用项目色
-    if (todo.projectId != null) {
-      // 尝试从 project 获取颜色，若 project 参数未传则用白色
-    }
     return Colors.white;
   }
 

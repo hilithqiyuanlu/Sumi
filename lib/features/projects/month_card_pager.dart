@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../models/models.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
-import 'project_editor.dart';
 
 /// 月卡横向 pager —— 含锁定态。
 class MonthCardPager extends StatelessWidget {
@@ -18,7 +17,7 @@ class MonthCardPager extends StatelessWidget {
     final cycle = project.cycleMonths;
 
     return SizedBox(
-      height: 320,
+      height: 260,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.only(right: s16),
@@ -70,11 +69,10 @@ class _UnlockedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.read(context);
     final now = DateTime.now();
     final cardDate =
         DateTime(now.year, now.month + monthIndex, 1);
-    final monthLabel = '${cardDate.year}年${cardDate.month}月';
+    final monthLabel = '${cardDate.month}月';
 
     return Container(
       decoration: BoxDecoration(
@@ -87,20 +85,50 @@ class _UnlockedCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 月份标签
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(radiusPill),
-            ),
-            child: Text(
-              monthLabel,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: ink,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(radiusPill),
+                ),
+                child: Text(
+                  monthLabel,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: ink,
+                  ),
+                ),
               ),
-            ),
+              if (card.aiGenerated) ...[
+                const SizedBox(width: s6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: s8, vertical: s2),
+                  decoration: BoxDecoration(
+                    color: mintDeep.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(radiusPill),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome_rounded,
+                          size: 11, color: mintDeep),
+                      SizedBox(width: s4),
+                      Text(
+                        'AI 规划',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: mintDeep,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: s10),
           // 可滚动内容区
@@ -121,7 +149,7 @@ class _UnlockedCard extends StatelessWidget {
                     )
                   else
                     Text(
-                      '第 ${monthIndex + 1} 个月',
+                      monthLabel,
                       style: TextStyle(
                         fontSize: 14,
                         color: textTertiary,
@@ -144,34 +172,6 @@ class _UnlockedCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: s8),
-          // 操作
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton.icon(
-                onPressed: () => showMonthCardEditor(
-                  context,
-                  store,
-                  card: card,
-                ),
-                icon:
-                    const Icon(Icons.edit_rounded, size: iconSmall),
-                label: const Text('编辑'),
-              ),
-              const SizedBox(width: s4),
-              TextButton.icon(
-                onPressed: () => store.updateMonthCard(
-                  card.id,
-                  title: '',
-                  summary: null,
-                ),
-                icon: Icon(Icons.delete_rounded,
-                    size: iconSmall, color: Colors.red.shade400),
-                label: Text('清除',
-                    style: TextStyle(color: Colors.red.shade400)),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -204,7 +204,7 @@ class _LockedMonthCard extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.6),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(radiusCard),
           border: Border.all(color: line.withValues(alpha: 0.3)),
         ),

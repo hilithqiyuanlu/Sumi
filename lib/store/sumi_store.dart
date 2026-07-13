@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/chat_database.dart';
 import '../data/local_database.dart';
 import '../data/snapshot_store_base.dart';
 import '../models/models.dart';
@@ -10,22 +11,35 @@ import '../utils/utils.dart';
 part 'sumi_store_persist.dart';
 part 'sumi_store_todos.dart';
 part 'sumi_store_projects.dart';
+part 'sumi_store_chat.dart';
 
 /// 全局状态管理器 —— 单一 ChangeNotifier，通过 SumiScope 注入。
-/// 使用 mixin 拆分 persistence / todos / projects 逻辑。
+/// 使用 mixin 拆分 persistence / todos / projects / chat 逻辑。
 class SumiStore extends ChangeNotifier
-    with SumiStorePersist, SumiStoreTodos, SumiStoreProjects {
+    with SumiStorePersist, SumiStoreTodos, SumiStoreProjects, SumiStoreChat {
   final SumiSnapshotStore? _database;
   final SecureSettingsStore _secureSettings;
   AiService? _aiService;
+  ChatDatabase? _chatDatabase;
 
   /// 暴露给 mixin 使用。
   AiService? get aiService => _aiService;
 
+  /// 对话数据库。
+  ChatDatabase? get chatDatabase => _chatDatabase;
+
   // --- 核心 UI 状态 ---
   DateTime selectedDate = dateOnly(DateTime.now());
-  bool monthViewExpanded = false;
   String? currentProjectId;
+
+  // --- 导航信号（不持久化） ---
+  int _navigateToTodaySignal = 0;
+  int get navigateToTodaySignal => _navigateToTodaySignal;
+
+  void triggerNavigateToToday() {
+    _navigateToTodaySignal++;
+    notifyListeners();
+  }
 
   // --- 数据列表（mixin 需要访问，不可私有） ---
   final List<TodoItem> todoItems = [];
@@ -50,6 +64,11 @@ class SumiStore extends ChangeNotifier
     final ss = secureSettings ?? SecureSettingsStore();
     final store = SumiStore._(database: db, secureSettings: ss);
 
+    // 初始化对话数据库
+    if (db is SumiLocalDatabase) {
+      store._chatDatabase = ChatDatabase(db);
+    }
+
     // 从安全存储读取 API Key
     final deepseekKey = await ss.readDeepseekApiKey();
     final tavilyKey = await ss.readTavilyApiKey();
@@ -64,6 +83,12 @@ class SumiStore extends ChangeNotifier
     );
 
     store._initAiService();
+
+    // 加载对话列表
+    await store.loadConversations();
+
+    // 检测并生成每日 todo
+    await store.checkAndGenerateDaily();
 
     return store;
   }
@@ -131,16 +156,6 @@ class SumiStore extends ChangeNotifier
 
   void selectDate(DateTime date) {
     selectedDate = dateOnly(date);
-    afterMutation();
-  }
-
-  void toggleMonthView() {
-    monthViewExpanded = !monthViewExpanded;
-    afterMutation();
-  }
-
-  void setMonthViewExpanded(bool expanded) {
-    monthViewExpanded = expanded;
     afterMutation();
   }
 

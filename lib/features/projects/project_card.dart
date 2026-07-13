@@ -6,6 +6,32 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import 'project_editor.dart';
 
+/// 共享删除确认对话框（project_card 和 project_tabs 共用）。
+void confirmDeleteProject(BuildContext context, SumiStore store, Project p) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('删除项目'),
+      content: Text('确定要删除「${p.name}」吗？\n\n该项目的所有月卡和系统事项将一并删除。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade400),
+          onPressed: () {
+            store.deleteProject(p.id);
+            Navigator.pop(ctx);
+          },
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// 可折叠项目信息卡 —— 显示目标 / 水平 / 周期 / 约束。
 class ProjectCard extends StatefulWidget {
   final Project project;
@@ -90,6 +116,20 @@ class _ProjectCardState extends State<ProjectCard>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
+                        // AI 重新规划按钮（仅当有 goal 时显示）
+                        if (p.goal.isNotEmpty)
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context); // 关闭月视图 sheet
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                store.retryPlanning(p.id);
+                              });
+                            },
+                            icon: const Icon(Icons.auto_fix_high_rounded,
+                                size: iconSmall, color: mintDeep),
+                            label: const Text('重规划',
+                                style: TextStyle(color: mintDeep)),
+                          ),
                         TextButton.icon(
                           onPressed: () => showProjectEditor(
                             context,
@@ -102,7 +142,7 @@ class _ProjectCardState extends State<ProjectCard>
                         ),
                         const SizedBox(width: s8),
                         TextButton.icon(
-                          onPressed: () => _confirmDelete(context, store, p),
+                          onPressed: () => confirmDeleteProject(context, store, p),
                           icon: Icon(Icons.delete_rounded,
                               size: iconSmall, color: Colors.red.shade400),
                           label: Text('删除',
@@ -114,31 +154,6 @@ class _ProjectCardState extends State<ProjectCard>
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmDelete(BuildContext context, SumiStore store, Project p) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除项目'),
-        content: Text('确定要删除「${p.name}」吗？\n\n该项目的所有月卡和系统事项将一并删除。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade400),
-            onPressed: () {
-              store.deleteProject(p.id);
-              Navigator.pop(ctx);
-            },
-            child: const Text('删除'),
           ),
         ],
       ),

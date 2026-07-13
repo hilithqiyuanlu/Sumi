@@ -61,21 +61,12 @@ class _DateStripState extends State<DateStrip> {
         daysInMonth, (i) => DateTime(selected.year, selected.month, i + 1));
     final today = dateOnly(DateTime.now());
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        if (velocity > 300) {
-          HapticFeedback.mediumImpact();
-          widget.onExpandMonth();
-        }
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(radiusCardHeader),
-        ),
-        child: Column(
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(radiusCardHeader),
+      ),
+      child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // 日期条
@@ -85,7 +76,7 @@ class _DateStripState extends State<DateStrip> {
                 onNotification: (notification) {
                   if (notification is ScrollEndNotification &&
                       !_programmaticScroll) {
-                    _selectCenterDate(store);
+                    _selectCenterDate(store, daysInMonth);
                   }
                   return false;
                 },
@@ -138,15 +129,12 @@ class _DateStripState extends State<DateStrip> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
-  void _selectCenterDate(SumiStore store) {
+  void _selectCenterDate(SumiStore store, int daysInMonth) {
     if (!_scrollController.hasClients) return;
     final selected = dateOnly(store.selectedDate);
-    final daysInMonth =
-        DateTime(selected.year, selected.month + 1, 0).day;
     final offset = _scrollController.offset;
     final viewport = _scrollController.position.viewportDimension;
     final center = offset + viewport / 2;

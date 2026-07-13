@@ -39,9 +39,7 @@ const Color lemon = Color(0xFFFFE9A8);
 const Color lilac = Color(0xFFDCCBFF);
 
 // System todo card backgrounds
-const Color lemonLight = Color(0xFFFFF8E1);
 const Color mintLight = Color(0xFFE8F5E9);
-const Color lilacLight = Color(0xFFF3E5F5);
 
 // Neutral
 const Color ink = Color(0xFF233136);

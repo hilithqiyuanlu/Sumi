@@ -1,41 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../models/models.dart';
-import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import 'project_card.dart';
 import 'project_editor.dart';
 
 /// 项目切换 Tab 栏 —— 横向滚动，当前项目高亮。
 class ProjectTabs extends StatelessWidget {
   const ProjectTabs({super.key});
-
-  static void _confirmDeleteProject(
-      BuildContext context, SumiStore store, Project p) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除项目'),
-        content: Text('确定要删除「${p.name}」吗？\n\n该项目的所有月卡和系统事项将一并删除。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade400),
-            onPressed: () {
-              store.deleteProject(p.id);
-              Navigator.pop(ctx);
-            },
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +35,7 @@ class ProjectTabs extends StatelessWidget {
                 },
                 onLongPress: () {
                   HapticFeedback.mediumImpact();
-                  _confirmDeleteProject(context, store, p);
+                  confirmDeleteProject(context, store, p);
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),

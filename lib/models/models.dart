@@ -26,44 +26,30 @@ enum ProjectColor {
 class AppSettings {
   final String deepseekApiKey;
   final String tavilyApiKey;
-  final String plannerModel; // 预留：deepseek-v4-pro
-  final String defaultModel; // 预留：deepseek-v4-flash
 
   const AppSettings({
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
-    this.plannerModel = 'deepseek-v4-pro',
-    this.defaultModel = 'deepseek-v4-flash',
   });
 
   AppSettings copyWith({
     String? deepseekApiKey,
     String? tavilyApiKey,
-    String? plannerModel,
-    String? defaultModel,
   }) {
     return AppSettings(
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
-      plannerModel: plannerModel ?? this.plannerModel,
-      defaultModel: defaultModel ?? this.defaultModel,
     );
   }
 
   Map<String, Object?> toJson({bool includeSecrets = false}) => {
         'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
         'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
-        'plannerModel': plannerModel,
-        'defaultModel': defaultModel,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) => AppSettings(
         deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
         tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
-        plannerModel:
-            (json['plannerModel'] as String?) ?? 'deepseek-v4-pro',
-        defaultModel:
-            (json['defaultModel'] as String?) ?? 'deepseek-v4-flash',
       );
 }
 
@@ -166,6 +152,7 @@ class MonthCard {
   final int monthIndex;
   final String title;
   final String? summary;
+  final bool aiGenerated; // AI 生成标记
 
   const MonthCard({
     required this.id,
@@ -173,11 +160,13 @@ class MonthCard {
     required this.monthIndex,
     required this.title,
     this.summary,
+    this.aiGenerated = false,
   });
 
   MonthCard copyWith({
     String? title,
     String? summary,
+    bool? aiGenerated,
   }) {
     return MonthCard(
       id: id,
@@ -185,6 +174,7 @@ class MonthCard {
       monthIndex: monthIndex,
       title: title ?? this.title,
       summary: summary ?? this.summary,
+      aiGenerated: aiGenerated ?? this.aiGenerated,
     );
   }
 
@@ -194,6 +184,7 @@ class MonthCard {
         'monthIndex': monthIndex,
         'title': title,
         'summary': summary,
+        'aiGenerated': aiGenerated,
       };
 
   factory MonthCard.fromJson(Map<String, Object?> json) => MonthCard(
@@ -202,6 +193,102 @@ class MonthCard {
         monthIndex: (json['monthIndex'] as num?)?.toInt() ?? 0,
         title: (json['title'] as String?) ?? '',
         summary: json['summary'] as String?,
+        aiGenerated: (json['aiGenerated'] as bool?) ?? false,
+      );
+}
+
+// ---------------------------------------------------------------------------
+// Conversation
+// ---------------------------------------------------------------------------
+
+class Conversation {
+  final String id;
+  final String title;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const Conversation({
+    required this.id,
+    this.title = '',
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  Conversation copyWith({
+    String? title,
+    DateTime? updatedAt,
+  }) {
+    return Conversation(
+      id: id,
+      title: title ?? this.title,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'title': title,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
+
+  factory Conversation.fromJson(Map<String, Object?> json) => Conversation(
+        id: (json['id'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+            DateTime.now(),
+        updatedAt: DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
+            DateTime.now(),
+      );
+}
+
+// ---------------------------------------------------------------------------
+// ChatMessage
+// ---------------------------------------------------------------------------
+
+class ChatMessage {
+  final String id;
+  final String conversationId;
+  final String role; // 'user' | 'assistant'
+  final String content;
+  final DateTime createdAt;
+
+  const ChatMessage({
+    required this.id,
+    required this.conversationId,
+    required this.role,
+    this.content = '',
+    required this.createdAt,
+  });
+
+  ChatMessage copyWith({
+    String? content,
+  }) {
+    return ChatMessage(
+      id: id,
+      conversationId: conversationId,
+      role: role,
+      content: content ?? this.content,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'conversationId': conversationId,
+        'role': role,
+        'content': content,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
+        id: (json['id'] as String?) ?? '',
+        conversationId: (json['conversationId'] as String?) ?? '',
+        role: (json['role'] as String?) ?? 'user',
+        content: (json['content'] as String?) ?? '',
+        createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+            DateTime.now(),
       );
 }
 

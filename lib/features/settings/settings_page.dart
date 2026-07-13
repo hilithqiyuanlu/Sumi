@@ -83,7 +83,7 @@ class _SettingsPageState extends State<SettingsPage> {
           // ── 版本信息 ──
           Center(
             child: Text(
-              'Sumi（米糖）· v1.0.0',
+              'Sumi · v1.0.0',
               style: TextStyle(fontSize: 12, color: textTertiary),
             ),
           ),
@@ -177,16 +177,6 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
     ).then((_) => controller.dispose());
-  }
-
-  Widget _readOnlyTile(String label, String value) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-      trailing: Text(value,
-          style: const TextStyle(fontSize: 13, color: textTertiary)),
-    );
   }
 
   void _confirmClearData(BuildContext context, SumiStore store) {

@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 
 /// 弹出 AI 拆分确认面板。
 /// 返回 true 表示用户确认添加，false 表示取消。
-Future<bool> showSplitConfirmSheet(
+Future<void> showSplitConfirmSheet(
   BuildContext context,
   SumiStore store,
   List<String> items,
@@ -120,7 +120,5 @@ Future<bool> showSplitConfirmSheet(
         store.addUserTodo(items[i]);
       }
     }
-    return true;
   }
-  return false;
 }

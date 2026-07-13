@@ -44,7 +44,7 @@ class _SumiAppState extends State<SumiApp> {
     return SumiScope(
       store: widget.store,
       child: MaterialApp(
-        title: '米糖 Sumi',
+        title: 'Sumi',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         home: const MainShell(),

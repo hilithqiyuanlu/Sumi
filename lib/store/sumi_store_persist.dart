@@ -12,8 +12,6 @@ mixin SumiStorePersist on ChangeNotifier {
   List<MonthCard> get monthCardList;
   DateTime get selectedDate;
   set selectedDate(DateTime v);
-  bool get monthViewExpanded;
-  set monthViewExpanded(bool v);
   String? get currentProjectId;
   set currentProjectId(String? v);
   AppSettings get appSettings;
@@ -25,6 +23,20 @@ mixin SumiStorePersist on ChangeNotifier {
     restoreFromMap(map);
   }
 
+  void _restoreList<T>(
+    List<Object?>? data,
+    List<T> target,
+    T Function(Map<String, Object?>) fromJson,
+  ) {
+    if (data == null) return;
+    target.clear();
+    for (final item in data) {
+      if (item is Map<String, Object?>) {
+        target.add(fromJson(item));
+      }
+    }
+  }
+
   void restoreFromMap(Map<String, Object?> map) {
     // Settings
     final settingsMap = map['settings'] as Map<String, Object?>?;
@@ -32,38 +44,10 @@ mixin SumiStorePersist on ChangeNotifier {
       appSettings = AppSettings.fromJson(settingsMap);
     }
 
-    // Projects
-    final projectListData = map['projects'] as List<Object?>?;
-    if (projectListData != null) {
-      projectList.clear();
-      for (final p in projectListData) {
-        if (p is Map<String, Object?>) {
-          projectList.add(Project.fromJson(p));
-        }
-      }
-    }
-
-    // Month cards
-    final monthCardListData = map['monthCards'] as List<Object?>?;
-    if (monthCardListData != null) {
-      monthCardList.clear();
-      for (final m in monthCardListData) {
-        if (m is Map<String, Object?>) {
-          monthCardList.add(MonthCard.fromJson(m));
-        }
-      }
-    }
-
-    // Todos
-    final todoListData = map['todos'] as List<Object?>?;
-    if (todoListData != null) {
-      todoItems.clear();
-      for (final t in todoListData) {
-        if (t is Map<String, Object?>) {
-          todoItems.add(TodoItem.fromJson(t));
-        }
-      }
-    }
+    // Projects / MonthCards / Todos
+    _restoreList(map['projects'] as List<Object?>?, projectList, Project.fromJson);
+    _restoreList(map['monthCards'] as List<Object?>?, monthCardList, MonthCard.fromJson);
+    _restoreList(map['todos'] as List<Object?>?, todoItems, TodoItem.fromJson);
 
     // UI state
     currentProjectId = map['currentProjectId'] as String?;
@@ -72,7 +56,7 @@ mixin SumiStorePersist on ChangeNotifier {
       final d = DateTime.tryParse(dateStr);
       if (d != null) selectedDate = dateOnly(d);
     }
-    monthViewExpanded = (map['monthViewExpanded'] as bool?) ?? false;
+    // monthViewExpanded 已由 AnimationController 管理，不再持久化
   }
 
   Map<String, Object?> snapshotMap() {
@@ -84,7 +68,6 @@ mixin SumiStorePersist on ChangeNotifier {
       'todos': todoItems.map((t) => t.toJson()).toList(),
       'currentProjectId': currentProjectId,
       'selectedDate': selectedDate.toIso8601String(),
-      'monthViewExpanded': monthViewExpanded,
     };
   }
 
@@ -102,7 +85,6 @@ mixin SumiStorePersist on ChangeNotifier {
     monthCardList.clear();
     currentProjectId = null;
     selectedDate = dateOnly(DateTime.now());
-    monthViewExpanded = false;
 
     appSettings = AppSettings(
       deepseekApiKey: keepSecrets ? oldDeepseek : '',

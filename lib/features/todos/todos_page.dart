@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -9,12 +10,90 @@ import 'todo_grid.dart';
 import 'todo_input.dart';
 
 /// 事项首页 —— 日期条 + 网格 + 输入框，支持展开月视图。
-class TodosPage extends StatelessWidget {
+class TodosPage extends StatefulWidget {
   const TodosPage({super.key});
+
+  @override
+  State<TodosPage> createState() => _TodosPageState();
+}
+
+class _TodosPageState extends State<TodosPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  static const _spring = SpringDescription(
+    mass: 1,
+    stiffness: 320,
+    damping: 28,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+    _controller.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 手势
+  // ---------------------------------------------------------------------------
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    final h = MediaQuery.of(context).size.height;
+    _controller.value =
+        (_controller.value + d.delta.dy / h).clamp(0.0, 1.0);
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    final velocity = d.primaryVelocity ?? 0;
+    final shouldOpen = _controller.value > 0.25 || velocity > 500;
+    final target = shouldOpen ? 1.0 : 0.0;
+
+    _controller.animateWith(SpringSimulation(
+      _spring,
+      _controller.value,
+      target,
+      velocity / MediaQuery.of(context).size.height,
+    ));
+  }
+
+  void _openMonth() {
+    _controller.animateTo(1.0,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic);
+  }
+
+  void _closeMonth() {
+    _controller.animateTo(0.0,
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
+  int _lastNavigateSignal = 0;
 
   @override
   Widget build(BuildContext context) {
     final store = SumiScope.watch(context);
+    final screenH = MediaQuery.of(context).size.height;
+
+    // 响应 MainShell 二次点击 Tab 的回退信号
+    if (_lastNavigateSignal != store.navigateToTodaySignal) {
+      _lastNavigateSignal = store.navigateToTodaySignal;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _closeMonth();
+        store.selectDate(DateTime.now());
+      });
+    }
 
     return Scaffold(
       body: Stack(
@@ -22,15 +101,18 @@ class TodosPage extends StatelessWidget {
           // 主内容
           Column(
             children: [
-              // 安全区 + 日期条
+              // 安全区 + 日期条（含垂直拖拽手势）
               Padding(
                 padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + s8,
                   left: s16,
                   right: s16,
                 ),
-                child: DateStrip(
-                  onExpandMonth: () => store.setMonthViewExpanded(true),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragUpdate: _onDragUpdate,
+                  onVerticalDragEnd: _onDragEnd,
+                  child: DateStrip(onExpandMonth: _openMonth),
                 ),
               ),
               const SizedBox(height: s12),
@@ -45,18 +127,12 @@ class TodosPage extends StatelessWidget {
               const TodoInput(),
             ],
           ),
-          // 展开的月视图（覆盖层）—— 带动画滑入
-          AnimatedSlide(
-            offset: store.monthViewExpanded
-                ? Offset.zero
-                : const Offset(0, -1.05),
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeOutCubic,
-            child: AnimatedOpacity(
-              opacity: store.monthViewExpanded ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
-              child: const MonthViewSheet(),
+          // 月视图覆盖层 —— 跟手 + 弹簧吸附
+          IgnorePointer(
+            ignoring: _controller.value < 0.01,
+            child: Transform.translate(
+              offset: Offset(0, (_controller.value - 1) * screenH),
+              child: MonthViewSheet(onClose: _closeMonth),
             ),
           ),
         ],
