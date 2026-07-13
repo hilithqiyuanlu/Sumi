@@ -1,0 +1,180 @@
+import 'package:flutter/material.dart';
+
+import '../../models/models.dart';
+import '../../store/sumi_store.dart';
+import '../../sumi_scope.dart';
+import '../../theme/app_theme.dart';
+import 'project_editor.dart';
+
+/// 可折叠项目信息卡 —— 显示目标 / 水平 / 周期 / 约束。
+class ProjectCard extends StatefulWidget {
+  final Project project;
+  const ProjectCard({required this.project, super.key});
+
+  @override
+  State<ProjectCard> createState() => _ProjectCardState();
+}
+
+class _ProjectCardState extends State<ProjectCard>
+    with SingleTickerProviderStateMixin {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = SumiScope.read(context);
+    final p = widget.project;
+    final fill = projectFillColor(p.color);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: fill.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(radiusCard),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          InkWell(
+            borderRadius: BorderRadius.circular(radiusCard),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(s16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '项目信息',
+                          style: TextStyle(fontSize: 12, color: textTertiary),
+                        ),
+                        const SizedBox(height: s4),
+                        Text(
+                          p.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: textTertiary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 展开内容
+          ClipRect(
+            child: AnimatedAlign(
+              alignment: Alignment.topCenter,
+              heightFactor: _expanded ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOutCubic,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(s16, 0, s16, s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (p.goal.isNotEmpty) ...[
+                      _detailRow('目标', p.goal, multiline: true),
+                      const SizedBox(height: s8),
+                    ],
+                    if (p.level.isNotEmpty) ...[
+                      _detailRow('当前水平', p.level),
+                      const SizedBox(height: s8),
+                    ],
+                    _detailRow('周期', '${p.cycleMonths} 个月'),
+                    if (p.timeConstraint.isNotEmpty) ...[
+                      const SizedBox(height: s8),
+                      _detailRow('投入时间', p.timeConstraint),
+                    ],
+                    const SizedBox(height: s12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => showProjectEditor(
+                            context,
+                            store,
+                            project: p,
+                          ),
+                          icon:
+                              const Icon(Icons.edit_rounded, size: iconSmall),
+                          label: const Text('编辑'),
+                        ),
+                        const SizedBox(width: s8),
+                        TextButton.icon(
+                          onPressed: () => _confirmDelete(context, store, p),
+                          icon: Icon(Icons.delete_rounded,
+                              size: iconSmall, color: Colors.red.shade400),
+                          label: Text('删除',
+                              style: TextStyle(color: Colors.red.shade400)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, SumiStore store, Project p) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除项目'),
+        content: Text('确定要删除「${p.name}」吗？\n\n该项目的所有月卡和系统事项将一并删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade400),
+            onPressed: () {
+              store.deleteProject(p.id);
+              Navigator.pop(ctx);
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value, {bool multiline = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: textTertiary),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 14, color: ink),
+            maxLines: multiline ? null : 1,
+            overflow: multiline ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
