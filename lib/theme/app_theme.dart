@@ -58,15 +58,18 @@ Color projectFillColor(ProjectColor c) {
     ProjectColor.lemon => lemon,
     ProjectColor.mint => mint,
     ProjectColor.lilac => lilac,
+    ProjectColor.cherry => const Color(0xFFF8B4C8),
+    ProjectColor.sky => const Color(0xFFB4D4F8),
+    ProjectColor.peach => const Color(0xFFF8D4B4),
+    ProjectColor.sage => const Color(0xFFD4E8D4),
+    ProjectColor.lavender => const Color(0xFFE8D4F8),
+    ProjectColor.warmGray => const Color(0xFFD4C8C0),
+    ProjectColor.coolGray => const Color(0xFFC8D0D8),
   };
 }
 
 Color projectCardBackground(ProjectColor c) {
-  return switch (c) {
-    ProjectColor.lemon => lemonLight,
-    ProjectColor.mint => mintLight,
-    ProjectColor.lilac => lilacLight,
-  };
+  return projectFillColor(c).withValues(alpha: 0.25);
 }
 
 Color projectTextColor(ProjectColor c, {bool selected = true}) {
@@ -75,6 +78,13 @@ Color projectTextColor(ProjectColor c, {bool selected = true}) {
     ProjectColor.lemon => const Color(0xFF8B6914),
     ProjectColor.mint => const Color(0xFF2D7A62),
     ProjectColor.lilac => const Color(0xFF6B4FB5),
+    ProjectColor.cherry => const Color(0xFF8B3A4A),
+    ProjectColor.sky => const Color(0xFF3A5F8B),
+    ProjectColor.peach => const Color(0xFF8B5A3A),
+    ProjectColor.sage => const Color(0xFF4A6B4A),
+    ProjectColor.lavender => const Color(0xFF6B4FA0),
+    ProjectColor.warmGray => const Color(0xFF4A403A),
+    ProjectColor.coolGray => const Color(0xFF4A5460),
   };
 }
 

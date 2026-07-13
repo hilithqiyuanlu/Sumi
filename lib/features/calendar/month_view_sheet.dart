@@ -15,8 +15,6 @@ class MonthViewSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = SumiScope.watch(context);
-    if (!store.monthViewExpanded) return const SizedBox.shrink();
-
     final project = store.currentProject;
 
     return Container(
@@ -31,7 +29,7 @@ class MonthViewSheet extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    '${store.selectedDate.year}年${store.selectedDate.month}月',
+                    '${store.selectedDate.month}月',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,

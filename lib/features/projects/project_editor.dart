@@ -14,8 +14,7 @@ void showProjectEditor(
   final nameCtrl = TextEditingController(text: project?.name ?? '');
   final goalCtrl = TextEditingController(text: project?.goal ?? '');
   final levelCtrl = TextEditingController(text: project?.level ?? '');
-  final timeCtrl =
-      TextEditingController(text: project?.timeConstraint ?? '');
+  var timeConstraint = project?.timeConstraint ?? 0;
   var color = project?.color ?? store.nextAvailableColor();
   var cycleMonths = project?.cycleMonths ?? 3;
 
@@ -43,24 +42,23 @@ void showProjectEditor(
                   // 颜色选择
                   const Text('颜色', style: TextStyle(fontSize: 13, color: textTertiary)),
                   const SizedBox(height: s8),
-                  Row(
+                  Wrap(
+                    spacing: s6,
+                    runSpacing: s6,
                     children: ProjectColor.values.map((c) {
                       final selected = c == color;
                       final fill = projectFillColor(c);
-                      return Padding(
-                        padding: const EdgeInsets.only(right: s8),
-                        child: GestureDetector(
-                          onTap: () => setDialogState(() => color = c),
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: fill,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: selected ? mintDeep : Colors.transparent,
-                                width: 2.5,
-                              ),
+                      return GestureDetector(
+                        onTap: () => setDialogState(() => color = c),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: fill,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: selected ? mintDeep : Colors.transparent,
+                              width: 2.5,
                             ),
                           ),
                         ),
@@ -100,13 +98,22 @@ void showProjectEditor(
                     },
                   ),
                   const SizedBox(height: s12),
-                  // 投入时间
-                  TextField(
-                    controller: timeCtrl,
+                  // 投入
+                  DropdownButtonFormField<int>(
+                    initialValue: timeConstraint,
                     decoration: const InputDecoration(
-                      labelText: '投入时间',
-                      hintText: '如：每天 1h / 周末 3h',
+                      labelText: '投入（每周投入时间）',
                     ),
+                    items: [
+                      const DropdownMenuItem(
+                          value: 0, child: Text('未设置')),
+                      for (var h = 1; h <= 40; h++)
+                        DropdownMenuItem(
+                            value: h, child: Text('$h 小时/周')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => timeConstraint = v);
+                    },
                   ),
                 ],
               ),
@@ -127,7 +134,7 @@ void showProjectEditor(
                       goal: goalCtrl.text.trim(),
                       level: levelCtrl.text.trim(),
                       cycleMonths: cycleMonths,
-                      timeConstraint: timeCtrl.text.trim(),
+                      timeConstraint: timeConstraint,
                     );
                   } else {
                     store.addProject(
@@ -136,7 +143,7 @@ void showProjectEditor(
                       goal: goalCtrl.text.trim(),
                       level: levelCtrl.text.trim(),
                       cycleMonths: cycleMonths,
-                      timeConstraint: timeCtrl.text.trim(),
+                      timeConstraint: timeConstraint,
                     );
                   }
                   Navigator.pop(ctx);
@@ -152,7 +159,6 @@ void showProjectEditor(
     nameCtrl.dispose();
     goalCtrl.dispose();
     levelCtrl.dispose();
-    timeCtrl.dispose();
   });
 }
 

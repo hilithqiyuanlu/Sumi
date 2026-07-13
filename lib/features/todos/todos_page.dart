@@ -4,6 +4,7 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../calendar/date_strip.dart';
 import '../calendar/month_view_sheet.dart';
+import 'todo_edit_sheet.dart';
 import 'todo_grid.dart';
 import 'todo_input.dart';
 
@@ -34,14 +35,30 @@ class TodosPage extends StatelessWidget {
               ),
               const SizedBox(height: s12),
               // 网格
-              const Expanded(child: TodoGrid()),
+              Expanded(
+                child: TodoGrid(
+                  onTapBody: (todo) =>
+                      showTodoEditSheet(context, store, todo),
+                ),
+              ),
               // 输入框
               const TodoInput(),
             ],
           ),
-          // 展开的月视图（覆盖层）
-          if (store.monthViewExpanded)
-            const MonthViewSheet(),
+          // 展开的月视图（覆盖层）—— 带动画滑入
+          AnimatedSlide(
+            offset: store.monthViewExpanded
+                ? Offset.zero
+                : const Offset(0, -1.05),
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: store.monthViewExpanded ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 300),
+              curve: const Interval(0.0, 0.5, curve: Curves.easeInOut),
+              child: const MonthViewSheet(),
+            ),
+          ),
         ],
       ),
     );

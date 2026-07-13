@@ -96,6 +96,102 @@ class AiService {
     }
   }
 
+  /// 润色 todo 标题 —— 调用 AI 优化表达，返回润色后文本。
+  /// 返回 null = 调用失败。
+  Future<String?> polishTodo(String text) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': _model,
+              'messages': [
+                {
+                  'role': 'system',
+                  'content':
+                      '你是 Sumi（米糖），一个个人助手。你的任务是优化用户提供的 todo 标题。\n'
+                          '要求：凝练清晰、保留原意、2-20 字、只返回优化后的文本，不要加引号或额外文字。',
+                },
+                {'role': 'user', 'content': text},
+              ],
+              'max_tokens': 100,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return null;
+
+      final body = jsonDecode(response.body) as Map<String, Object?>;
+      final choices = body['choices'] as List<Object?>?;
+      if (choices == null || choices.isEmpty) return null;
+
+      final message = (choices.first as Map<String, Object?>)['message']
+          as Map<String, Object?>?;
+      if (message == null) return null;
+
+      final content = message['content'] as String?;
+      return content?.trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Streaming 对话 —— 返回逐 chunk 的 delta content。
+  /// 用于需要流式输出的场景（如后续米糖 Tab）。
+  Stream<String> streamChat(String prompt) async* {
+    try {
+      final request = http.Request('POST', Uri.parse(_baseUrl));
+      request.headers.addAll({
+        'Authorization': 'Bearer $apiKey',
+        'Content-Type': 'application/json',
+      });
+      request.body = jsonEncode({
+        'model': _model,
+        'messages': [
+          {'role': 'user', 'content': prompt},
+        ],
+        'stream': true,
+        'max_tokens': 1000,
+      });
+
+      final streamedResponse =
+          await _client.send(request).timeout(const Duration(seconds: 30));
+
+      if (streamedResponse.statusCode != 200) return;
+
+      await for (final chunk in streamedResponse.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        final trimmed = chunk.trim();
+        if (!trimmed.startsWith('data: ')) continue;
+
+        final data = trimmed.substring(6);
+        if (data == '[DONE]') return;
+
+        try {
+          final json = jsonDecode(data) as Map<String, Object?>;
+          final choices = json['choices'] as List<Object?>?;
+          if (choices == null || choices.isEmpty) continue;
+
+          final delta = (choices.first as Map<String, Object?>?)?['delta']
+              as Map<String, Object?>?;
+          final content = delta?['content'] as String?;
+          if (content != null && content.isNotEmpty) {
+            yield content;
+          }
+        } catch (_) {
+          // 跳过无法解析的 chunk
+        }
+      }
+    } catch (_) {
+      // stream 异常时静默结束
+    }
+  }
+
   /// 预留：通用对话。
   Future<String?> chat(String prompt) async {
     try {

@@ -19,6 +19,9 @@ class SumiStore extends ChangeNotifier
   final SecureSettingsStore _secureSettings;
   AiService? _aiService;
 
+  /// 暴露给 mixin 使用。
+  AiService? get aiService => _aiService;
+
   // --- 核心 UI 状态 ---
   DateTime selectedDate = dateOnly(DateTime.now());
   bool monthViewExpanded = false;

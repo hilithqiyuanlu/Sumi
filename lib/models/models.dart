@@ -6,7 +6,18 @@
 
 enum TodoSource { user, system }
 
-enum ProjectColor { lemon, mint, lilac }
+enum ProjectColor {
+  lemon,
+  mint,
+  lilac,
+  cherry,
+  sky,
+  peach,
+  sage,
+  lavender,
+  warmGray,
+  coolGray,
+}
 
 // ---------------------------------------------------------------------------
 // AppSettings
@@ -67,7 +78,7 @@ class Project {
   final String goal;
   final String level;
   final int cycleMonths;
-  final String timeConstraint;
+  final int timeConstraint; // 小时/周，0 表示未设置
   final int currentMonthIndex;
   final DateTime createdAt;
 
@@ -78,7 +89,7 @@ class Project {
     this.goal = '',
     this.level = '',
     this.cycleMonths = 3,
-    this.timeConstraint = '',
+    this.timeConstraint = 0,
     this.currentMonthIndex = 0,
     required this.createdAt,
   });
@@ -89,7 +100,7 @@ class Project {
     String? goal,
     String? level,
     int? cycleMonths,
-    String? timeConstraint,
+    int? timeConstraint,
     int? currentMonthIndex,
   }) {
     return Project(
@@ -129,12 +140,20 @@ class Project {
       goal: (json['goal'] as String?) ?? '',
       level: (json['level'] as String?) ?? '',
       cycleMonths: (json['cycleMonths'] as num?)?.toInt() ?? 3,
-      timeConstraint: (json['timeConstraint'] as String?) ?? '',
+      timeConstraint: _parseTimeConstraint(json['timeConstraint']),
       currentMonthIndex: (json['currentMonthIndex'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
     );
   }
+}
+
+/// 兼容迁移：旧版 timeConstraint 为 String，新版为 int（小时/周）。
+int _parseTimeConstraint(Object? raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  if (raw is String) return int.tryParse(raw) ?? 0;
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,10 +213,13 @@ class TodoItem {
   final String id;
   final TodoSource source;
   final String? projectId; // system todo 必填，user todo 为 null
-  final String? date; // ISO8601 预留字段，第一轮不使用
+  final String? date; // ISO8601，用户分配日期；null = 未分配（在所有日期显示）
   final String title;
   final String? body;
   final bool done;
+  final bool pinned; // 置顶
+  final int sortOrder; // 手动排序序号（越大越靠前）
+  final String? reminderTime; // 提醒时间 "HH:mm"
   final DateTime createdAt;
 
   const TodoItem({
@@ -208,6 +230,9 @@ class TodoItem {
     required this.title,
     this.body,
     this.done = false,
+    this.pinned = false,
+    this.sortOrder = 0,
+    this.reminderTime,
     required this.createdAt,
   });
 
@@ -215,15 +240,23 @@ class TodoItem {
     String? title,
     String? body,
     bool? done,
+    bool? pinned,
+    int? sortOrder,
+    String? reminderTime,
+    String? date,
+    String? projectId,
   }) {
     return TodoItem(
       id: id,
       source: source,
-      projectId: projectId,
-      date: date,
+      projectId: projectId ?? this.projectId,
+      date: date ?? this.date,
       title: title ?? this.title,
       body: body ?? this.body,
       done: done ?? this.done,
+      pinned: pinned ?? this.pinned,
+      sortOrder: sortOrder ?? this.sortOrder,
+      reminderTime: reminderTime ?? this.reminderTime,
       createdAt: createdAt,
     );
   }
@@ -236,6 +269,9 @@ class TodoItem {
         'title': title,
         'body': body,
         'done': done,
+        'pinned': pinned,
+        'sortOrder': sortOrder,
+        'reminderTime': reminderTime,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -252,6 +288,9 @@ class TodoItem {
       title: (json['title'] as String?) ?? '',
       body: json['body'] as String?,
       done: (json['done'] as bool?) ?? false,
+      pinned: (json['pinned'] as bool?) ?? false,
+      sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
+      reminderTime: json['reminderTime'] as String?,
       createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
     );

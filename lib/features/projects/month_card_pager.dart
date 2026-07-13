@@ -28,8 +28,13 @@ class MonthCardPager extends StatelessWidget {
         itemBuilder: (context, index) {
           final card = cards.cast<MonthCard?>().firstWhere(
                 (m) => m?.monthIndex == index,
-                orElse: () => null,
-              );
+                orElse: () => MonthCard(
+                  id: 'fallback',
+                  projectId: project.id,
+                  monthIndex: index,
+                  title: '',
+                ),
+              )!;
           final isUnlocked = index <= project.currentMonthIndex;
 
           if (isUnlocked) {
@@ -38,7 +43,6 @@ class MonthCardPager extends StatelessWidget {
               child: _UnlockedCard(
                 card: card,
                 monthIndex: index,
-                projectId: project.id,
                 accentColor: index == project.currentMonthIndex
                     ? lemon
                     : mint,
@@ -54,15 +58,13 @@ class MonthCardPager extends StatelessWidget {
 
 /// 已解锁月卡。
 class _UnlockedCard extends StatelessWidget {
-  final MonthCard? card;
+  final MonthCard card;
   final int monthIndex;
-  final String projectId;
   final Color accentColor;
 
   const _UnlockedCard({
     required this.card,
     required this.monthIndex,
-    required this.projectId,
     required this.accentColor,
   });
 
@@ -73,7 +75,6 @@ class _UnlockedCard extends StatelessWidget {
     final cardDate =
         DateTime(now.year, now.month + monthIndex, 1);
     final monthLabel = '${cardDate.year}年${cardDate.month}月';
-    final c = card; // 本地变量便于 null promotion
 
     return Container(
       decoration: BoxDecoration(
@@ -101,77 +102,74 @@ class _UnlockedCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: s14),
-          // 标题
-          if (c != null)
-            Text(
-              c.title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: ink,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            )
-          else
-            Text(
-              '第 ${monthIndex + 1} 个月',
-              style: TextStyle(
-                fontSize: 14,
-                color: textTertiary,
+          const SizedBox(height: s10),
+          // 可滚动内容区
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 标题
+                  if (card.title.isNotEmpty)
+                    Text(
+                      card.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: ink,
+                      ),
+                    )
+                  else
+                    Text(
+                      '第 ${monthIndex + 1} 个月',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: textTertiary,
+                      ),
+                    ),
+                  // 摘要
+                  if (card.summary != null && card.summary!.isNotEmpty) ...[
+                    const SizedBox(height: s8),
+                    Text(
+                      card.summary!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: textTertiary,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-          // 摘要
-          if (c?.summary != null && c!.summary!.isNotEmpty) ...[
-            const SizedBox(height: s8),
-            Text(
-              c.summary!,
-              style: const TextStyle(
-                fontSize: 14,
-                color: textTertiary,
-                height: 1.5,
-              ),
-              maxLines: 6,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-          const Spacer(),
+          ),
+          const SizedBox(height: s8),
           // 操作
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              if (c == null)
-                TextButton.icon(
-                  onPressed: () => showMonthCardEditor(
-                    context,
-                    store,
-                    projectId: projectId,
-                    monthIndex: monthIndex,
-                  ),
-                  icon: const Icon(Icons.add_rounded, size: iconSmall),
-                  label: const Text('创建月卡'),
-                )
-              else ...[
-                TextButton.icon(
-                  onPressed: () => showMonthCardEditor(
-                    context,
-                    store,
-                    card: c,
-                  ),
-                  icon:
-                      const Icon(Icons.edit_rounded, size: iconSmall),
-                  label: const Text('编辑'),
+              TextButton.icon(
+                onPressed: () => showMonthCardEditor(
+                  context,
+                  store,
+                  card: card,
                 ),
-                const SizedBox(width: s4),
-                TextButton.icon(
-                  onPressed: () => store.deleteMonthCard(c.id),
-                  icon: Icon(Icons.delete_rounded,
-                      size: iconSmall, color: Colors.red.shade400),
-                  label: Text('删除',
-                      style: TextStyle(color: Colors.red.shade400)),
+                icon:
+                    const Icon(Icons.edit_rounded, size: iconSmall),
+                label: const Text('编辑'),
+              ),
+              const SizedBox(width: s4),
+              TextButton.icon(
+                onPressed: () => store.updateMonthCard(
+                  card.id,
+                  title: '',
+                  summary: null,
                 ),
-              ],
+                icon: Icon(Icons.delete_rounded,
+                    size: iconSmall, color: Colors.red.shade400),
+                label: Text('清除',
+                    style: TextStyle(color: Colors.red.shade400)),
+              ),
             ],
           ),
         ],

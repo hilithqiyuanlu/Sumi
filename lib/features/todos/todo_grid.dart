@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
@@ -6,16 +7,21 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import 'todo_card.dart';
 
-/// Keep 风格不规则网格 —— 使用 Wrap + 估算宽度模拟 masonry 效果。
+/// Keep 风格瀑布流网格 —— 使用 MasonryGridView 实现不规则排列。
+///
+/// 数据源为 store.todosForSelectedDate（按选中日期筛选）。
+/// 每个卡片支持 LongPressDraggable 拖拽 + DragTarget 重排。
 class TodoGrid extends StatelessWidget {
-  const TodoGrid({super.key});
+  final void Function(TodoItem todo)? onTapBody;
+
+  const TodoGrid({super.key, this.onTapBody});
 
   @override
   Widget build(BuildContext context) {
     final store = SumiScope.watch(context);
-    final allTodos = store.todos;
+    final items = store.todosForSelectedDate;
 
-    if (allTodos.isEmpty) {
+    if (items.isEmpty) {
       return Center(
         child: Text(
           '还没有事项，在下方输入框创建吧',
@@ -24,92 +30,33 @@ class TodoGrid extends StatelessWidget {
       );
     }
 
-    final userList = store.userTodos;
-    final systemList = store.systemTodos;
-
-    return SingleChildScrollView(
+    return MasonryGridView.count(
+      crossAxisCount: 2,
+      mainAxisSpacing: s8,
+      crossAxisSpacing: s8,
       padding: const EdgeInsets.symmetric(horizontal: s16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 用户 todo
-          if (userList.isNotEmpty)
-            _TodoWrap(
-              items: userList,
-              store: store,
-              isUser: true,
-            ),
-          // 分隔
-          if (systemList.isNotEmpty && userList.isNotEmpty)
-            const SizedBox(height: s16),
-          // 系统 todo
-          if (systemList.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.only(left: s4, bottom: s8),
-              child: Text(
-                '系统事项',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: textTertiary,
-                ),
-              ),
-            ),
-            _TodoWrap(
-              items: systemList,
-              store: store,
-              isUser: false,
-            ),
-          ],
-          const SizedBox(height: s16),
-        ],
-      ),
-    );
-  }
-}
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final todo = items[index];
+        final project = _findProject(store, todo.projectId);
 
-/// 用 Wrap 实现的不规则网格。
-class _TodoWrap extends StatelessWidget {
-  final List<TodoItem> items;
-  final SumiStore store;
-  final bool isUser;
+        // 估算卡片高度用于 masonry
+        final extent = _estimateExtent(todo, project);
 
-  const _TodoWrap({
-    required this.items,
-    required this.store,
-    required this.isUser,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width - s16 * 2;
-    final singleWidth = (screenWidth - s8) / 2;
-
-    return Wrap(
-      spacing: s8,
-      runSpacing: s8,
-      children: items.map((todo) {
-        final span = _estimateSpan(todo.title);
-        final width = span == 2 ? screenWidth : singleWidth;
-        final project = !isUser && todo.projectId != null
-            ? _findProject(todo.projectId!)
-            : null;
-
-        return SizedBox(
-          width: width,
-          child: TodoCard(
-            todo: todo,
-            project: project,
-            onTap: () => store.toggleTodo(todo.id),
-            onLongPress: () =>
-                _showTodoActions(context, store, todo),
-          ),
+        return _DraggableTodoCell(
+          key: ValueKey(todo.id),
+          todo: todo,
+          project: project,
+          store: store,
+          extent: extent,
+          onTapBody: onTapBody,
         );
-      }).toList(),
+      },
     );
   }
 
-  Project? _findProject(String projectId) {
+  Project? _findProject(SumiStore store, String? projectId) {
+    if (projectId == null) return null;
     try {
       return store.projectList.firstWhere((p) => p.id == projectId);
     } catch (_) {
@@ -117,73 +64,101 @@ class _TodoWrap extends StatelessWidget {
     }
   }
 
-  /// 简单估算标题占用的网格列数。
-  int _estimateSpan(String title) {
-    if (title.length <= 6) return 1; // 半宽
-    if (title.length <= 16) return 2; // 全宽
-    return 2; // 长文本也全宽
+  /// 根据内容估算卡片高度。
+  double _estimateExtent(TodoItem todo, Project? project) {
+    double h = s12 * 2; // padding
+    // 标题行
+    final titleLines = (todo.title.length / 10).ceil().clamp(1, 4);
+    h += titleLines * 20;
+    // 项目行
+    if (project != null || todo.projectId != null) h += 22;
+    // 提醒行
+    if (todo.reminderTime != null && todo.reminderTime!.isNotEmpty) h += 22;
+    return h.clamp(72.0, 200.0);
   }
+}
 
-  void _showTodoActions(
-      BuildContext context, SumiStore store, TodoItem todo) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.edit_rounded),
-                title: const Text('编辑'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showEditDialog(context, store, todo);
-                },
-              ),
-              ListTile(
-                leading:
-                    Icon(Icons.delete_rounded, color: Colors.red.shade400),
-                title: Text('删除',
-                    style: TextStyle(color: Colors.red.shade400)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  store.deleteTodo(todo.id);
-                },
-              ),
-            ],
-          ),
-        );
+/// 可拖拽的 Todo 单元格 —— LongPressDraggable + DragTarget。
+class _DraggableTodoCell extends StatelessWidget {
+  final TodoItem todo;
+  final Project? project;
+  final SumiStore store;
+  final double extent;
+  final void Function(TodoItem todo)? onTapBody;
+
+  const _DraggableTodoCell({
+    super.key,
+    required this.todo,
+    this.project,
+    required this.store,
+    required this.extent,
+    this.onTapBody,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<TodoItem>(
+      onWillAcceptWithDetails: (details) {
+        return details.data.id != todo.id;
       },
-    );
-  }
+      onAcceptWithDetails: (details) {
+        store.reorderTodos(details.data.id, todo.id);
+      },
+      builder: (context, candidates, rejects) {
+        final hovering = candidates.isNotEmpty;
 
-  void _showEditDialog(
-      BuildContext context, SumiStore store, TodoItem todo) {
-    final controller = TextEditingController(text: todo.title);
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('编辑事项'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: '输入新标题'),
+        return LongPressDraggable<TodoItem>(
+          data: todo,
+          delay: const Duration(milliseconds: 300),
+          feedback: Material(
+            elevation: 6,
+            borderRadius: BorderRadius.circular(radiusCard),
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 160,
+              child: TodoCard(
+                todo: todo,
+                project: project,
+                onTapDone: () {},
+                onTapPin: () {},
+                onTapBody: () {},
+                isDragging: true,
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
+          childWhenDragging: Opacity(
+            opacity: 0.3,
+            child: SizedBox(
+              height: extent,
+              child: TodoCard(
+                todo: todo,
+                project: project,
+                onTapDone: () {},
+                onTapPin: () {},
+                onTapBody: () {},
+              ),
             ),
-            FilledButton(
-              onPressed: () {
-                store.updateTodoTitle(todo.id, controller.text);
-                Navigator.pop(ctx);
-              },
-              child: const Text('保存'),
+          ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: extent,
+            decoration: hovering
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(radiusCard + 4),
+                    border: Border.all(
+                      color: mintDeep.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  )
+                : null,
+            child: TodoCard(
+              todo: todo,
+              project: project,
+              onTapDone: () => store.toggleTodo(todo.id),
+              onTapPin: () => store.togglePin(todo.id),
+              onTapBody: () => onTapBody?.call(todo),
             ),
-          ],
+          ),
         );
       },
     );

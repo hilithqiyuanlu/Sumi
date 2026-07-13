@@ -12,18 +12,18 @@ mixin SumiStoreProjects on ChangeNotifier {
   set currentProjectId(String? v);
   void afterMutation();
 
-  /// 新建项目（校验 ≤3）。
+  /// 新建项目。
   void addProject({
     required String name,
     required ProjectColor color,
     String goal = '',
     String level = '',
     int cycleMonths = 3,
-    String timeConstraint = '',
+    int timeConstraint = 0,
   }) {
-    if (projectList.length >= 3) return;
+    final projId = newSumiId('proj');
     projectList.add(Project(
-      id: newSumiId('proj'),
+      id: projId,
       name: name,
       color: color,
       goal: goal,
@@ -33,6 +33,15 @@ mixin SumiStoreProjects on ChangeNotifier {
       currentMonthIndex: 0,
       createdAt: DateTime.now(),
     ));
+    // 自动生成 cycleMonths 个空月卡
+    for (var i = 0; i < cycleMonths; i++) {
+      monthCardList.add(MonthCard(
+        id: newSumiId('mc'),
+        projectId: projId,
+        monthIndex: i,
+        title: '',
+      ));
+    }
     if (currentProjectId == null) {
       currentProjectId = projectList.last.id;
     }
@@ -46,11 +55,12 @@ mixin SumiStoreProjects on ChangeNotifier {
     String? goal,
     String? level,
     int? cycleMonths,
-    String? timeConstraint,
+    int? timeConstraint,
     int? currentMonthIndex,
   }) {
     final i = projectList.indexWhere((p) => p.id == id);
     if (i == -1) return;
+    final oldCycle = projectList[i].cycleMonths;
     projectList[i] = projectList[i].copyWith(
       name: name,
       color: color,
@@ -60,6 +70,23 @@ mixin SumiStoreProjects on ChangeNotifier {
       timeConstraint: timeConstraint,
       currentMonthIndex: currentMonthIndex,
     );
+    // 如果 cycleMonths 变更，调整月卡数量
+    if (cycleMonths != null && cycleMonths != oldCycle) {
+      if (cycleMonths > oldCycle) {
+        for (var m = oldCycle; m < cycleMonths; m++) {
+          monthCardList.add(MonthCard(
+            id: newSumiId('mc'),
+            projectId: id,
+            monthIndex: m,
+            title: '',
+          ));
+        }
+      } else {
+        monthCardList.removeWhere(
+          (mc) => mc.projectId == id && mc.monthIndex >= cycleMonths,
+        );
+      }
+    }
     afterMutation();
   }
 
@@ -139,7 +166,7 @@ mixin SumiStoreProjects on ChangeNotifier {
   List<MonthCard> monthCardsFor(String projectId) =>
       monthCardList.where((m) => m.projectId == projectId).toList();
 
-  bool get canAddProject => projectList.length < 3;
+  bool get canAddProject => true;
 
   /// 找到下一个可用的项目色。
   ProjectColor nextAvailableColor() {

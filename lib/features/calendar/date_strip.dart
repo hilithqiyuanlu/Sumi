@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -99,14 +100,18 @@ class _DateStripState extends State<DateStrip> {
                     final date = dates[index];
                     final isSelected = isSameDate(date, selected);
                     final isToday = isSameDate(date, today);
-                    return _DateChip(
+                    return _DraggableDateChip(
                       date: date,
-                      selected: isSelected,
-                      isToday: isToday,
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        store.selectDate(date);
-                      },
+                      store: store,
+                      child: _DateChip(
+                        date: date,
+                        selected: isSelected,
+                        isToday: isToday,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          store.selectDate(date);
+                        },
+                      ),
                     );
                   },
                 ),
@@ -222,6 +227,62 @@ class _DateChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 可接受 Todo 拖拽的日期 Chip 包装器。
+///
+/// - 拖到过去日期 → 红色反馈 + toast「不能拖到过去的日期」
+/// - 拖到今天及未来日期 → 直接分配日期
+class _DraggableDateChip extends StatelessWidget {
+  final DateTime date;
+  final SumiStore store;
+  final Widget child;
+
+  const _DraggableDateChip({
+    required this.date,
+    required this.store,
+    required this.child,
+  });
+
+  bool get _isPastDate =>
+      dateOnly(date).isBefore(dateOnly(DateTime.now()));
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<TodoItem>(
+      onWillAcceptWithDetails: (details) => true,
+      onAcceptWithDetails: (details) {
+        if (_isPastDate) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('不能拖到过去的日期'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+        final key = dateKey(date);
+        store.updateTodoDate(details.data.id, key);
+      },
+      builder: (context, candidates, rejects) {
+        final hovering = candidates.isNotEmpty;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radiusCard),
+            color: hovering
+                ? (_isPastDate
+                    ? Colors.red.shade100
+                    : mintDeep.withValues(alpha: 0.2))
+                : Colors.transparent,
+          ),
+          child: child,
+        );
+      },
     );
   }
 }

@@ -54,31 +54,28 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: s24),
 
-          // ── 模型区 ──
-          _sectionHeader('模型配置'),
-          const SizedBox(height: s8),
-          _readOnlyTile('规划模型', store.appSettings.plannerModel),
-          const Divider(height: 1),
-          _readOnlyTile('默认模型', store.appSettings.defaultModel),
-
-          const SizedBox(height: s24),
-
           // ── 数据区 ──
           _sectionHeader('数据管理'),
           const SizedBox(height: s8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.delete_forever_rounded,
-                color: Colors.red.shade400),
-            title: Text('清除所有数据',
-                style: TextStyle(color: Colors.red.shade400)),
-            subtitle: const Text(
-              '删除项目、月卡、事项及偏好，保留 API 密钥',
-              style: TextStyle(fontSize: 12),
+          Center(
+            child: TextButton.icon(
+              onPressed: () => _confirmClearData(context, store),
+              icon: Icon(Icons.delete_outline_rounded,
+                  size: 16, color: Colors.red.shade400),
+              label: Text('清除数据',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.red.shade400,
+                      fontWeight: FontWeight.w500)),
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: s20, vertical: s10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusPill),
+                  side: BorderSide(color: Colors.red.shade200, width: 1),
+                ),
+              ),
             ),
-            trailing: Icon(Icons.chevron_right_rounded,
-                color: Colors.red.shade400),
-            onTap: () => _confirmClearData(context, store),
           ),
 
           const SizedBox(height: s24),

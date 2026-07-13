@@ -37,37 +37,17 @@ class _TodoInputState extends State<TodoInput> {
 
       if (!mounted) return;
 
-      if (result == null) {
-        // 降级：已在 store 内直接创建，或 API Key 为空
-        if (store.appSettings.deepseekApiKey.isEmpty) {
-          _showToast('请先在设置中配置 API Key');
-        } else {
-          _showToast('网络异常，已直接添加');
-        }
-      } else if (!result.split) {
-        // AI 判断无需拆分，已在 store 内直接创建
-        _showToast('已直接添加');
-      } else {
+      if (result != null && result.split) {
         // 需要拆分确认
         await showSplitConfirmSheet(context, store, result.items);
       }
+      // 其余情况（无需拆分 / 降级）静默处理，不弹 toast
+      _controller.clear();
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
-
-    _controller.clear();
-  }
-
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override

@@ -3,98 +3,205 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
 
-/// 单张 Todo 卡片 —— 用户 todo 白色背景，系统 todo 按项目着色。
+/// 单张 Todo 卡片 —— 支持 pin/done 交互、项目归属、提醒显示。
+///
+/// 点击分区：
+/// - 左上角 done 图标 → onTapDone
+/// - 右上角 pin 图标 → onTapPin
+/// - 卡片主体 → onTapBody（打开编辑面板）
+///
+/// 拖拽由外层 LongPressDraggable 处理，不在本组件内。
 class TodoCard extends StatelessWidget {
   final TodoItem todo;
-  final Project? project; // 仅 system todo 有值
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final Project? project;
+  final VoidCallback onTapDone;
+  final VoidCallback onTapPin;
+  final VoidCallback onTapBody;
+  final bool isDragging; // 是否正被拖拽（反馈用）
 
   const TodoCard({
     required this.todo,
     this.project,
-    required this.onTap,
-    required this.onLongPress,
+    required this.onTapDone,
+    required this.onTapPin,
+    required this.onTapBody,
+    this.isDragging = false,
     super.key,
   });
 
   Color _backgroundColor() {
-    if (todo.source == TodoSource.user || project == null) return Colors.white;
-    return projectCardBackground(project!.color);
-  }
-
-  Color? _dotColor() {
-    if (todo.source == TodoSource.user || project == null) return null;
-    return projectFillColor(project!.color);
+    if (project != null) return projectCardBackground(project!.color);
+    // 用户 todo 归属项目后也用项目色
+    if (todo.projectId != null) {
+      // 尝试从 project 获取颜色，若 project 参数未传则用白色
+    }
+    return Colors.white;
   }
 
   @override
   Widget build(BuildContext context) {
+    final done = todo.done;
+    final pinned = todo.pinned;
     final bg = _backgroundColor();
-    final dot = _dotColor();
-    final proj = project; // 本地变量便于 flow promotion
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
+    return Opacity(
+      opacity: done ? 0.55 : 1.0,
       child: Container(
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(radiusCard),
-          border: Border.all(color: line.withValues(alpha: 0.4)),
+          border: Border.all(
+            color: pinned
+                ? mintDeep.withValues(alpha: 0.5)
+                : line.withValues(alpha: 0.4),
+            width: pinned ? 1.5 : 1,
+          ),
+          boxShadow: isDragging
+              ? [
+                  BoxShadow(
+                    color: mintDeep.withValues(alpha: 0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         padding: const EdgeInsets.all(s12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 顶部：系统 todo 色点 + 项目名
-            if (dot != null || proj != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: s6),
-                child: Row(
-                  children: [
-                    if (dot != null)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: dot,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    if (proj != null && dot != null)
-                      const SizedBox(width: s6),
-                    if (proj != null)
-                      Expanded(
-                        child: Text(
-                          proj.name,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: projectTextColor(proj.color)
-                                .withValues(alpha: 0.7),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
+            // 第一行：done 图标 + 标题 + pin 图标
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 左上角 done toggle
+                GestureDetector(
+                  onTap: onTapDone,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: s8, top: s2),
+                    child: Icon(
+                      done ? Icons.check_circle_rounded : Icons.circle_outlined,
+                      size: iconSection,
+                      color: done ? mintDeep : line,
+                    ),
+                  ),
                 ),
-              ),
-            // 标题
-            Text(
-              todo.title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: todo.done ? textTertiary : ink,
-                decoration: todo.done ? TextDecoration.lineThrough : null,
-                height: 1.35,
-              ),
+                // 标题（点击打开编辑面板）
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onTapBody,
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      todo.title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: done ? textTertiary : ink,
+                        decoration:
+                            done ? TextDecoration.lineThrough : null,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+                // 右上角 pin toggle
+                GestureDetector(
+                  onTap: onTapPin,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: s4),
+                    child: Icon(
+                      pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                      size: iconSection,
+                      color: pinned ? mintDeep : textTertiary.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            // 第二行：项目归属（仅当有归属时显示）
+            if (todo.projectId != null || project != null) ...[
+              const SizedBox(height: s6),
+              _ProjectRow(project: project, todo: todo),
+            ],
+            // 第三行：提醒时间（仅当设置了提醒时显示）
+            if (todo.reminderTime != null && todo.reminderTime!.isNotEmpty) ...[
+              const SizedBox(height: s6),
+              _ReminderRow(time: todo.reminderTime!),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 项目归属行。
+class _ProjectRow extends StatelessWidget {
+  final Project? project;
+  final TodoItem todo;
+
+  const _ProjectRow({this.project, required this.todo});
+
+  @override
+  Widget build(BuildContext context) {
+    final projColor = project?.color;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (projColor != null) ...[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: projectFillColor(projColor),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: s6),
+        ],
+        Flexible(
+          child: Text(
+            project?.name ?? '',
+            style: TextStyle(
+              fontSize: 11,
+              color: projColor != null
+                  ? projectTextColor(projColor).withValues(alpha: 0.7)
+                  : textTertiary,
+              fontWeight: FontWeight.w500,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 提醒时间行。
+class _ReminderRow extends StatelessWidget {
+  final String time;
+
+  const _ReminderRow({required this.time});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.timer_outlined, size: 14, color: textTertiary.withValues(alpha: 0.6)),
+        const SizedBox(width: s4),
+        Text(
+          time,
+          style: TextStyle(
+            fontSize: 12,
+            color: textTertiary.withValues(alpha: 0.7),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

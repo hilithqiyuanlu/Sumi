@@ -38,27 +38,17 @@ class _ProjectCardState extends State<ProjectCard>
             borderRadius: BorderRadius.circular(radiusCard),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
-              padding: const EdgeInsets.all(s16),
+              padding: const EdgeInsets.fromLTRB(s16, s10, s12, s10),
               child: Row(
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '项目信息',
-                          style: TextStyle(fontSize: 12, color: textTertiary),
-                        ),
-                        const SizedBox(height: s4),
-                        Text(
-                          p.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: ink,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      p.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: ink,
+                      ),
                     ),
                   ),
                   AnimatedRotation(
@@ -79,24 +69,24 @@ class _ProjectCardState extends State<ProjectCard>
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOutCubic,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(s16, 0, s16, s16),
+                padding: const EdgeInsets.fromLTRB(s16, 0, s16, s10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (p.goal.isNotEmpty) ...[
                       _detailRow('目标', p.goal, multiline: true),
-                      const SizedBox(height: s8),
+                      const SizedBox(height: s6),
                     ],
                     if (p.level.isNotEmpty) ...[
-                      _detailRow('当前水平', p.level),
-                      const SizedBox(height: s8),
+                      _detailRow('水平', p.level),
+                      const SizedBox(height: s6),
                     ],
                     _detailRow('周期', '${p.cycleMonths} 个月'),
-                    if (p.timeConstraint.isNotEmpty) ...[
-                      const SizedBox(height: s8),
-                      _detailRow('投入时间', p.timeConstraint),
+                    if (p.timeConstraint > 0) ...[
+                      const SizedBox(height: s6),
+                      _detailRow('投入', '${p.timeConstraint} 小时/周'),
                     ],
-                    const SizedBox(height: s12),
+                    const SizedBox(height: s8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
