@@ -92,9 +92,13 @@ class SumiStore extends ChangeNotifier
     // 初始化对话数据库
     store._chatDatabase = ChatDatabase(db);
 
-    // 从安全存储读取 API Key
-    final deepseekKey = await ss.readDeepseekApiKey();
-    final tavilyKey = await ss.readTavilyApiKey();
+    // 从安全存储读取 API Key（并行读取，减少启动延迟）
+    final keyResults = await Future.wait([
+      ss.readDeepseekApiKey(),
+      ss.readTavilyApiKey(),
+    ]);
+    final deepseekKey = keyResults[0] as String;
+    final tavilyKey = keyResults[1] as String;
 
     // 从快照恢复数据
     await store.loadFromDb();
@@ -110,8 +114,8 @@ class SumiStore extends ChangeNotifier
     // 加载今天的会话
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
 
-    // 检测并生成每日 todo
-    await store.checkAndGenerateDaily();
+    // 检测并生成每日 todo —— 不阻塞启动，后台静默执行
+    store.checkAndGenerateDaily();
 
     return store;
   }

@@ -120,18 +120,6 @@ mixin SumiStoreTodos on ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // 提醒
-  // ---------------------------------------------------------------------------
-
-  /// 设置或清除提醒时间。
-  void updateTodoReminder(String id, String? reminderTime) {
-    final i = todoItems.indexWhere((t) => t.id == id);
-    if (i == -1) return;
-    todoItems[i] = todoItems[i].copyWith(reminderTime: reminderTime);
-    afterMutation();
-  }
-
-  // ---------------------------------------------------------------------------
   // 拖拽排序
   // ---------------------------------------------------------------------------
 
@@ -152,18 +140,6 @@ mixin SumiStoreTodos on ChangeNotifier {
   // ---------------------------------------------------------------------------
   // AI 润色
   // ---------------------------------------------------------------------------
-
-  /// 调用 AI 润色标题，返回润色后文本。失败返回 null。
-  Future<String?> polishTodoTitle(String id) async {
-    final i = todoItems.indexWhere((t) => t.id == id);
-    if (i == -1) return null;
-
-    final svc = aiService;
-    if (svc == null) return null;
-
-    final polished = await svc.polishTodo(todoItems[i].title);
-    return polished;
-  }
 
   /// 调用 AI 凝练任意文本至 18 字以内。失败返回 null。
   Future<String?> polishText(String text) async {

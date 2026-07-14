@@ -361,23 +361,31 @@ class MonthCard {
 class Conversation {
   final String id;
   final String dateKey;
+  final String title;
+  final bool pinned;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   const Conversation({
     required this.id,
     this.dateKey = '',
+    this.title = '',
+    this.pinned = false,
     required this.createdAt,
     required this.updatedAt,
   });
 
   Conversation copyWith({
     String? dateKey,
+    String? title,
+    bool? pinned,
     DateTime? updatedAt,
   }) {
     return Conversation(
       id: id,
       dateKey: dateKey ?? this.dateKey,
+      title: title ?? this.title,
+      pinned: pinned ?? this.pinned,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -386,6 +394,8 @@ class Conversation {
   Map<String, Object?> toJson() => {
         'id': id,
         'dateKey': dateKey,
+        'title': title,
+        'pinned': pinned,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
@@ -393,6 +403,8 @@ class Conversation {
   factory Conversation.fromJson(Map<String, Object?> json) => Conversation(
         id: (json['id'] as String?) ?? '',
         dateKey: (json['dateKey'] as String?) ?? '',
+        title: (json['title'] as String?) ?? '',
+        pinned: (json['pinned'] as bool?) ?? false,
         createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
             DateTime.now(),
         updatedAt: DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??

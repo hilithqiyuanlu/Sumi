@@ -17,9 +17,6 @@ import 'settings_panel.dart';
 import 'side_drawer.dart';
 import 'suggestion_strip.dart';
 
-/// 底部输入模式。
-enum InputMode { chat, todo }
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -249,6 +246,8 @@ class _HomePageState extends State<HomePage>
         duration: const Duration(milliseconds: 380),
         curve: Curves.easeOutCubic);
   }
+
+  bool get _monthViewExpanded => _monthController.value > 0;
 
   void _dismissKeyboard() {
     FocusScope.of(context).unfocus();

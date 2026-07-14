@@ -26,9 +26,6 @@ class SplitResult {
       items: items,
     );
   }
-
-  factory SplitResult.single(String text) =>
-      SplitResult(split: false, items: [text]);
 }
 
 // ---------------------------------------------------------------------------
@@ -987,13 +984,6 @@ $domainContext
     }
   }
 
-  /// 简化版流式对话（单条 prompt，兼容旧接口）。
-  Stream<StreamEvent> streamChat(String prompt) async* {
-    yield* streamChatMessages([
-      {'role': 'user', 'content': prompt},
-    ]);
-  }
-
   // ---------------------------------------------------------------------------
   // Agent Loop（05 轮新增）
   // ---------------------------------------------------------------------------
@@ -1066,43 +1056,6 @@ $domainContext
     yield StreamDone();
   }
 
-  // ---------------------------------------------------------------------------
-  // 预留：非流式对话
-  // ---------------------------------------------------------------------------
-
-  Future<String?> chat(String prompt) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse(_baseUrl),
-            headers: {
-              'Authorization': 'Bearer $apiKey',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(_buildRequestParams(
-              model: _modelFlash,
-              messages: [
-                {'role': 'user', 'content': prompt},
-              ],
-              thinking: false,
-              maxTokens: 1000,
-            )),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200) return null;
-
-      final body = jsonDecode(response.body) as Map<String, Object?>;
-      final choices = body['choices'] as List<Object?>?;
-      if (choices == null || choices.isEmpty) return null;
-
-      final message = (choices.first as Map<String, Object?>?)?['message']
-          as Map<String, Object?>?;
-      return message?['content'] as String?;
-    } catch (_) {
-      return null;
-    }
-  }
 }
 
 /// tool_calls 增量解析缓冲。

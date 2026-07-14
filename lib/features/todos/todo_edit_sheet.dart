@@ -115,14 +115,6 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
     Navigator.pop(context);
   }
 
-  TimeOfDay _parseTime(String time) {
-    final parts = time.split(':');
-    return TimeOfDay(
-      hour: int.tryParse(parts[0]) ?? 9,
-      minute: int.tryParse(parts[1]) ?? 0,
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------

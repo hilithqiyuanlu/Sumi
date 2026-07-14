@@ -172,81 +172,8 @@ mixin SumiStoreProjects on ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // AI 规划
+  // 月卡 CRUD
   // ---------------------------------------------------------------------------
-
-  /// 触发 AI 规划（异步，不阻塞 UI）。
-  Future<void> _triggerPlanning(String projectId) async {
-    final svc = aiService;
-    if (svc == null) return;
-
-    // 查找项目
-    final pi = projectList.indexWhere((p) => p.id == projectId);
-    if (pi == -1) return;
-    final project = projectList[pi];
-
-    final startDate = dateKey(DateTime.now());
-
-    // 联网搜索补充上下文（Tavily）
-    String? searchContext;
-    try {
-      final searchResults = await svc.searchWeb(project.goal);
-      if (searchResults.isNotEmpty &&
-          !searchResults.first.containsKey('error') &&
-          !searchResults.first.containsKey('info')) {
-        final buf = StringBuffer();
-        for (final r in searchResults) {
-          buf.writeln('- **${r['title']}**');
-          buf.writeln('  ${r['content']}');
-          buf.writeln('  来源：${r['url']}');
-          buf.writeln();
-        }
-        searchContext = buf.toString();
-      }
-    } catch (_) {
-      // Tavily 不可用时静默回退，不影响规划流程
-    }
-
-    final result = await svc.generateProjectPlan(
-      goal: project.goal,
-      level: project.level,
-      cycleMonths: project.cycleMonths,
-      timeConstraint: project.timeConstraint,
-      startDate: startDate,
-      searchContext: searchContext,
-    );
-
-    if (result == null) {
-      // 规划失败 —— 静默，月卡保持空白
-      return;
-    }
-
-    // 更新月卡
-    for (final plan in result.monthPlans) {
-      final mi = monthCardList.indexWhere(
-        (m) => m.projectId == projectId && m.monthIndex == plan.monthIndex,
-      );
-      if (mi != -1) {
-        monthCardList[mi] = monthCardList[mi].copyWith(
-          title: plan.title,
-          summary: plan.summary,
-          aiGenerated: true,
-        );
-      }
-    }
-
-    // 创建当天系统 todo
-    for (final seed in result.todayTodos) {
-      _addSystemTodoForDate(
-        title: seed.title,
-        body: seed.body,
-        date: seed.date,
-        projectId: projectId,
-      );
-    }
-
-    afterMutation();
-  }
 
   /// 检测并生成每日 todo（App 启动时调用）。
   Future<void> checkAndGenerateDaily() async {
@@ -392,22 +319,6 @@ mixin SumiStoreProjects on ChangeNotifier {
     }
 
     afterMutation();
-  }
-
-  /// 手动重试规划。
-  Future<void> retryPlanning(String projectId) async {
-    // 清除旧 AI 月卡内容
-    for (var i = 0; i < monthCardList.length; i++) {
-      if (monthCardList[i].projectId == projectId && monthCardList[i].aiGenerated) {
-        monthCardList[i] = monthCardList[i].copyWith(
-          title: '',
-          summary: null,
-          aiGenerated: false,
-        );
-      }
-    }
-    afterMutation();
-    await _triggerPlanning(projectId);
   }
 
   /// 添加系统 todo（指定日期），去重检查。

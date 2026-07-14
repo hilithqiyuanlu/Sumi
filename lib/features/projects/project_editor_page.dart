@@ -68,6 +68,19 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     super.dispose();
   }
 
+  /// 编辑模式下判断是否仅修改了名称（名称变更不触发重新规划）。
+  bool get _onlyNameChanged {
+    if (!_isEditing) return false;
+    final p = widget.project!;
+    final goal = _goalCtrl.text.trim();
+    final level = _levelCtrl.text.trim();
+    return goal == p.goal &&
+        level == p.level &&
+        _cycleMonths == p.cycleMonths &&
+        _timeConstraint == p.timeConstraint &&
+        _color == p.color;
+  }
+
   void _submit() {
     final goal = _goalCtrl.text.trim();
     if (goal.isEmpty) return;
@@ -89,6 +102,12 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         cycleMonths: _cycleMonths,
         timeConstraint: _timeConstraint,
       );
+
+      // 仅改名 → 直接保存并返回，不重新评估
+      if (_onlyNameChanged) {
+        Navigator.of(context).pop();
+        return;
+      }
     } else {
       // 新建：创建空壳项目（不含月卡，等规划完成后一次性写入）
       projectId = store.addProjectDraft(
@@ -223,7 +242,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _goalCtrl.text.trim().isEmpty ? null : _submit,
-                    child: const Text('开始评估 →'),
+                    child: const Text('保存项目'),
                   ),
                 ),
                 const SizedBox(height: s8),

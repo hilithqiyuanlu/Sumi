@@ -15,21 +15,6 @@ class ChatDatabase {
   // Conversations
   // ---------------------------------------------------------------------------
 
-  /// 加载全部会话（按日期降序）。
-  Future<List<Conversation>> loadConversations() async {
-    final db = await _db;
-    final rows = await db.query(
-      'conversations',
-      orderBy: 'date_key DESC',
-    );
-    return rows.map((r) => Conversation(
-      id: r['id'] as String,
-      dateKey: (r['date_key'] as String?) ?? '',
-      createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse((r['updated_at'] as String?) ?? '') ?? DateTime.now(),
-    )).toList();
-  }
-
   /// 按日期查找会话，不存在则返回 null。
   Future<Conversation?> findConversationByDate(String dateKey) async {
     final db = await _db;
@@ -44,6 +29,8 @@ class ChatDatabase {
     return Conversation(
       id: r['id'] as String,
       dateKey: (r['date_key'] as String?) ?? '',
+      title: (r['title'] as String?) ?? '',
+      pinned: (r['pinned'] as int?) == 1,
       createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse((r['updated_at'] as String?) ?? '') ?? DateTime.now(),
     );
@@ -57,6 +44,7 @@ class ChatDatabase {
     await db.insert('conversations', {
       'id': id,
       'date_key': dateKey,
+      'title': '',
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
       'pinned': 0,
@@ -78,14 +66,6 @@ class ChatDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
-  }
-
-  /// 删除会话（级联删除消息由 DB FOREIGN KEY 或手动处理）。
-  Future<void> deleteConversation(String id) async {
-    final db = await _db;
-    // 先删消息（部分 SQLite 配置可能不启用外键级联）
-    await db.delete('messages', where: 'conversation_id = ?', whereArgs: [id]);
-    await db.delete('conversations', where: 'id = ?', whereArgs: [id]);
   }
 
   // ---------------------------------------------------------------------------
@@ -131,12 +111,6 @@ class ChatDatabase {
     });
   }
 
-  /// 删除单条消息。
-  Future<void> deleteMessage(String messageId) async {
-    final db = await _db;
-    await db.delete('messages', where: 'id = ?', whereArgs: [messageId]);
-  }
-
   /// 批量删除消息。
   Future<void> deleteMessagesByIds(List<String> ids) async {
     if (ids.isEmpty) return;
@@ -146,27 +120,6 @@ class ChatDatabase {
       'messages',
       where: 'id IN ($placeholders)',
       whereArgs: ids,
-    );
-  }
-
-  /// 更新消息内容 + 可选 reasoning / tool_calls（用于流式输出完成后写入）。
-  Future<void> updateMessageContent(String id, String content,
-      {String? reasoningContent, String? toolCallsJson}) async {
-    final db = await _db;
-    final values = <String, Object?>{
-      'content': content,
-    };
-    if (reasoningContent != null) {
-      values['reasoning_content'] = reasoningContent;
-    }
-    if (toolCallsJson != null) {
-      values['tool_calls_json'] = toolCallsJson;
-    }
-    await db.update(
-      'messages',
-      values,
-      where: 'id = ?',
-      whereArgs: [id],
     );
   }
 
@@ -203,13 +156,4 @@ class ChatDatabase {
     await db.delete('conversations');
   }
 
-  /// 获取会话消息数量。
-  Future<int> messageCount(String conversationId) async {
-    final db = await _db;
-    final result = await db.rawQuery(
-      'SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?',
-      [conversationId],
-    );
-    return (result.first['cnt'] as int?) ?? 0;
-  }
 }

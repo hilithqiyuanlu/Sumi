@@ -19,12 +19,16 @@ class MonthViewSheet extends StatelessWidget {
     final store = SumiScope.watch(context);
     final project = store.currentProject;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: paper,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
-      ),
-      child: Column(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: paper,
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
+        ),
+        child: Column(
         children: [
           // 系统状态栏避开
           SizedBox(height: MediaQuery.of(context).padding.top),
@@ -106,6 +110,7 @@ class MonthViewSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
