@@ -11,6 +11,7 @@ import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../services/secure_settings_store.dart';
 import '../services/tool_executor.dart';
+import '../services/voice_input_service.dart';
 import '../utils/utils.dart';
 
 part 'sumi_store_persist.dart';
@@ -27,6 +28,7 @@ class SumiStore extends ChangeNotifier
   AiService? _aiService;
   ChatDatabase? _chatDatabase;
   ToolExecutor? _toolExecutor;
+  VoiceInputService? _voiceService;
 
   /// 暴露给 mixin 使用。
   AiService? get aiService => _aiService;
@@ -36,6 +38,9 @@ class SumiStore extends ChangeNotifier
 
   /// 工具执行器（仅 sumi_store_chat 的 agent loop 使用）。
   ToolExecutor? get toolExecutor => _toolExecutor;
+
+  /// 语音输入服务。
+  VoiceInputService? get voiceService => _voiceService;
 
   // --- 核心 UI 状态 ---
   DateTime selectedDate = dateOnly(DateTime.now());
@@ -135,6 +140,9 @@ class SumiStore extends ChangeNotifier
       _aiService = null;
       _toolExecutor = null;
     }
+
+    // 语音输入服务（不依赖 API key）
+    _voiceService ??= VoiceInputService();
   }
 
   /// AI todo 拆分入口。
@@ -312,5 +320,4 @@ class SumiStore extends ChangeNotifier
     );
     return Future.value();
   }
-}
 }

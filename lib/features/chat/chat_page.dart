@@ -175,6 +175,7 @@ class _ChatPageState extends State<ChatPage> {
               store.sendMessage(text);
             },
             enabled: !isStreaming,
+            voiceService: store.voiceService,
           ),
         ],
       ),

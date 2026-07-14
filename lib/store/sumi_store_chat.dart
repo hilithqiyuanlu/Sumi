@@ -209,8 +209,12 @@ mixin SumiStoreChat on ChangeNotifier {
             break;
         }
       }
-    } catch (_) {
-      // 异常 → 保留已收到内容
+    } catch (e) {
+      // 异常 → 保留已收到内容，并提示用户
+      debugPrint('Sumi 对话错误: $e');
+      if (contentBuf.isEmpty) {
+        contentBuf.write('抱歉，请求遇到错误，请稍后重试。');
+      }
     }
 
     _isStreaming = false;
@@ -250,6 +254,22 @@ mixin SumiStoreChat on ChangeNotifier {
       _currentMessages.removeLast();
     }
 
+    // 持久化 tool 结果消息（agent loop 中新增的 role=tool 消息）
+    for (final m in messages) {
+      if (m['role'] == 'tool') {
+        final toolMsg = ChatMessage(
+          id: 'msg-${DateTime.now().microsecondsSinceEpoch}-tool',
+          conversationId: convId,
+          role: 'tool',
+          content: (m['content'] as String?) ?? '',
+          createdAt: DateTime.now(),
+          toolCallId: (m['tool_call_id'] as String?) ?? '',
+        );
+        await db.saveMessage(toolMsg);
+        _currentMessages = [..._currentMessages, toolMsg];
+      }
+    }
+
     await db.touchConversation(convId);
 
     // 更新会话列表排序
@@ -271,7 +291,7 @@ mixin SumiStoreChat on ChangeNotifier {
     final convId = _currentConversationId;
     if (convId == null) return;
 
-    // 找到并移除最后一条 AI 消息
+    // 找到并移除最后一条 AI 消息及关联的 tool 消息
     final lastAiIdx = _currentMessages.lastIndexWhere((m) => m.role == 'assistant');
     String? lastUserContent;
     if (lastAiIdx >= 0) {
@@ -281,8 +301,14 @@ mixin SumiStoreChat on ChangeNotifier {
           break;
         }
       }
-      _currentMessages.removeAt(lastAiIdx);
+      // 移除 assistant 及其后的 tool 消息
+      _currentMessages.removeWhere((m) {
+        final idx = _currentMessages.indexOf(m);
+        return idx >= lastAiIdx && (m.role == 'assistant' || m.role == 'tool');
+      });
       await db.popLastAssistantMessage(convId);
+      // 也清除 DB 中残留的 tool 消息
+      await db.popToolMessages(convId);
       notifyListeners();
     }
 
@@ -348,12 +374,18 @@ mixin SumiStoreChat on ChangeNotifier {
             break;
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Sumi 重新生成错误: $e');
+      if (contentBuf.isEmpty) {
+        contentBuf.write('抱歉，请求遇到错误，请稍后重试。');
+      }
+    }
 
     _isStreaming = false;
     _isThinking = false;
     _currentToolCallLabel = null;
 
+    // 持久化 AI 回复（重新生成）
     final finalContent = contentBuf.toString();
     if (finalContent.isNotEmpty) {
       final finalReasoning = reasoningBuf.isNotEmpty ? reasoningBuf.toString() : null;
@@ -381,6 +413,22 @@ mixin SumiStoreChat on ChangeNotifier {
       ));
     } else {
       _currentMessages.removeLast();
+    }
+
+    // 持久化 tool 结果消息（agent loop 中新增的 role=tool 消息）
+    for (final m in messages) {
+      if (m['role'] == 'tool') {
+        final toolMsg = ChatMessage(
+          id: 'msg-${DateTime.now().microsecondsSinceEpoch}-tool',
+          conversationId: convId,
+          role: 'tool',
+          content: (m['content'] as String?) ?? '',
+          createdAt: DateTime.now(),
+          toolCallId: (m['tool_call_id'] as String?) ?? '',
+        );
+        await db.saveMessage(toolMsg);
+        _currentMessages = [..._currentMessages, toolMsg];
+      }
     }
 
     await db.touchConversation(convId);
@@ -412,10 +460,10 @@ mixin SumiStoreChat on ChangeNotifier {
       {'role': 'system', 'content': _chatSystemPrompt},
     ];
 
-    // 最近 10 轮对话 = 最近 20 条消息
+    // 最近消息（约 10 轮对话，考虑到 tool 消息占用更多空间）
     final recentMessages = _currentMessages;
-    final contextMessages = recentMessages.length > 20
-        ? recentMessages.sublist(recentMessages.length - 20)
+    final contextMessages = recentMessages.length > 40
+        ? recentMessages.sublist(recentMessages.length - 40)
         : recentMessages;
 
     for (final msg in contextMessages) {
@@ -424,13 +472,18 @@ mixin SumiStoreChat on ChangeNotifier {
         'content': msg.content,
       };
 
+      // tool 消息需要传回 tool_call_id
+      if (msg.role == 'tool' && msg.toolCallId != null) {
+        map['tool_call_id'] = msg.toolCallId;
+      }
+
       // 传回 reasoning_content（如果有）
       if (msg.reasoningContent != null &&
           msg.reasoningContent!.isNotEmpty) {
         map['reasoning_content'] = msg.reasoningContent;
       }
 
-      // 传回 tool_calls（如果有）
+      // 传回 tool_calls（如果有，仅 assistant 消息）
       if (msg.toolCallsJson != null && msg.toolCallsJson!.isNotEmpty) {
         try {
           final tcList =

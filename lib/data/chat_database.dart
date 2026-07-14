@@ -100,6 +100,7 @@ class ChatDatabase {
       createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
       reasoningContent: r['reasoning_content'] as String?,
       toolCallsJson: r['tool_calls_json'] as String?,
+      toolCallId: r['tool_call_id'] as String?,
     )).toList();
   }
 
@@ -116,6 +117,8 @@ class ChatDatabase {
         'reasoning_content': message.reasoningContent,
       if (message.toolCallsJson != null)
         'tool_calls_json': message.toolCallsJson,
+      if (message.toolCallId != null)
+        'tool_call_id': message.toolCallId,
     });
   }
 
@@ -154,6 +157,16 @@ class ChatDatabase {
     final lastId = rows.first['id'] as String;
     await db.delete('messages', where: 'id = ?', whereArgs: [lastId]);
     return lastId;
+  }
+
+  /// 删除指定会话中所有的 tool 角色消息（用于重新生成时清理）。
+  Future<void> popToolMessages(String conversationId) async {
+    final db = await _db;
+    await db.delete(
+      'messages',
+      where: 'conversation_id = ? AND role = ?',
+      whereArgs: [conversationId, 'tool'],
+    );
   }
 
   /// 删除全部对话和消息。

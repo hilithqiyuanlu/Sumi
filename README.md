@@ -13,7 +13,8 @@
 
 - **📋 Keep 风格事项网格** — Masonry 瀑布流布局，Pin 置顶 / 完成态 / 长按拖拽排序 / 拖到日期分配
 - **🤖 AI 智能拆分与润色** — 输入 >18 字触发 DeepSeek 拆分；编辑面板一键 AI 润色标题
-- **💬 米糖 Tab** — 内建 AI 对话助手，支持流式输出、多会话管理、Markdown 渲染
+- **💬 米糖 Tab** — 内建 AI 对话助手，支持流式输出、多会话管理、Markdown 渲染、语音输入
+- **🔧 Function Calling** — AI 可调用工具读写 todo / memory，支持 Agent 自主循环
 - **📅 日历导航** — 折叠态日期条 + 展开月视图，垂直拖拽手势切换
 - **📂 项目系统** — 最多 3 个学习项目，AI 生成月计划，月卡解锁机制追踪进度
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Secure Storage，无需服务器
@@ -25,7 +26,8 @@
 | 框架 | Flutter 3.x |
 | 状态管理 | ChangeNotifier + InheritedNotifier |
 | 持久化 | SQLite（`sqflite`） + Secure Storage |
-| AI 接口 | DeepSeek Chat API（流式 SSE / 非流式） |
+| AI 接口 | DeepSeek Chat API（流式 SSE / 非流式 / Function Calling） |
+| 语音输入 | iOS Speech Recognition |
 | 搜索预留 | Tavily Search API |
 
 ## 快速开始
@@ -59,7 +61,7 @@ lib/
 │   ├── sumi_store.dart               # 全局 ChangeNotifier
 │   ├── sumi_store_todos.dart         # 事项 CRUD + 排序
 │   ├── sumi_store_projects.dart      # 项目/月卡 + AI 规划
-│   ├── sumi_store_chat.dart          # 对话状态 + 流式消息
+│   ├── sumi_store_chat.dart          # 对话状态 + Agent 循环
 │   └── sumi_store_persist.dart       # 快照持久化
 ├── data/
 │   ├── local_database.dart           # SQLite 数据库
@@ -67,11 +69,13 @@ lib/
 │   └── snapshot_store_base.dart      # 快照存储抽象
 ├── services/
 │   ├── ai_service.dart               # DeepSeek API（拆分/润色/规划/对话）
+│   ├── tool_executor.dart            # Function Calling 工具执行
+│   ├── voice_input_service.dart      # iOS 语音识别
 │   └── secure_settings_store.dart    # Keychain 安全存储
 ├── theme/app_theme.dart              # 浅色扁平主题
 └── features/
     ├── todos/                        # 事项网格、卡片、输入栏、编辑面板
-    ├── chat/                         # 对话页面、气泡、输入、会话列表
+    ├── chat/                         # 对话页面、气泡、输入、会话列表、语音按钮
     ├── calendar/                     # 日期条、月历、月视图展开层
     ├── projects/                     # 项目卡、月卡 Pager、项目编辑器
     └── settings/                     # API Key 配置、清除数据

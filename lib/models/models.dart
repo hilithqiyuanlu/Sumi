@@ -250,11 +250,12 @@ class Conversation {
 class ChatMessage {
   final String id;
   final String conversationId;
-  final String role; // 'user' | 'assistant'
+  final String role; // 'user' | 'assistant' | 'tool'
   final String content;
   final DateTime createdAt;
   final String? reasoningContent; // AI 思考过程（仅 assistant 消息）
   final String? toolCallsJson; // 工具调用 JSON（仅 assistant 消息，DB 序列化用）
+  final String? toolCallId; // tool 消息对应的 tool_call_id（仅 tool 消息）
 
   const ChatMessage({
     required this.id,
@@ -264,12 +265,14 @@ class ChatMessage {
     required this.createdAt,
     this.reasoningContent,
     this.toolCallsJson,
+    this.toolCallId,
   });
 
   ChatMessage copyWith({
     String? content,
     String? reasoningContent,
     String? toolCallsJson,
+    String? toolCallId,
   }) {
     return ChatMessage(
       id: id,
@@ -279,6 +282,7 @@ class ChatMessage {
       createdAt: createdAt,
       reasoningContent: reasoningContent ?? this.reasoningContent,
       toolCallsJson: toolCallsJson ?? this.toolCallsJson,
+      toolCallId: toolCallId ?? this.toolCallId,
     );
   }
 
@@ -290,6 +294,7 @@ class ChatMessage {
         'createdAt': createdAt.toIso8601String(),
         if (reasoningContent != null) 'reasoningContent': reasoningContent,
         if (toolCallsJson != null) 'toolCallsJson': toolCallsJson,
+        if (toolCallId != null) 'toolCallId': toolCallId,
       };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
@@ -301,6 +306,7 @@ class ChatMessage {
             DateTime.now(),
         reasoningContent: json['reasoningContent'] as String?,
         toolCallsJson: json['toolCallsJson'] as String?,
+        toolCallId: json['toolCallId'] as String?,
       );
 }
 

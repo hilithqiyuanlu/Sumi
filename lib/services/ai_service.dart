@@ -740,19 +740,49 @@ class AiService {
   }) async* {
     for (var turn = 0; turn < maxTurns; turn++) {
       List<ToolCall>? pendingCalls;
+      final contentBuf = StringBuffer();
+      final reasoningBuf = StringBuffer();
 
       await for (final event in streamChatMessages(messages)) {
-        if (event is ToolCallsComplete) {
-          pendingCalls = event.calls;
-        } else {
-          yield event; // ContentDelta / ReasoningDelta 透传
+        switch (event) {
+          case ContentDelta(text: final t):
+            contentBuf.write(t);
+            yield event;
+          case ReasoningDelta(text: final t):
+            reasoningBuf.write(t);
+            yield event;
+          case ToolCallsComplete(calls: final calls):
+            pendingCalls = calls;
+          case StreamDone():
+            break;
         }
       }
+
+      // 将 assistant 消息（含 content + reasoning_content + tool_calls）加入历史
+      // 必须在 tool 结果之前添加，否则 API 会因消息序列非法而报错
+      final assistantMsg = <String, Object?>{
+        'role': 'assistant',
+        'content': contentBuf.toString(),
+      };
+      if (reasoningBuf.isNotEmpty) {
+        assistantMsg['reasoning_content'] = reasoningBuf.toString();
+      }
+      if (pendingCalls != null && pendingCalls.isNotEmpty) {
+        assistantMsg['tool_calls'] = pendingCalls.map((c) => {
+          'id': c.id,
+          'type': 'function',
+          'function': {
+            'name': c.name,
+            'arguments': jsonEncode(c.arguments),
+          },
+        }).toList();
+      }
+      messages.add(assistantMsg);
 
       // 无 tool_calls → 结束
       if (pendingCalls == null || pendingCalls.isEmpty) return;
 
-      // 执行工具
+      // 执行工具并追加 tool 结果消息
       for (final call in pendingCalls) {
         final result = await executeTool(call);
         messages.add({
