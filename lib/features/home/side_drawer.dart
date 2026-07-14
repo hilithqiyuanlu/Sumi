@@ -111,15 +111,15 @@ class SideDrawer extends StatelessWidget {
           },
           borderRadius: BorderRadius.circular(radius12),
           child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: s12, vertical: s10),
+            padding: EdgeInsets.symmetric(horizontal: s12, vertical: s12),
             child: Row(
               children: [
-                Icon(Icons.tune, size: iconMedium, color: textTertiary),
+                Icon(Icons.tune, size: 24, color: textTertiary),
                 SizedBox(width: s12),
                 Text(
                   '设置',
                   style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w500,
                       color: ink),
                 ),

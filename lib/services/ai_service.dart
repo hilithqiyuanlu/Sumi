@@ -440,6 +440,9 @@ class AiService {
   final String? tavilyApiKey;
   final http.Client _client;
 
+  /// 最近一次 API 调用的错误详情（用于 UI 诊断）。
+  String? lastApiError;
+
   AiService({
     required this.apiKey,
     this.tavilyApiKey,
@@ -513,38 +516,52 @@ class AiService {
           .timeout(Duration(seconds: timeoutSeconds));
 
       if (response.statusCode != 200) {
-        debugPrint('[callJsonApi] HTTP ${response.statusCode}: ${response.body}');
+        String apiMsg = response.body;
+        try {
+          final errJson = jsonDecode(response.body) as Map<String, Object?>;
+          final err = errJson['error'] as Map<String, Object?>?;
+          if (err != null && err['message'] != null) {
+            apiMsg = err['message'].toString();
+          }
+        } catch (_) {}
+        lastApiError = 'HTTP ${response.statusCode}: $apiMsg';
+        debugPrint('[callJsonApi] $lastApiError');
         return null;
       }
 
       final body = jsonDecode(response.body) as Map<String, Object?>;
       final choices = body['choices'] as List<Object?>?;
       if (choices == null || choices.isEmpty) {
-        debugPrint('[callJsonApi] 响应无 choices: ${response.body}');
+        lastApiError = '响应无 choices';
+        debugPrint('[callJsonApi] $lastApiError');
         return null;
       }
 
       final message = (choices.first as Map<String, Object?>?)?['message']
           as Map<String, Object?>?;
       if (message == null) {
-        debugPrint('[callJsonApi] 响应无 message: ${choices.first}');
+        lastApiError = '响应无 message';
+        debugPrint('[callJsonApi] $lastApiError');
         return null;
       }
 
       final content = message['content'] as String?;
       if (content == null) {
-        debugPrint('[callJsonApi] message 无 content: $message');
+        lastApiError = 'message 无 content';
+        debugPrint('[callJsonApi] $lastApiError');
         return null;
       }
 
       try {
         return jsonDecode(content) as Map<String, Object?>;
       } catch (e) {
-        debugPrint('[callJsonApi] content 不是合法 JSON: $content');
+        lastApiError = 'JSON 解析失败: $e';
+        debugPrint('[callJsonApi] $lastApiError: $content');
         return null;
       }
     } catch (e) {
-      debugPrint('[callJsonApi] 异常: $e');
+      lastApiError = '网络/超时异常: $e';
+      debugPrint('[callJsonApi] $lastApiError');
       return null;
     }
   }
@@ -653,10 +670,12 @@ $searchSection
       userPrompt: userPrompt,
       model: _modelPro,
       thinking: false,
-      maxTokens: 32000,
-      timeoutSeconds: 60,
+      maxTokens: 8192,
+      timeoutSeconds: 90,
     );
-    if (result == null) return null;
+    if (result == null) {
+      throw Exception('AI 规划 API 无响应${lastApiError != null ? '（$lastApiError）' : ''}');
+    }
     return PlanResult.fromJson(result);
   }
 
@@ -692,10 +711,12 @@ $domainKnowledge
       userPrompt: userPrompt,
       model: _modelPro,
       thinking: false,
-      maxTokens: 32000,
-      timeoutSeconds: 90,
+      maxTokens: 8192,
+      timeoutSeconds: 120,
     );
-    if (result == null) return null;
+    if (result == null) {
+      throw Exception('AI 规划 API 无响应${lastApiError != null ? '（$lastApiError）' : ''}');
+    }
     return PlanResult.fromJson(result);
   }
 
@@ -861,11 +882,11 @@ $domainContext
         thinking: thinkingEnabled,
         stream: true,
         tools: _chatTools,
-        maxTokens: 32000,
+        maxTokens: 8192,
       ));
 
       final streamedResponse =
-          await _client.send(request).timeout(const Duration(seconds: 30));
+          await _client.send(request).timeout(const Duration(seconds: 60));
 
       if (streamedResponse.statusCode != 200) {
         final errorBody = await streamedResponse.stream.bytesToString();

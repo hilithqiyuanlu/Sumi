@@ -239,9 +239,11 @@ class _DateChip extends StatelessWidget {
                 color: txtColor,
               ),
             ),
-            if (hasTodos) ...[
-              const SizedBox(height: s4),
-              Container(
+            const SizedBox(height: s4),
+            AnimatedOpacity(
+              opacity: hasTodos ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 150),
+              child: Container(
                 width: 4,
                 height: 4,
                 decoration: const BoxDecoration(
@@ -249,7 +251,7 @@ class _DateChip extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
               ),
-            ],
+            ),
           ],
         ),
       ),

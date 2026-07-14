@@ -84,11 +84,11 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
           }
         },
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _hasError = true;
-        _errorMessage = '规划生成失败，请检查网络后重试';
+        _errorMessage = '规划生成失败：${e.toString()}';
         _isGenerating = false;
       });
       return;
@@ -99,7 +99,7 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
     if (plan == null) {
       setState(() {
         _hasError = true;
-        _errorMessage = '规划生成失败，请检查网络后重试';
+        _errorMessage = '规划生成失败：AI 返回空结果';
         _isGenerating = false;
       });
       return;

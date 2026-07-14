@@ -311,9 +311,35 @@ class _HomePageState extends State<HomePage>
                     }),
                   ),
                   Expanded(
-                    child: messages.isEmpty
-                        ? _buildEmptyState(store, userName)
-                        : _buildMessageList(messages, store),
+                    child: Stack(
+                      children: [
+                        if (messages.isEmpty)
+                          _buildEmptyState(store, userName)
+                        else
+                          _buildMessageList(messages, store),
+                        // 顶部渐变遮罩 —— 衔接日历导航栏
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: 24,
+                          child: IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    paper,
+                                    paper.withValues(alpha: 0.0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   SuggestionStrip(
                     suggestions: _suggestions,

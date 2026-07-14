@@ -16,7 +16,7 @@
 - **📂 学习项目** — 最多 3 个项目，AI 生成月度学习计划，月卡解锁机制追踪进度
 - **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 8 维度评分，生成分阶段学习计划
 - **📅 日历导航** — 折叠日期条 + 展开月视图，垂直拖拽手势自然切换
-- **🎤 语音输入** — iOS 原生语音识别，长按说话松开发送
+- **🎤 语音输入** — 长按说话松开发送、上滑取消，支持连续识别与自动提交
 - **🧭 侧边抽屉** — 左滑唤出会话列表，新建 / 切换 / 删除对话
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Keychain 安全存储，无需服务器
 
@@ -29,7 +29,7 @@
 | 持久化 | SQLite（sqflite） + Secure Storage |
 | AI | DeepSeek Chat API（流式 SSE / 非流式 / Function Calling） |
 | 搜索 | Tavily Search API |
-| 语音 | iOS Speech Recognition |
+| 语音 | speech_to_text（iOS / Android） |
 | 设计 | Sumi Design System（Indigo 配色，Design Tokens） |
 
 ## 快速开始

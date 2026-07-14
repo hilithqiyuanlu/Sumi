@@ -145,6 +145,7 @@ mixin SumiStoreChat on ChangeNotifier {
 
     // 构建 API 消息上下文
     final messages = await _buildMessagesContextForAgent();
+    final msgCountBefore = messages.length;
 
     // 创建 AI 消息占位
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
@@ -163,6 +164,7 @@ mixin SumiStoreChat on ChangeNotifier {
 
     await _streamAndPersistReply(
       messages: messages,
+      msgCountBefore: msgCountBefore,
       assistantMsgId: assistantMsgId,
       convId: convId,
       db: db,
@@ -208,6 +210,7 @@ mixin SumiStoreChat on ChangeNotifier {
 
     // 构建上下文
     final messages = await _buildMessagesContextForAgent();
+    final msgCountBefore = messages.length;
 
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
     _currentMessages = [
@@ -225,6 +228,7 @@ mixin SumiStoreChat on ChangeNotifier {
 
     await _streamAndPersistReply(
       messages: messages,
+      msgCountBefore: msgCountBefore,
       assistantMsgId: assistantMsgId,
       convId: convId,
       db: db,
@@ -241,9 +245,11 @@ mixin SumiStoreChat on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 执行一次 Agent Loop 流式调用，处理所有事件并持久化结果。
-  /// [messages] 会就地修改（追加 tool 消息）。
+  /// [messages] 会就地修改（追加 assistant + tool 消息）。
+  /// [msgCountBefore] sendAgentLoop 调用前 messages 的长度，用于只持久化新增的 tool 消息。
   Future<void> _streamAndPersistReply({
     required List<Map<String, Object?>> messages,
+    required int msgCountBefore,
     required String assistantMsgId,
     required String convId,
     required ChatDatabase db,
@@ -337,8 +343,9 @@ mixin SumiStoreChat on ChangeNotifier {
       _currentMessages.removeLast();
     }
 
-    // 持久化 tool 结果消息
-    for (final m in messages) {
+    // 持久化本轮新增的 tool 结果消息（历史 tool 已在之前轮次保存过）
+    for (var i = msgCountBefore; i < messages.length; i++) {
+      final m = messages[i];
       if (m['role'] == 'tool') {
         final toolMsg = ChatMessage(
           id: 'msg-${DateTime.now().microsecondsSinceEpoch}-tool',

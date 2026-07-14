@@ -81,7 +81,8 @@ class PlanGenerator {
     // 异步发射弹幕，同时等待 AI 响应
     final bubbleFutures = <Future<void>>[];
     final presetThinking = List<String>.from(
-        _bubblePresets[BubbleType.thinking]!..shuffle());
+        _bubblePresets[BubbleType.thinking]!)
+      ..shuffle();
     for (final text in presetThinking.take(3)) {
       bubbleFutures.add(
         sleep(2000 + bubbleFutures.length * 100)

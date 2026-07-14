@@ -206,7 +206,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                     const SizedBox(width: s12),
                     Expanded(
                       child: _PickerColumn<int>(
-                        label: '投入时间',
+                        label: '投入时间/周',
                         value: _timeConstraint,
                         items: _hourValues,
                         labels: _hourLabels,

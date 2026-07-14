@@ -323,7 +323,7 @@ class _ChatInputState extends State<ChatInput> {
             bottom: MediaQuery.of(context).padding.bottom + s8,
           ),
           child: Container(
-            constraints: const BoxConstraints(maxHeight: 180),
+            constraints: const BoxConstraints(maxHeight: 200),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.82),
               borderRadius: BorderRadius.circular(radiusPill),
@@ -353,27 +353,33 @@ class _ChatInputState extends State<ChatInput> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // 模式切换（单按钮 + 切换图标 + 按压反馈）
+                    // 模式切换（双态颜色 + 按压缩放）
                     Padding(
                       padding: const EdgeInsets.only(left: 14),
                       child: GestureDetector(
                         onTap: widget.enabled ? _toggleMode : null,
                         child: AnimatedScale(
-                          scale: _modePressed ? 0.82 : 1.0,
-                          duration: const Duration(milliseconds: 120),
-                          curve: Curves.easeOutBack,
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: const BoxDecoration(
-                              color: primary50,
+                          scale: _modePressed ? 0.88 : 1.0,
+                          duration: const Duration(milliseconds: 100),
+                          curve: Curves.easeOutCubic,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 280),
+                            curve: Curves.easeOutCubic,
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: widget.mode == InputMode.todo
+                                  ? primary500
+                                  : primary50,
                               shape: BoxShape.circle,
                             ),
                             alignment: Alignment.center,
-                            child: const Icon(
+                            child: Icon(
                               Icons.swap_horiz_rounded,
-                              size: 20,
-                              color: primary500,
+                              size: 24,
+                              color: widget.mode == InputMode.todo
+                                  ? Colors.white
+                                  : primary500,
                             ),
                           ),
                         ),
@@ -394,16 +400,21 @@ class _ChatInputState extends State<ChatInput> {
                             maxLines: 4,
                             minLines: 1,
                             textInputAction: TextInputAction.newline,
-                            style: const TextStyle(fontSize: 15),
+                            style: const TextStyle(fontSize: 16),
                             decoration: InputDecoration(
                               hintText: _placeholderText,
+                              hintStyle: const TextStyle(
+                                fontSize: 16,
+                                color: textTertiary,
+                                fontWeight: FontWeight.w400,
+                              ),
                               filled: false,
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(
-                                horizontal: s8,
-                                vertical: 24,
+                                horizontal: s10,
+                                vertical: 28,
                               ),
                             ),
                             onSubmitted: (_) => _send(),
@@ -411,7 +422,7 @@ class _ChatInputState extends State<ChatInput> {
                         ),
                       ),
                     ),
-                    // 内嵌发送按钮（垂直居中）
+                    // 内嵌发送按钮
                     AnimatedOpacity(
                       opacity: showSendButton ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 150),
@@ -425,18 +436,19 @@ class _ChatInputState extends State<ChatInput> {
                           child: InkWell(
                             onTap: showSendButton ? _send : null,
                             customBorder: const CircleBorder(),
-                            overlayColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.3)),
+                            overlayColor: WidgetStatePropertyAll(
+                                Colors.white.withValues(alpha: 0.3)),
                             child: Container(
-                              width: 32,
-                              height: 32,
-                              margin: const EdgeInsets.only(right: s6),
-                              decoration: BoxDecoration(
+                              width: 44,
+                              height: 44,
+                              margin: const EdgeInsets.only(right: 14),
+                              decoration: const BoxDecoration(
                                 color: mintDeep,
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
                                 Icons.send,
-                                size: 16,
+                                size: 22,
                                 color: Colors.white,
                               ),
                             ),
