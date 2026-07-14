@@ -652,13 +652,18 @@ class AiService {
         thinking: thinkingEnabled,
         stream: true,
         tools: _chatTools,
-        maxTokens: 2000,
+        maxTokens: 16000,
       ));
 
       final streamedResponse =
           await _client.send(request).timeout(const Duration(seconds: 30));
 
-      if (streamedResponse.statusCode != 200) return;
+      if (streamedResponse.statusCode != 200) {
+        final errorBody = await streamedResponse.stream.bytesToString();
+        debugPrint(
+            '[streamChatMessages] HTTP ${streamedResponse.statusCode}: $errorBody');
+        return;
+      }
 
       // tool_calls 增量解析状态
       final toolCallBufs = <int, _ToolCallBuf>{};
@@ -747,8 +752,8 @@ class AiService {
       }
 
       yield StreamDone();
-    } catch (_) {
-      // stream 异常时静默结束
+    } catch (e) {
+      debugPrint('[streamChatMessages] 流异常: $e');
     }
   }
 

@@ -217,6 +217,12 @@ class SumiStore extends ChangeNotifier
     afterMutation();
   }
 
+  /// 切换开发者开关：披露全部月卡。
+  void setShowAllMonthCards(bool v) {
+    appSettings = appSettings.copyWith(showAllMonthCards: v);
+    afterMutation();
+  }
+
   // ---------------------------------------------------------------------------
   // 核心方法
   // ---------------------------------------------------------------------------

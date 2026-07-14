@@ -68,6 +68,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: s24),
 
+          // ── 开发者区 ──
+          _sectionHeader('开发者'),
+          const SizedBox(height: s8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('披露全部月卡',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            subtitle: const Text('关闭锁卡，显示所有月份的规划内容',
+                style: TextStyle(fontSize: 12)),
+            value: store.appSettings.showAllMonthCards,
+            onChanged: (v) => store.setShowAllMonthCards(v),
+          ),
+
+          const SizedBox(height: s24),
+
           // ── 数据区 ──
           _sectionHeader('数据管理'),
           const SizedBox(height: s8),

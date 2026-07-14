@@ -459,11 +459,17 @@ mixin SumiStoreChat on ChangeNotifier {
       {'role': 'system', 'content': systemPrompt},
     ];
 
-    // 最近消息（约 10 轮对话，考虑到 tool 消息占用更多空间）
+    // 最近 N 条消息（tool 消息会成倍消耗配额，40 条 ≈ 4-5 轮 agent loop）
     final recentMessages = _currentMessages;
-    final contextMessages = recentMessages.length > 40
-        ? recentMessages.sublist(recentMessages.length - 40)
-        : recentMessages;
+    int startIndex = 0;
+    if (recentMessages.length > 60) {
+      startIndex = recentMessages.length - 60;
+    }
+    // 确保不以孤立的 tool 消息开头 —— 否则 API 因消息序列非法而拒绝请求
+    while (startIndex > 0 && recentMessages[startIndex].role == 'tool') {
+      startIndex--;
+    }
+    final contextMessages = recentMessages.sublist(startIndex);
 
     for (final msg in contextMessages) {
       final map = <String, Object?>{

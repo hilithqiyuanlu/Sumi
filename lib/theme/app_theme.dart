@@ -90,16 +90,16 @@ const Color tertiary800 = Color(0xFF90681F);
 const Color tertiary900 = Color(0xFF735318);
 
 // Neutral
-const Color neutral50 = Color(0xFFFAF9F7);
-const Color neutral100 = Color(0xFFF3F1ED);
-const Color neutral200 = Color(0xFFE9E0D8);
-const Color neutral300 = Color(0xFFCFC9BE);
-const Color neutral400 = Color(0xFFB5AD9F);
-const Color neutral500 = Color(0xFF9A9183); // @primary
-const Color neutral600 = Color(0xFF827868);
-const Color neutral700 = Color(0xFF6A6054);
-const Color neutral800 = Color(0xFF554D43);
-const Color neutral900 = Color(0xFF3E372F);
+const Color neutral50 = Color(0xFFF7F8FA);
+const Color neutral100 = Color(0xFFEFF1F4); // Google muted bg
+const Color neutral200 = Color(0xFFEBEBEB); // Google border
+const Color neutral300 = Color(0xFFD4D7DE);
+const Color neutral400 = Color(0xFFA8ADB8);
+const Color neutral500 = Color(0xFF7F8D9F); // Google muted-foreground
+const Color neutral600 = Color(0xFF666E7B);
+const Color neutral700 = Color(0xFF4D5565);
+const Color neutral800 = Color(0xFF333942); // Google secondary-foreground
+const Color neutral900 = Color(0xFF0E1115); // Google foreground
 
 // Success
 const Color success500 = Color(0xFF42B570);
@@ -121,23 +121,23 @@ const Color info500 = Color(0xFF5292D4);
 const Color info800 = Color(0xFF2B5694);
 
 // Semantic aliases (light)
-const Color paper = Color(0xFFFFFBF6); // --bg
-const Color ink = Color(0xFF554D43); // --fg / --on-surface (neutral-800)
-const Color line = Color(0xFFE9E0D8); // --rule (neutral-200)
-const Color textTertiary = Color(0xFF9A9183); // --muted (neutral-500)
-const Color textSecondary = Color(0xFFB5AD9F); // neutral-400
-const Color surfaceChip = Color(0xFFF5F1E9); // --surface-chip
-const Color surfaceAlt = Color(0xFFF3F1ED); // neutral-100 / surface-container-low
-const Color surfaceMuted = Color(0xFFFAF9F7); // neutral-50
+const Color paper = Color(0xFFFFFFFF); // pure white, Google background
+const Color ink = Color(0xFF0E1115); // Google foreground
+const Color line = Color(0xFFEBEBEB); // Google border
+const Color textTertiary = Color(0xFF7F8D9F); // Google muted-foreground
+const Color textSecondary = Color(0xFFA8ADB8); // cool gray
+const Color surfaceChip = Color(0xFFEFF1F4); // Google muted
+const Color surfaceAlt = Color(0xFFF7F8FA); // cool gray-50
+const Color surfaceMuted = Color(0xFFF7F8FA); // cool gray-50
 
 const Color mint = primary100; // primary-100 — indigo-100 for selections
 const Color mintDeep = primary500; // primary-500 — indigo-500
-const Color lemon = Color(0xFFFFE9A8); // tertiary-200
+const Color lemon = Color(0xFFC5CAFF); // cool indigo-200
 const Color lilac = Color(0xFFDCCBFF); // tag-violet
 const Color cherry = Color(0xFFF8B4C8); // tag-peach
 const Color sky = Color(0xFFB4D4F8); // tag-blue
-const Color peach = Color(0xFFF8D4B4); // tag-peach
-const Color sage = Color(0xFFD4E8D4); // sage green
+const Color peach = Color(0xFFC5D4F0); // cool blue-200
+const Color sage = Color(0xFFB4D8E8); // cyan-ish
 
 const Color danger = Color(0xFFD95D4F); // error-500
 
@@ -151,19 +151,19 @@ const Color interactivePress = Color(0x294758E0); // 16% primary (indigo)
 // ---------------------------------------------------------------------------
 
 const List<BoxShadow> shadow1 = [
-  BoxShadow(color: Color(0x0F3E372F), offset: Offset(0, 1), blurRadius: 3), // Card — spec: 0 1px 3px rgba(62,55,47,.06)
+  BoxShadow(color: Color(0x0F0E1115), offset: Offset(0, 1), blurRadius: 3), // Card
 ];
 const List<BoxShadow> shadow2 = [
-  BoxShadow(color: Color(0x0A3E372F), offset: Offset(0, 1), blurRadius: 3), // Card Hover
+  BoxShadow(color: Color(0x0A0E1115), offset: Offset(0, 1), blurRadius: 3), // Card Hover
 ];
 const List<BoxShadow> shadow3 = [
-  BoxShadow(color: Color(0x0D3E372F), offset: Offset(0, 2), blurRadius: 6), // Float
+  BoxShadow(color: Color(0x0D0E1115), offset: Offset(0, 2), blurRadius: 6), // Float
 ];
 const List<BoxShadow> shadow4 = [
-  BoxShadow(color: Color(0x103E372F), offset: Offset(0, 4), blurRadius: 12), // Modal
+  BoxShadow(color: Color(0x100E1115), offset: Offset(0, 4), blurRadius: 12), // Modal
 ];
 const List<BoxShadow> shadow5 = [
-  BoxShadow(color: Color(0x143E372F), offset: Offset(0, 8), blurRadius: 24), // Overlay
+  BoxShadow(color: Color(0x140E1115), offset: Offset(0, 8), blurRadius: 24), // Overlay
 ];
 
 // ---------------------------------------------------------------------------
@@ -189,13 +189,13 @@ Color projectCardBackground(ProjectColor c) {
 Color projectTextColor(ProjectColor c, {bool selected = true}) {
   if (!selected) return neutral800.withValues(alpha: 0.4);
   return switch (c) {
-    ProjectColor.lemon => const Color(0xFF8B6914),
+    ProjectColor.lemon => const Color(0xFF3949AB),
     ProjectColor.mint => const Color(0xFF2D7A62),
     ProjectColor.lilac => const Color(0xFF6B4FB5),
     ProjectColor.cherry => const Color(0xFF8B3A4A),
     ProjectColor.sky => const Color(0xFF3A5F8B),
-    ProjectColor.peach => const Color(0xFF8B5A3A),
-    ProjectColor.sage => const Color(0xFF4A6B4A),
+    ProjectColor.peach => const Color(0xFF3A5F8B),
+    ProjectColor.sage => const Color(0xFF2D6A7A),
   };
 }
 

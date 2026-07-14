@@ -92,6 +92,7 @@ class _DateStripState extends State<DateStrip> {
                     final date = dates[index];
                     final isSelected = isSameDate(date, selected);
                     final isToday = isSameDate(date, today);
+                    final isPast = date.isBefore(today) && !isToday;
                     return _DraggableDateChip(
                       date: date,
                       store: store,
@@ -99,6 +100,7 @@ class _DateStripState extends State<DateStrip> {
                         date: date,
                         selected: isSelected,
                         isToday: isToday,
+                        isPast: isPast,
                         onTap: () {
                           HapticFeedback.selectionClick();
                           store.selectDate(date);
@@ -148,12 +150,14 @@ class _DateChip extends StatelessWidget {
   final DateTime date;
   final bool selected;
   final bool isToday;
+  final bool isPast;
   final VoidCallback onTap;
 
   const _DateChip({
     required this.date,
     required this.selected,
     required this.isToday,
+    required this.isPast,
     required this.onTap,
   });
 
@@ -173,7 +177,7 @@ class _DateChip extends StatelessWidget {
       txtColor = ink;
     } else {
       bgColor = Colors.transparent;
-      txtColor = ink;
+      txtColor = isPast ? textTertiary : ink;
     }
 
     return GestureDetector(

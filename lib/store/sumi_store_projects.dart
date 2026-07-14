@@ -58,7 +58,7 @@ mixin SumiStoreProjects on ChangeNotifier {
     }
   }
 
-  /// 更新项目字段。
+  /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
   void updateProject(String id, {
     String? name,
     ProjectColor? color,
@@ -70,7 +70,8 @@ mixin SumiStoreProjects on ChangeNotifier {
   }) {
     final i = projectList.indexWhere((p) => p.id == id);
     if (i == -1) return;
-    final oldCycle = projectList[i].cycleMonths;
+    final old = projectList[i];
+    final oldCycle = old.cycleMonths;
     projectList[i] = projectList[i].copyWith(
       name: name,
       color: color,
@@ -98,6 +99,18 @@ mixin SumiStoreProjects on ChangeNotifier {
       }
     }
     afterMutation();
+
+    // 编辑保存后自动重规划（goal / level / 周期 / 投入时间任一变更 + 有 goal）
+    final needsReplan = (goal != null && goal != old.goal) ||
+        (level != null && level != old.level) ||
+        (cycleMonths != null && cycleMonths != old.cycleMonths) ||
+        (timeConstraint != null && timeConstraint != old.timeConstraint);
+    if (needsReplan) {
+      final effectiveGoal = goal ?? old.goal;
+      if (effectiveGoal.isNotEmpty) {
+        retryPlanning(id);
+      }
+    }
   }
 
   /// 删除项目 → 级联删除月卡 + 系统 todo。

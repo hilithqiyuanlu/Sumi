@@ -32,7 +32,7 @@ class _MainShellState extends State<MainShell> {
     ),
     _NavItemData(
       icon: Icons.circle_outlined,
-      activeIcon: Icons.check_small,
+      activeIcon: Icons.check_circle,
       label: '事项',
     ),
     _NavItemData(

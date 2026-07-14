@@ -70,7 +70,7 @@ class ToolExecutor {
     try {
       final content = await readMemory();
       if (content.trim().isEmpty) {
-        return 'MEMORY.md 为空，暂无记忆。你可以通过对话了解用户，并在合适的时机用 write_memory 记录重要信息。';
+        return '（暂无记忆）';
       }
       // 截断以防超出上下文
       if (content.length > 3000) {

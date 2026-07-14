@@ -34,7 +34,8 @@ class MonthCardPager extends StatelessWidget {
                   title: '',
                 ),
               )!;
-          final isUnlocked = index <= project.currentMonthIndex;
+          final isUnlocked = store.appSettings.showAllMonthCards ||
+              index <= project.currentMonthIndex;
 
           if (isUnlocked) {
             return SizedBox(
@@ -103,32 +104,6 @@ class _UnlockedCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (card.aiGenerated) ...[
-                const SizedBox(width: s6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: s8, vertical: s2),
-                  decoration: BoxDecoration(
-                    color: mintDeep.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(radiusPill),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_awesome,
-                          size: 11, color: mintDeep),
-                      SizedBox(width: s4),
-                      Text(
-                        'AI 规划',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: mintDeep,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
           const SizedBox(height: s10),

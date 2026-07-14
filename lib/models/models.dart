@@ -24,22 +24,26 @@ class AppSettings {
   final String deepseekApiKey;
   final String tavilyApiKey;
   final bool thinkingEnabled;
+  final bool showAllMonthCards; // 开发者开关：披露全部月卡
 
   const AppSettings({
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
     this.thinkingEnabled = true,
+    this.showAllMonthCards = false,
   });
 
   AppSettings copyWith({
     String? deepseekApiKey,
     String? tavilyApiKey,
     bool? thinkingEnabled,
+    bool? showAllMonthCards,
   }) {
     return AppSettings(
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
       thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
+      showAllMonthCards: showAllMonthCards ?? this.showAllMonthCards,
     );
   }
 
@@ -47,12 +51,14 @@ class AppSettings {
         'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
         'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
         'thinkingEnabled': thinkingEnabled,
+        'showAllMonthCards': showAllMonthCards,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) => AppSettings(
         deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
         tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
         thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
+        showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
       );
 }
 

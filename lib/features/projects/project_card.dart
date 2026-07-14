@@ -116,20 +116,6 @@ class _ProjectCardState extends State<ProjectCard> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        // AI 重新规划按钮（仅当有 goal 时显示）
-                        if (p.goal.isNotEmpty)
-                          TextButton.icon(
-                            onPressed: () {
-                              Navigator.pop(context); // 关闭月视图 sheet
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                store.retryPlanning(p.id);
-                              });
-                            },
-                            icon: const Icon(Icons.auto_awesome,
-                                size: iconSmall, color: mintDeep),
-                            label: const Text('重规划',
-                                style: TextStyle(color: mintDeep)),
-                          ),
                         TextButton.icon(
                           onPressed: () => showProjectEditor(
                             context,
