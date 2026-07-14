@@ -90,6 +90,57 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   }
 
   Future<void> _pickReminder() async {
+    // 已有定时 → 弹出选择
+    if (_todo.reminderTime != null) {
+      final action = await showModalBottomSheet<String>(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+        ),
+        builder: (ctx) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(s16, s16, s16, s8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 32,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: textTertiary.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: s16),
+                  ListTile(
+                    leading: const Icon(Icons.timer_rounded, color: ink),
+                    title: Text('修改定时（当前 ${_todo.reminderTime}）'),
+                    onTap: () => Navigator.pop(ctx, 'edit'),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.clear_rounded, color: Colors.red.shade400),
+                    title: Text('清除定时', style: TextStyle(color: Colors.red.shade400)),
+                    onTap: () => Navigator.pop(ctx, 'clear'),
+                  ),
+                  const SizedBox(height: s8),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+      if (!mounted) return;
+      if (action == 'clear') {
+        _clearReminder();
+        return;
+      }
+      if (action != 'edit') return;
+    }
+
     final initial = _todo.reminderTime != null
         ? _parseTime(_todo.reminderTime!)
         : null;
@@ -113,6 +164,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   }
 
   void _copy() {
+    HapticFeedback.selectionClick();
     Clipboard.setData(ClipboardData(text: _todo.title));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -123,12 +175,26 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
     );
   }
 
-  void _save() {
+  Future<void> _save() async {
     final newTitle = _titleCtrl.text.trim();
-    if (newTitle.isNotEmpty && newTitle != _todo.title) {
-      _store.updateTodoTitle(_todo.id, newTitle);
+    if (newTitle.isEmpty || newTitle == _todo.title) {
+      Navigator.pop(context);
+      return;
     }
-    Navigator.pop(context);
+
+    // >18 字触发 AI 凝练
+    if (newTitle.length > 18) {
+      setState(() => _polishing = true);
+      final condensed = await _store.polishText(newTitle);
+      if (mounted) {
+        setState(() => _polishing = false);
+        _store.updateTodoTitle(_todo.id, condensed ?? newTitle);
+        Navigator.pop(context);
+      }
+    } else {
+      _store.updateTodoTitle(_todo.id, newTitle);
+      Navigator.pop(context);
+    }
   }
 
   void _delete() {
@@ -207,7 +273,6 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                   label: todo.reminderTime ?? '定时',
                   active: todo.reminderTime != null,
                   onTap: _pickReminder,
-                  onLongPress: todo.reminderTime != null ? _clearReminder : null,
                 ),
                 const SizedBox(width: s8),
                 _ActionChip(
@@ -274,7 +339,6 @@ class _ActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
   final bool loading;
   final bool active;
 
@@ -282,7 +346,6 @@ class _ActionChip extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.onLongPress,
     this.loading = false,
     this.active = false,
   });
@@ -291,7 +354,6 @@ class _ActionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: loading ? null : onTap,
-      onLongPress: onLongPress,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
         decoration: BoxDecoration(

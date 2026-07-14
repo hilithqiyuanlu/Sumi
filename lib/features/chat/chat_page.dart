@@ -46,13 +46,34 @@ class _ChatPageState extends State<ChatPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     }
 
+    // 构建 AppBar 副标题
+    String? appBarSubtitle;
+    if (store.isThinking) {
+      appBarSubtitle = '思考中...';
+    } else if (store.currentToolCallLabel != null) {
+      appBarSubtitle = '🔧 ${store.currentToolCallLabel}...';
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          store.currentConversationTitle.isNotEmpty
-              ? store.currentConversationTitle
-              : 'Sumi',
-          style: const TextStyle(fontSize: 17),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              store.currentConversationTitle.isNotEmpty
+                  ? store.currentConversationTitle
+                  : 'Sumi',
+              style: const TextStyle(fontSize: 17),
+            ),
+            if (appBarSubtitle != null)
+              Text(
+                appBarSubtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: textTertiary,
+                ),
+              ),
+          ],
         ),
         centerTitle: true,
         leading: IconButton(
@@ -66,6 +87,11 @@ class _ChatPageState extends State<ChatPage> {
               tooltip: '重新生成',
               onPressed: isStreaming ? null : () => store.regenerateLast(),
             ),
+          IconButton(
+            icon: const Icon(Icons.add_rounded, size: 22),
+            tooltip: '新会话',
+            onPressed: isStreaming ? null : () => store.createConversation(),
+          ),
         ],
       ),
       body: Column(
@@ -104,6 +130,8 @@ class _ChatPageState extends State<ChatPage> {
                               content: msg.content,
                               isUser: msg.role == 'user',
                               isStreaming: isLastAi && isStreaming,
+                              reasoningContent: msg.reasoningContent,
+                              toolCallsJson: msg.toolCallsJson,
                             );
                           },
                         ),

@@ -146,14 +146,6 @@ class _UnlockedCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: ink,
                       ),
-                    )
-                  else
-                    Text(
-                      monthLabel,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: textTertiary,
-                      ),
                     ),
                   // 摘要
                   if (card.summary != null && card.summary!.isNotEmpty) ...[

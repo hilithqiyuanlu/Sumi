@@ -87,11 +87,15 @@ class _TodosPageState extends State<TodosPage>
     final screenH = MediaQuery.of(context).size.height;
 
     // 响应 MainShell 二次点击 Tab 的回退信号
+    // 第一步：若月视图展开 → 仅收起；第二步：已收起 → 回到当日
     if (_lastNavigateSignal != store.navigateToTodaySignal) {
       _lastNavigateSignal = store.navigateToTodaySignal;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _closeMonth();
-        store.selectDate(DateTime.now());
+        if (_controller.value > 0.5) {
+          _closeMonth();
+        } else {
+          store.selectDate(DateTime.now());
+        }
       });
     }
 

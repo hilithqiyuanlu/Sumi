@@ -164,6 +164,13 @@ mixin SumiStoreTodos on ChangeNotifier {
     return polished;
   }
 
+  /// 调用 AI 凝练任意文本至 18 字以内。失败返回 null。
+  Future<String?> polishText(String text) async {
+    final svc = aiService;
+    if (svc == null) return null;
+    return await svc.polishTodo(text);
+  }
+
   // ---------------------------------------------------------------------------
   // 批量更新（编辑面板用）
   // ---------------------------------------------------------------------------
@@ -222,7 +229,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     // 未完成优先于已完成
     if (!a.done && b.done) return -1;
     if (a.done && !b.done) return 1;
-    // sortOrder 降序（越大越靠前）
-    return b.sortOrder.compareTo(a.sortOrder);
+    // sortOrder 升序（越小越靠前 = 添加顺序）
+    return a.sortOrder.compareTo(b.sortOrder);
   }
 }

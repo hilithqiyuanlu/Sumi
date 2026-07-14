@@ -15,11 +15,11 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int _tab = 0;
+  int _tab = 1; // 默认首页仍是"事项"
 
   static const _pages = <Widget>[
-    TodosPage(),
     ChatPage(),
+    TodosPage(),
     SettingsPage(),
   ];
 
@@ -39,7 +39,8 @@ class _MainShellState extends State<MainShell> {
         onDestinationSelected: (i) {
           HapticFeedback.selectionClick();
           if (i == _tab) {
-            if (i == 0) {
+            if (i == 1) {
+              // 事项 Tab — 二次点击：收起月视图 / 回到当日
               SumiScope.read(context).triggerNavigateToToday();
             }
             return;
@@ -48,14 +49,14 @@ class _MainShellState extends State<MainShell> {
         },
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.check_circle_outline),
-            selectedIcon: Icon(Icons.check_circle_rounded),
-            label: '事项',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.psychology_outlined),
             selectedIcon: Icon(Icons.psychology_rounded),
             label: 'Sumi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.check_circle_outline),
+            selectedIcon: Icon(Icons.check_circle_rounded),
+            label: '事项',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

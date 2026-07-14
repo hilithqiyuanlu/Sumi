@@ -7,6 +7,7 @@ part of 'sumi_store.dart';
 mixin SumiStoreChat on ChangeNotifier {
   ChatDatabase? get chatDatabase;
   AiService? get aiService;
+  ToolExecutor? get toolExecutor;
   void afterMutation();
 
   // --- 状态 ---
@@ -15,10 +16,16 @@ mixin SumiStoreChat on ChangeNotifier {
   List<ChatMessage> _currentMessages = [];
   bool _isStreaming = false;
 
+  /// Agent 状态
+  bool _isThinking = false;
+  String? _currentToolCallLabel;
+
   List<Conversation> get conversations => List.unmodifiable(_conversations);
   String? get currentConversationId => _currentConversationId;
   List<ChatMessage> get currentMessages => List.unmodifiable(_currentMessages);
   bool get isStreaming => _isStreaming;
+  bool get isThinking => _isThinking;
+  String? get currentToolCallLabel => _currentToolCallLabel;
 
   /// 当前会话标题。
   String get currentConversationTitle {
@@ -61,11 +68,22 @@ mixin SumiStoreChat on ChangeNotifier {
     if (_currentConversationId == id) {
       _currentConversationId = _conversations.isNotEmpty ? _conversations.first.id : null;
       _currentMessages = [];
-      // 切换到另一个会话或加载空
       if (_currentConversationId != null) {
         _currentMessages = await db.loadMessages(_currentConversationId!);
       }
     }
+    notifyListeners();
+  }
+
+  /// 清除全部对话数据。
+  Future<void> clearChatData() async {
+    final db = chatDatabase;
+    if (db != null) {
+      await db.clearAll();
+    }
+    _conversations.clear();
+    _currentConversationId = null;
+    _currentMessages.clear();
     notifyListeners();
   }
 
@@ -79,13 +97,14 @@ mixin SumiStoreChat on ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // 消息
+  // 消息发送（05 轮重写：Agent Loop）
   // ---------------------------------------------------------------------------
 
-  /// 发送用户消息并获取 AI 流式回复。
+  /// 发送用户消息并进入 Agent Loop。
   Future<void> sendMessage(String content) async {
     final db = chatDatabase;
     final svc = aiService;
+    final exec = toolExecutor;
     if (db == null || svc == null) return;
     if (content.trim().isEmpty) return;
 
@@ -96,7 +115,7 @@ mixin SumiStoreChat on ChangeNotifier {
     final convId = _currentConversationId!;
     if (convId.isEmpty) return;
 
-    // 自动设置会话标题（取首条用户消息前 20 字）
+    // 自动设置会话标题
     final conv = _conversations.cast<Conversation?>().firstWhere(
       (c) => c?.id == convId,
       orElse: () => null,
@@ -125,13 +144,10 @@ mixin SumiStoreChat on ChangeNotifier {
     _currentMessages = [..._currentMessages, userMsg];
     notifyListeners();
 
-    // 构建消息上下文
-    final messages = _buildMessagesContext(content.trim());
+    // 构建 API 消息上下文
+    final messages = _buildMessagesContextForAgent();
 
-    // 流式获取 AI 回复
-    _isStreaming = true;
-    notifyListeners();
-
+    // 创建 AI 消息占位
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
     final assistantMsg = ChatMessage(
       id: assistantMsgId,
@@ -141,37 +157,96 @@ mixin SumiStoreChat on ChangeNotifier {
       createdAt: DateTime.now(),
     );
     _currentMessages = [..._currentMessages, assistantMsg];
+    _isStreaming = true;
     notifyListeners();
 
-    final buffer = StringBuffer();
+    final contentBuf = StringBuffer();
+    final reasoningBuf = StringBuffer();
+    final toolCallsList = <Map<String, Object?>>[];
+    String? lastToolName;
+
     try {
-      await for (final chunk in svc.streamChatMessages(messages)) {
-        buffer.write(chunk);
-        // 更新最后一条消息
-        final lastIdx = _currentMessages.length - 1;
-        if (lastIdx >= 0) {
-          _currentMessages[lastIdx] =
-              _currentMessages[lastIdx].copyWith(content: buffer.toString());
+      await for (final event in svc.sendAgentLoop(
+        messages: messages,
+        executeTool: (call) async {
+          lastToolName = call.name;
+          _currentToolCallLabel = _toolLabel(call.name);
+          _isThinking = false;
+          notifyListeners();
+          final result = await exec!.execute(call);
+          // 保存 tool call 信息
+          toolCallsList.add({
+            'id': call.id,
+            'type': 'function',
+            'function': {
+              'name': call.name,
+              'arguments': jsonEncode(call.arguments),
+            },
+          });
+          _currentToolCallLabel = null;
+          notifyListeners();
+          return result;
+        },
+      )) {
+        switch (event) {
+          case ContentDelta(text: final t):
+            contentBuf.write(t);
+            final lastIdx = _currentMessages.length - 1;
+            if (lastIdx >= 0) {
+              _currentMessages[lastIdx] =
+                  _currentMessages[lastIdx].copyWith(content: contentBuf.toString());
+            }
+            _isThinking = false;
+            notifyListeners();
+          case ReasoningDelta(text: final t):
+            reasoningBuf.write(t);
+            _isThinking = true;
+            notifyListeners();
+          case ToolCallsComplete():
+            // tool calls 由 executeTool 回调处理
+            break;
+          case StreamDone():
+            break;
         }
-        notifyListeners();
       }
     } catch (_) {
-      // 流异常 → 保留已收到的内容
+      // 异常 → 保留已收到内容
     }
 
     _isStreaming = false;
+    _isThinking = false;
+    _currentToolCallLabel = null;
 
     // 持久化 AI 回复
-    if (buffer.isNotEmpty) {
+    final finalContent = contentBuf.toString();
+    if (finalContent.isNotEmpty) {
+      final finalReasoning = reasoningBuf.isNotEmpty ? reasoningBuf.toString() : null;
+      final finalToolCallsJson = toolCallsList.isNotEmpty
+          ? jsonEncode(toolCallsList)
+          : null;
+
+      // 更新内存中的消息
+      final lastIdx = _currentMessages.length - 1;
+      if (lastIdx >= 0) {
+        _currentMessages[lastIdx] = _currentMessages[lastIdx].copyWith(
+          content: finalContent,
+          reasoningContent: finalReasoning,
+          toolCallsJson: finalToolCallsJson,
+        );
+      }
+
+      // 持久化到 DB
       await db.saveMessage(ChatMessage(
         id: assistantMsgId,
         conversationId: convId,
         role: 'assistant',
-        content: buffer.toString(),
+        content: finalContent,
         createdAt: DateTime.now(),
+        reasoningContent: finalReasoning,
+        toolCallsJson: finalToolCallsJson,
       ));
     } else {
-      // 空回复 → 移除占位消息
+      // 空回复 → 移除占位
       _currentMessages.removeLast();
     }
 
@@ -191,6 +266,7 @@ mixin SumiStoreChat on ChangeNotifier {
   Future<void> regenerateLast() async {
     final db = chatDatabase;
     final svc = aiService;
+    final exec = toolExecutor;
     if (db == null || svc == null) return;
     final convId = _currentConversationId;
     if (convId == null) return;
@@ -199,7 +275,6 @@ mixin SumiStoreChat on ChangeNotifier {
     final lastAiIdx = _currentMessages.lastIndexWhere((m) => m.role == 'assistant');
     String? lastUserContent;
     if (lastAiIdx >= 0) {
-      // 找 AI 消息前最近的一条用户消息
       for (var i = lastAiIdx - 1; i >= 0; i--) {
         if (_currentMessages[i].role == 'user') {
           lastUserContent = _currentMessages[i].content;
@@ -213,11 +288,8 @@ mixin SumiStoreChat on ChangeNotifier {
 
     if (lastUserContent == null) return;
 
-    // 重新发送
-    _isStreaming = true;
-    notifyListeners();
-
-    final messages = _buildMessagesContext(lastUserContent);
+    // 构建上下文
+    final messages = _buildMessagesContextForAgent();
 
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
     final assistantMsg = ChatMessage(
@@ -228,30 +300,84 @@ mixin SumiStoreChat on ChangeNotifier {
       createdAt: DateTime.now(),
     );
     _currentMessages = [..._currentMessages, assistantMsg];
+    _isStreaming = true;
     notifyListeners();
 
-    final buffer = StringBuffer();
+    final contentBuf = StringBuffer();
+    final reasoningBuf = StringBuffer();
+    final toolCallsList = <Map<String, Object?>>[];
+
     try {
-      await for (final chunk in svc.streamChatMessages(messages)) {
-        buffer.write(chunk);
-        final lastIdx = _currentMessages.length - 1;
-        if (lastIdx >= 0) {
-          _currentMessages[lastIdx] =
-              _currentMessages[lastIdx].copyWith(content: buffer.toString());
+      await for (final event in svc.sendAgentLoop(
+        messages: messages,
+        executeTool: (call) async {
+          _currentToolCallLabel = _toolLabel(call.name);
+          _isThinking = false;
+          notifyListeners();
+          final result = await exec!.execute(call);
+          toolCallsList.add({
+            'id': call.id,
+            'type': 'function',
+            'function': {
+              'name': call.name,
+              'arguments': jsonEncode(call.arguments),
+            },
+          });
+          _currentToolCallLabel = null;
+          notifyListeners();
+          return result;
+        },
+      )) {
+        switch (event) {
+          case ContentDelta(text: final t):
+            contentBuf.write(t);
+            final lastIdx = _currentMessages.length - 1;
+            if (lastIdx >= 0) {
+              _currentMessages[lastIdx] =
+                  _currentMessages[lastIdx].copyWith(content: contentBuf.toString());
+            }
+            _isThinking = false;
+            notifyListeners();
+          case ReasoningDelta(text: final t):
+            reasoningBuf.write(t);
+            _isThinking = true;
+            notifyListeners();
+          case ToolCallsComplete():
+            break;
+          case StreamDone():
+            break;
         }
-        notifyListeners();
       }
     } catch (_) {}
 
     _isStreaming = false;
+    _isThinking = false;
+    _currentToolCallLabel = null;
 
-    if (buffer.isNotEmpty) {
+    final finalContent = contentBuf.toString();
+    if (finalContent.isNotEmpty) {
+      final finalReasoning = reasoningBuf.isNotEmpty ? reasoningBuf.toString() : null;
+      final finalToolCallsJson = toolCallsList.isNotEmpty
+          ? jsonEncode(toolCallsList)
+          : null;
+
+      final lastIdx = _currentMessages.length - 1;
+      if (lastIdx >= 0) {
+        _currentMessages[lastIdx] = _currentMessages[lastIdx].copyWith(
+          content: finalContent,
+          reasoningContent: finalReasoning,
+          toolCallsJson: finalToolCallsJson,
+        );
+      }
+
       await db.saveMessage(ChatMessage(
         id: assistantMsgId,
         conversationId: convId,
         role: 'assistant',
-        content: buffer.toString(),
+        content: finalContent,
         createdAt: DateTime.now(),
+        reasoningContent: finalReasoning,
+        toolCallsJson: finalToolCallsJson,
       ));
     } else {
       _currentMessages.removeLast();
@@ -262,43 +388,70 @@ mixin SumiStoreChat on ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // 内部
+  // 内部：消息构建
   // ---------------------------------------------------------------------------
 
   static const _chatSystemPrompt =
-      '你是 Sumi，一个温暖的个人学习助手。\n'
-      '你的风格：鼓励、简洁、有同理心。像朋友一样聊天，不要像机器人。\n'
+      '你是 Sumi，一个能干的个人学习助手。你有工具可以帮助用户。\n'
       '\n'
-      '你可以帮用户：\n'
-      '- 制定和调整学习计划\n'
-      '- 解答学习中的疑问\n'
-      '- 管理待办事项\n'
-      '- 提供学习建议和鼓励\n'
+      '## 风格\n'
+      '- 简洁直接，像朋友聊天，不要机器人套话\n'
+      '- 用户没要求时，默认 ≤ 100 字\n'
+      '- 不要用"当然可以！""希望对你有帮助！"这类 AI 废话\n'
+      '- 用工具来做对的事，而不是反复问用户\n'
       '\n'
-      '回答控制在 200 字以内，除非用户明确需要详细解释。';
+      '## 工具\n'
+      '你可以搜索网络、读写记忆、管理待办事项。需要时直接用工具。\n'
+      '\n'
+      '## 记忆\n'
+      '使用 read_memory / write_memory 记录用户的重要信息、偏好和学习进度。';
 
-  /// 构建消息上下文（system prompt + 最近 10 轮 + 当前用户消息）。
-  List<Map<String, String>> _buildMessagesContext(String currentUserMessage) {
-    final messages = <Map<String, String>>[
+  /// 构建 agent loop 用的消息上下文（含 system + 历史 + reasoning_content 传回）。
+  List<Map<String, Object?>> _buildMessagesContextForAgent() {
+    final messages = <Map<String, Object?>>[
       {'role': 'system', 'content': _chatSystemPrompt},
     ];
 
-    // 最近 10 轮对话 = 最近 20 条消息（不包含当前正在发送的用户消息）
+    // 最近 10 轮对话 = 最近 20 条消息
     final recentMessages = _currentMessages;
     final contextMessages = recentMessages.length > 20
         ? recentMessages.sublist(recentMessages.length - 20)
         : recentMessages;
 
     for (final msg in contextMessages) {
-      messages.add({
+      final map = <String, Object?>{
         'role': msg.role,
         'content': msg.content,
-      });
-    }
+      };
 
-    // 当前用户消息已通过 saveMessage 保存到 _currentMessages
-    // 所以它已经在 recentMessages 里面了（如果 <= 20 条）
+      // 传回 reasoning_content（如果有）
+      if (msg.reasoningContent != null &&
+          msg.reasoningContent!.isNotEmpty) {
+        map['reasoning_content'] = msg.reasoningContent;
+      }
+
+      // 传回 tool_calls（如果有）
+      if (msg.toolCallsJson != null && msg.toolCallsJson!.isNotEmpty) {
+        try {
+          final tcList =
+              jsonDecode(msg.toolCallsJson!) as List<Object?>;
+          map['tool_calls'] = tcList;
+        } catch (_) {}
+      }
+
+      messages.add(map);
+    }
 
     return messages;
   }
+
+  /// 工具名称 → 中文标签。
+  String _toolLabel(String name) => switch (name) {
+    'search_web' => '搜索网络',
+    'read_memory' => '读取记忆',
+    'write_memory' => '写入记忆',
+    'read_todos' => '查看事项',
+    'write_todo' => '创建事项',
+    _ => name,
+  };
 }

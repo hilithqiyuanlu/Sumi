@@ -16,6 +16,7 @@ mixin SumiStorePersist on ChangeNotifier {
   set currentProjectId(String? v);
   AppSettings get appSettings;
   set appSettings(AppSettings v);
+  Future<void> clearChatData(); // 由 SumiStoreChat mixin 提供
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -90,6 +91,9 @@ mixin SumiStorePersist on ChangeNotifier {
       deepseekApiKey: keepSecrets ? oldDeepseek : '',
       tavilyApiKey: keepSecrets ? oldTavily : '',
     );
+
+    // 也清除对话历史
+    await clearChatData();
 
     await writeToDb();
     notifyListeners();

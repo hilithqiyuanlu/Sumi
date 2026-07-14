@@ -1,6 +1,6 @@
 # Sumi（米糖）
 
-一个**本地优先的 AI 自学助手**，帮你管理事项、追踪学习项目，结合 LLM 智能拆分与润色。
+一个**本地优先的 AI 自学助手**，帮你管理事项、追踪学习项目，内建 AI 对话助手。
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-iOS%2013%2B-lightgrey" alt="platform">
@@ -11,23 +11,22 @@
 
 ## 功能
 
-- **📋 Keep 风格事项网格** — Masonry 瀑布流布局，Pin 置顶、长按拖拽排序
-- **📅 日历导航** — 折叠态日期条 + 展开月视图，拖拽 todo 到日期分配
-- **📂 项目系统** — 最多 3 个学习项目，月卡/解锁机制追踪进度
-- **🤖 AI 智能拆分** — 输入 >16 字长文本自动调用 DeepSeek 拆分为多条
-- **✨ AI 标题润色** — 点击润色按钮，AI 帮你凝练 todo 标题
-- **🔐 本地优先** — 数据存本地快照，API Key 走安全存储，无需服务器
+- **📋 Keep 风格事项网格** — Masonry 瀑布流布局，Pin 置顶 / 完成态 / 长按拖拽排序 / 拖到日期分配
+- **🤖 AI 智能拆分与润色** — 输入 >18 字触发 DeepSeek 拆分；编辑面板一键 AI 润色标题
+- **💬 米糖 Tab** — 内建 AI 对话助手，支持流式输出、多会话管理、Markdown 渲染
+- **📅 日历导航** — 折叠态日期条 + 展开月视图，垂直拖拽手势切换
+- **📂 项目系统** — 最多 3 个学习项目，AI 生成月计划，月卡解锁机制追踪进度
+- **🔐 本地优先** — SQLite 持久化，API Key 走 Secure Storage，无需服务器
 
 ## 技术栈
 
 | 层 | 选型 |
 |---|---|
 | 框架 | Flutter 3.x |
-| 语言 | Dart |
 | 状态管理 | ChangeNotifier + InheritedNotifier |
-| 存储 | JSON Snapshot + Secure Storage |
-| AI 接口 | DeepSeek Chat API（流式 / 非流式） |
-| 搜索 | Tavily Search API |
+| 持久化 | SQLite（`sqflite`） + Secure Storage |
+| AI 接口 | DeepSeek Chat API（流式 SSE / 非流式） |
+| 搜索预留 | Tavily Search API |
 
 ## 快速开始
 
@@ -46,26 +45,36 @@ flutter run
 flutter run --release
 ```
 
-> **注意**：首次运行需要在「设置」Tab 中配置 [DeepSeek API Key](https://platform.deepseek.com/)，否则 AI 功能不可用。
+> **注意**：首次运行需要在「设置」Tab 中配置 [DeepSeek API Key](https://platform.deepseek.com/)，否则 AI 拆分、润色、对话功能不可用。
 
 ## 项目结构
 
 ```
 lib/
-├── main.dart                         # 入口，初始化 store
-├── main_shell.dart                   # 底部 Tab 导航
-├── sumi_scope.dart                   # InheritedNotifier 注入
+├── main.dart                         # 入口，初始化 store + 数据库
+├── main_shell.dart                   # 3 Tab 底部导航（事项 / 米糖 / 设置）
+├── sumi_scope.dart                   # InheritedNotifier 依赖注入
 ├── models/models.dart                # 数据模型
-├── store/                            # 状态管理（ChangeNotifier）
-├── data/                             # 本地持久化 + 快照
-├── services/                         # DeepSeek AI / Tavily 服务
-├── theme/                            # 主题配置
-├── utils/                            # 工具函数
+├── store/
+│   ├── sumi_store.dart               # 全局 ChangeNotifier
+│   ├── sumi_store_todos.dart         # 事项 CRUD + 排序
+│   ├── sumi_store_projects.dart      # 项目/月卡 + AI 规划
+│   ├── sumi_store_chat.dart          # 对话状态 + 流式消息
+│   └── sumi_store_persist.dart       # 快照持久化
+├── data/
+│   ├── local_database.dart           # SQLite 数据库
+│   ├── chat_database.dart            # 对话数据 CRUD
+│   └── snapshot_store_base.dart      # 快照存储抽象
+├── services/
+│   ├── ai_service.dart               # DeepSeek API（拆分/润色/规划/对话）
+│   └── secure_settings_store.dart    # Keychain 安全存储
+├── theme/app_theme.dart              # 浅色扁平主题
 └── features/
-    ├── todos/                        # 事项网格、输入、编辑面板
-    ├── calendar/                     # 日期条、月历、月视图
-    ├── projects/                     # 项目卡、月卡、编辑器
-    └── settings/                     # API Key 配置、数据管理
+    ├── todos/                        # 事项网格、卡片、输入栏、编辑面板
+    ├── chat/                         # 对话页面、气泡、输入、会话列表
+    ├── calendar/                     # 日期条、月历、月视图展开层
+    ├── projects/                     # 项目卡、月卡 Pager、项目编辑器
+    └── settings/                     # API Key 配置、清除数据
 ```
 
 ## License

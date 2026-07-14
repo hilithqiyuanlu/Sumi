@@ -5,6 +5,7 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../projects/month_card_pager.dart';
 import '../projects/project_card.dart';
+import '../projects/project_editor.dart';
 import '../projects/project_tabs.dart';
 import 'month_calendar.dart';
 
@@ -29,15 +30,19 @@ class MonthViewSheet extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: s16, vertical: s8),
               child: Row(
                 children: [
-                  Text(
-                    '${store.selectedDate.month}月',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: ink,
+                  const SizedBox(width: 48),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        '${store.selectedDate.month}月',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: ink,
+                        ),
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   IconButton(
                     onPressed: () {
                       HapticFeedback.mediumImpact();
@@ -72,18 +77,24 @@ class MonthViewSheet extends StatelessWidget {
                       // 月卡 Pager
                       MonthCardPager(project: project),
                     ] else ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(s24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(radiusCard),
-                          border: Border.all(color: line),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '点击上方「新建」创建第一个项目',
-                            style: TextStyle(color: textTertiary),
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          showProjectEditor(context, store);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(s24),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(radiusCard),
+                            border: Border.all(color: line),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              '点击此处创建第一个项目',
+                              style: TextStyle(color: textTertiary),
+                            ),
                           ),
                         ),
                       ),

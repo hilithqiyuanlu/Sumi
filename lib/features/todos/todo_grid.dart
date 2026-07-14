@@ -151,12 +151,28 @@ class _DraggableTodoCell extends StatelessWidget {
                     ),
                   )
                 : null,
-            child: TodoCard(
-              todo: todo,
-              project: project,
-              onTapDone: () => store.toggleTodo(todo.id),
-              onTapPin: () => store.togglePin(todo.id),
-              onTapBody: () => onTapBody?.call(todo),
+            child: Dismissible(
+              key: ValueKey(todo.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: s16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade400,
+                  borderRadius: BorderRadius.circular(radiusCard),
+                ),
+                child: const Icon(Icons.delete_rounded, color: Colors.white),
+              ),
+              onDismissed: (_) {
+                store.deleteTodo(todo.id);
+              },
+              child: TodoCard(
+                todo: todo,
+                project: project,
+                onTapDone: () => store.toggleTodo(todo.id),
+                onTapPin: () => store.togglePin(todo.id),
+                onTapBody: () => onTapBody?.call(todo),
+              ),
             ),
           ),
         );

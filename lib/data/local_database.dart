@@ -20,7 +20,7 @@ class SumiLocalDatabase implements SumiSnapshotStore {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -35,6 +35,9 @@ class SumiLocalDatabase implements SumiSnapshotStore {
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _createChatTables(db);
+        }
+        if (oldVersion < 3) {
+          await _migrateV2toV3(db);
         }
       },
     );
@@ -57,6 +60,8 @@ class SumiLocalDatabase implements SumiSnapshotStore {
         role TEXT NOT NULL,
         content TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
+        reasoning_content TEXT,
+        tool_calls_json TEXT,
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       )
     ''');
@@ -64,6 +69,16 @@ class SumiLocalDatabase implements SumiSnapshotStore {
       CREATE INDEX IF NOT EXISTS idx_messages_conv
       ON messages(conversation_id, created_at)
     ''');
+  }
+
+  /// v2→v3: messages 表新增 reasoning_content 和 tool_calls_json 列。
+  Future<void> _migrateV2toV3(Database db) async {
+    await db.execute(
+      "ALTER TABLE messages ADD COLUMN reasoning_content TEXT",
+    );
+    await db.execute(
+      "ALTER TABLE messages ADD COLUMN tool_calls_json TEXT",
+    );
   }
 
   @override

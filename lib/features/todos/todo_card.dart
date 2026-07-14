@@ -46,16 +46,11 @@ class TodoCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(radiusCard),
-          border: Border.all(
-            color: pinned
-                ? mintDeep.withValues(alpha: 0.5)
-                : line.withValues(alpha: 0.4),
-            width: pinned ? 1.5 : 1,
-          ),
+          border: Border.all(color: line.withValues(alpha: 0.4)),
           boxShadow: isDragging
               ? [
                   BoxShadow(
-                    color: mintDeep.withValues(alpha: 0.2),
+                    color: Colors.black.withValues(alpha: 0.08),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -117,8 +112,9 @@ class TodoCard extends StatelessWidget {
                 ),
               ],
             ),
-            // 第二行：项目归属（仅当有归属时显示）
-            if (todo.projectId != null || project != null) ...[
+            // 第二行：项目归属（系统 todo 不显示，仅用户 todo 显示）
+            if (todo.source != TodoSource.system &&
+                (todo.projectId != null || project != null)) ...[
               const SizedBox(height: s6),
               _ProjectRow(project: project, todo: todo),
             ],

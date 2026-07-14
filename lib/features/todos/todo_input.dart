@@ -4,7 +4,7 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import 'split_confirm_sheet.dart';
 
-/// 底部输入栏 —— 创建用户 todo，>16 字触发 AI 拆分。
+/// 底部输入栏 —— 创建用户 todo，>18 字触发 AI 拆分 / 凝练。
 class TodoInput extends StatefulWidget {
   const TodoInput({super.key});
 
@@ -22,14 +22,14 @@ class _TodoInputState extends State<TodoInput> {
 
     final store = SumiScope.read(context);
 
-    // ≤16 字：直接创建
-    if (text.length <= 16) {
+    // ≤18 字：直接创建
+    if (text.length <= 18) {
       store.addUserTodo(text);
       _controller.clear();
       return;
     }
 
-    // >16 字：走 AI 拆分流程
+    // >18 字：走 AI 拆分/凝练流程
     setState(() => _loading = true);
 
     try {

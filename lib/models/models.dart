@@ -253,6 +253,8 @@ class ChatMessage {
   final String role; // 'user' | 'assistant'
   final String content;
   final DateTime createdAt;
+  final String? reasoningContent; // AI 思考过程（仅 assistant 消息）
+  final String? toolCallsJson; // 工具调用 JSON（仅 assistant 消息，DB 序列化用）
 
   const ChatMessage({
     required this.id,
@@ -260,10 +262,14 @@ class ChatMessage {
     required this.role,
     this.content = '',
     required this.createdAt,
+    this.reasoningContent,
+    this.toolCallsJson,
   });
 
   ChatMessage copyWith({
     String? content,
+    String? reasoningContent,
+    String? toolCallsJson,
   }) {
     return ChatMessage(
       id: id,
@@ -271,6 +277,8 @@ class ChatMessage {
       role: role,
       content: content ?? this.content,
       createdAt: createdAt,
+      reasoningContent: reasoningContent ?? this.reasoningContent,
+      toolCallsJson: toolCallsJson ?? this.toolCallsJson,
     );
   }
 
@@ -280,6 +288,8 @@ class ChatMessage {
         'role': role,
         'content': content,
         'createdAt': createdAt.toIso8601String(),
+        if (reasoningContent != null) 'reasoningContent': reasoningContent,
+        if (toolCallsJson != null) 'toolCallsJson': toolCallsJson,
       };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
@@ -289,6 +299,8 @@ class ChatMessage {
         content: (json['content'] as String?) ?? '',
         createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
             DateTime.now(),
+        reasoningContent: json['reasoningContent'] as String?,
+        toolCallsJson: json['toolCallsJson'] as String?,
       );
 }
 
