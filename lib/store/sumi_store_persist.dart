@@ -45,6 +45,12 @@ mixin SumiStorePersist on ChangeNotifier {
       appSettings = AppSettings.fromJson(settingsMap);
     }
 
+    // Thinking 模式
+    final thinkEnabled = map['thinkingEnabled'] as bool?;
+    if (thinkEnabled != null) {
+      appSettings = appSettings.copyWith(thinkingEnabled: thinkEnabled);
+    }
+
     // Projects / MonthCards / Todos
     _restoreList(map['projects'] as List<Object?>?, projectList, Project.fromJson);
     _restoreList(map['monthCards'] as List<Object?>?, monthCardList, MonthCard.fromJson);
@@ -69,6 +75,7 @@ mixin SumiStorePersist on ChangeNotifier {
       'todos': todoItems.map((t) => t.toJson()).toList(),
       'currentProjectId': currentProjectId,
       'selectedDate': selectedDate.toIso8601String(),
+      'thinkingEnabled': appSettings.thinkingEnabled,
     };
   }
 

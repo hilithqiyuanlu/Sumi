@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import 'chat_bubble.dart';
 import 'chat_input.dart';
 import 'conversation_list.dart';
+import 'wrench_panel.dart';
 
 /// Sumi Tab —— AI 对话助手。
 class ChatPage extends StatefulWidget {
@@ -20,7 +21,20 @@ class _ChatPageState extends State<ChatPage> {
   bool _showScrollToBottom = false;
 
   @override
+  void initState() {
+    super.initState();
+    // 确保有活跃对话（优先加载最近对话）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      SumiScope.read(context).ensureLastConversation();
+    });
+  }
+
+  @override
   void dispose() {
+    // 离开时清理空对话
+    final store = SumiScope.read(context);
+    store.cleanupEmptyConversation();
     _scrollController.dispose();
     super.dispose();
   }
@@ -43,7 +57,8 @@ class _ChatPageState extends State<ChatPage> {
 
     // 流式输出时自动滚到底部
     if (isStreaming) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _scrollToBottom());
     }
 
     // 构建 AppBar 副标题
@@ -81,16 +96,10 @@ class _ChatPageState extends State<ChatPage> {
           onPressed: () => ConversationList.show(context, store),
         ),
         actions: [
-          if (store.currentConversationId != null && messages.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 22),
-              tooltip: '重新生成',
-              onPressed: isStreaming ? null : () => store.regenerateLast(),
-            ),
           IconButton(
-            icon: const Icon(Icons.add_rounded, size: 22),
-            tooltip: '新会话',
-            onPressed: isStreaming ? null : () => store.createConversation(),
+            icon: const Icon(Icons.build_rounded, size: 22),
+            tooltip: 'Sumi 工具',
+            onPressed: () => SumiToolsSheet.show(context, store),
           ),
         ],
       ),
@@ -107,7 +116,10 @@ class _ChatPageState extends State<ChatPage> {
                           _showScrollToBottom =
                               _scrollController.hasClients &&
                                   _scrollController.offset <
-                                      _scrollController.position.maxScrollExtent - 100;
+                                      _scrollController
+                                              .position
+                                              .maxScrollExtent -
+                                          100;
                         });
                       }
                       return false;
@@ -126,11 +138,20 @@ class _ChatPageState extends State<ChatPage> {
                             final isLastAi = msg.role == 'assistant' &&
                                 index == messages.length - 1;
 
+                            // tool 消息：折叠展示
+                            if (msg.role == 'tool') {
+                              return _CondensedToolResult(
+                                content: msg.content,
+                                toolCallId: msg.toolCallId,
+                              );
+                            }
+
                             return ChatBubble(
                               content: msg.content,
                               isUser: msg.role == 'user',
                               isStreaming: isLastAi && isStreaming,
-                              reasoningContent: msg.reasoningContent,
+                              reasoningContent:
+                                  msg.reasoningContent,
                               toolCallsJson: msg.toolCallsJson,
                             );
                           },
@@ -150,7 +171,8 @@ class _ChatPageState extends State<ChatPage> {
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.1),
+                                      color: Colors.black
+                                          .withValues(alpha: 0.1),
                                       blurRadius: 6,
                                       offset: const Offset(0, 2),
                                     ),
@@ -181,7 +203,6 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
-
 }
 
 class _EmptyState extends StatelessWidget {
@@ -214,6 +235,96 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 工具执行结果（折叠展示）
+// ---------------------------------------------------------------------------
+
+class _CondensedToolResult extends StatefulWidget {
+  final String content;
+  final String? toolCallId;
+  const _CondensedToolResult({
+    required this.content,
+    this.toolCallId,
+  });
+
+  @override
+  State<_CondensedToolResult> createState() =>
+      _CondensedToolResultState();
+}
+
+class _CondensedToolResultState extends State<_CondensedToolResult> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // 提取首行作为摘要
+    final lines = widget.content.split('\n');
+    final summary = lines.first.length > 50
+        ? '${lines.first.substring(0, 50)}…'
+        : lines.first;
+    final hasMore = widget.content.length > summary.length;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s4),
+      child: GestureDetector(
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: s10, vertical: s6),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(s8),
+            border: Border.all(
+              color: line.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    size: 14,
+                    color: textTertiary,
+                  ),
+                  const SizedBox(width: s4),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: textTertiary,
+                      ),
+                      maxLines: _expanded ? null : 1,
+                      overflow:
+                          _expanded ? null : TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              if (_expanded && hasMore) ...[
+                const SizedBox(height: s6),
+                Text(
+                  widget.content,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: textTertiary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

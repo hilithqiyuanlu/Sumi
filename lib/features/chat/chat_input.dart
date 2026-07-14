@@ -5,12 +5,11 @@ import 'package:flutter/services.dart';
 
 import '../../services/voice_input_service.dart';
 import '../../theme/app_theme.dart';
-import 'voice_record_button.dart';
 
 /// 语音录制状态提示。
 enum _VoiceHint { none, listening, cancel }
 
-/// 底部输入栏 —— 文本输入 + 语音录制按钮。
+/// 底部输入栏 —— 文本输入 + 长按语音（无麦克风图标，隐藏逻辑）。
 class ChatInput extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool enabled;
@@ -27,7 +26,8 @@ class ChatInput extends StatefulWidget {
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> {
+class _ChatInputState extends State<ChatInput>
+    with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   bool _hasText = false;
@@ -39,12 +39,22 @@ class _ChatInputState extends State<ChatInput> {
   Timer? _autoSendTimer;
   bool _userEditedAfterVoice = false;
 
+  // 长按脉冲动画
+  late final AnimationController _pulseController;
+  bool _isPressed = false;
+  bool _swipeToCancel = false;
+  static const _cancelSwipeThreshold = -60.0;
+
   VoiceInputService? get _voice => widget.voiceService;
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
 
     // 监听实时部分识别
     _voice?.onPartialResult = (text) {
@@ -61,6 +71,7 @@ class _ChatInputState extends State<ChatInput> {
     _controller.dispose();
     _focusNode.dispose();
     _autoSendTimer?.cancel();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -85,6 +96,48 @@ class _ChatInputState extends State<ChatInput> {
     _hasText = false;
     _voiceText = '';
     widget.onSend(text);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 长按语音（替代独立 VoiceRecordButton）
+  // ---------------------------------------------------------------------------
+
+  void _onLongPressStart(LongPressStartDetails details) {
+    if (!widget.enabled || _isRecording || _voice == null) return;
+    HapticFeedback.mediumImpact();
+    _isPressed = true;
+    _swipeToCancel = false;
+    _pulseController.repeat(reverse: true);
+    _startRecording();
+    setState(() {});
+  }
+
+  void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    if (!_isPressed) return;
+    final wasCancel = _swipeToCancel;
+    _swipeToCancel =
+        details.localOffsetFromOrigin.dy < _cancelSwipeThreshold;
+    if (_swipeToCancel != wasCancel) {
+      HapticFeedback.selectionClick();
+      setState(() => _voiceHint =
+          _swipeToCancel ? _VoiceHint.cancel : _VoiceHint.listening);
+    }
+  }
+
+  void _onLongPressEnd(LongPressEndDetails details) {
+    if (!_isPressed) return;
+    _isPressed = false;
+    _pulseController.stop();
+    _pulseController.reset();
+    final shouldCancel = _swipeToCancel;
+    _swipeToCancel = false;
+    setState(() {});
+
+    if (shouldCancel) {
+      _cancelRecording();
+    } else {
+      _stopRecording();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -175,11 +228,6 @@ class _ChatInputState extends State<ChatInput> {
     });
   }
 
-  // 上滑取消的回调（由 VoiceRecordButton 在 onCancel 中触发）
-  void _onVoiceCancel() {
-    _cancelRecording();
-  }
-
   @override
   Widget build(BuildContext context) {
     final showSendButton = _hasText && widget.enabled && !_isRecording;
@@ -192,10 +240,11 @@ class _ChatInputState extends State<ChatInput> {
         if (_isRecording)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: s6, horizontal: s16),
+            padding:
+                const EdgeInsets.symmetric(vertical: s6, horizontal: s16),
             color: _voiceHint == _VoiceHint.cancel
                 ? Colors.grey.shade100
-                : Colors.red.shade50,
+                : mint.withValues(alpha: 0.15),
             child: Text(
               _voiceHint == _VoiceHint.cancel ? '松开取消' : '正在收听…松开发送',
               textAlign: TextAlign.center,
@@ -203,7 +252,7 @@ class _ChatInputState extends State<ChatInput> {
                 fontSize: 13,
                 color: _voiceHint == _VoiceHint.cancel
                     ? textTertiary
-                    : Colors.red.shade700,
+                    : mintDeep,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -226,49 +275,60 @@ class _ChatInputState extends State<ChatInput> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: Container(
-                  constraints: const BoxConstraints(maxHeight: 120),
-                  decoration: BoxDecoration(
-                    color: _isRecording ? Colors.red.shade50 : Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: _isRecording
-                          ? Colors.red.withValues(alpha: 0.3)
-                          : line.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    enabled: widget.enabled,
-                    maxLines: 4,
-                    minLines: 1,
-                    textInputAction: TextInputAction.newline,
-                    decoration: InputDecoration(
-                      hintText:
-                          _isRecording ? '正在收听…' : '和 Sumi 聊聊…',
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: s16,
-                        vertical: s10,
-                      ),
-                    ),
-                    onSubmitted: (_) => _send(),
+                child: GestureDetector(
+                  onLongPressStart:
+                      hasVoice ? _onLongPressStart : null,
+                  onLongPressMoveUpdate:
+                      hasVoice ? _onLongPressMoveUpdate : null,
+                  onLongPressEnd:
+                      hasVoice ? _onLongPressEnd : null,
+                  child: AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      final pulseValue = _pulseController.isAnimating
+                          ? _pulseController.value
+                          : 0.0;
+                      final borderOpacity =
+                          _isRecording ? 0.3 + pulseValue * 0.3 : 0.5;
+                      return Container(
+                        constraints:
+                            const BoxConstraints(maxHeight: 120),
+                        decoration: BoxDecoration(
+                          color: _isRecording
+                              ? mint.withValues(alpha: 0.08)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: _isRecording
+                                ? mintDeep.withValues(
+                                    alpha: borderOpacity)
+                                : line.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          enabled: widget.enabled,
+                          maxLines: 4,
+                          minLines: 1,
+                          textInputAction: TextInputAction.newline,
+                          decoration: InputDecoration(
+                            hintText: _isRecording ? '正在收听…' : '尽管说',
+                            border: InputBorder.none,
+                            contentPadding:
+                                const EdgeInsets.symmetric(
+                              horizontal: s16,
+                              vertical: s10,
+                            ),
+                          ),
+                          onSubmitted: (_) => _send(),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
-              // 麦克风按钮
-              if (hasVoice) ...[
-                const SizedBox(width: s6),
-                VoiceRecordButton(
-                  enabled: widget.enabled,
-                  isRecording: _isRecording,
-                  onStart: _startRecording,
-                  onStop: _stopRecording,
-                  onCancel: _onVoiceCancel,
-                ),
-              ],
-              // 发送按钮
+              // 发送按钮（有文字且非录音时显示）
               if (showSendButton) ...[
                 const SizedBox(width: s6),
                 Material(

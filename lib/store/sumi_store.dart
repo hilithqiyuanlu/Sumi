@@ -42,6 +42,9 @@ class SumiStore extends ChangeNotifier
   /// 语音输入服务。
   VoiceInputService? get voiceService => _voiceService;
 
+  /// Thinking 模式开关。
+  bool get thinkingEnabled => appSettings.thinkingEnabled;
+
   // --- 核心 UI 状态 ---
   DateTime selectedDate = dateOnly(DateTime.now());
   String? currentProjectId;
@@ -211,6 +214,12 @@ class SumiStore extends ChangeNotifier
     afterMutation();
   }
 
+  /// 切换 thinking 模式。
+  void setThinkingEnabled(bool v) {
+    appSettings = appSettings.copyWith(thinkingEnabled: v);
+    afterMutation();
+  }
+
   // ---------------------------------------------------------------------------
   // 核心方法
   // ---------------------------------------------------------------------------
@@ -264,6 +273,21 @@ class SumiStore extends ChangeNotifier
       } else {
         await file.writeAsString('# Sumi MEMORY.md\n$entry');
       }
+    } catch (_) {
+      // 静默失败
+    }
+  }
+
+  /// 覆写整个 MEMORY.md（用于编辑器保存）。
+  Future<void> writeMemory(String content) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final sumiDir = io.Directory('${dir.path}/sumi');
+      if (!await sumiDir.exists()) {
+        await sumiDir.create(recursive: true);
+      }
+      final file = io.File('${sumiDir.path}/MEMORY.md');
+      await file.writeAsString(content);
     } catch (_) {
       // 静默失败
     }

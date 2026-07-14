@@ -26,30 +26,36 @@ enum ProjectColor {
 class AppSettings {
   final String deepseekApiKey;
   final String tavilyApiKey;
+  final bool thinkingEnabled;
 
   const AppSettings({
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
+    this.thinkingEnabled = true,
   });
 
   AppSettings copyWith({
     String? deepseekApiKey,
     String? tavilyApiKey,
+    bool? thinkingEnabled,
   }) {
     return AppSettings(
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
+      thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
     );
   }
 
   Map<String, Object?> toJson({bool includeSecrets = false}) => {
         'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
         'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
+        'thinkingEnabled': thinkingEnabled,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) => AppSettings(
         deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
         tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
+        thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
       );
 }
 

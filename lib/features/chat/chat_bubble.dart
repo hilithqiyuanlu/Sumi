@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -43,11 +44,15 @@ class ChatBubble extends StatelessWidget {
               ),
             ),
           ),
-          // 思考过程（仅 AI 且非流式时显示折叠区域）
-          if (!isUser && reasoningContent != null && reasoningContent!.isNotEmpty)
+          // 思考过程（仅 AI 且有内容时显示折叠区域）
+          if (!isUser &&
+              reasoningContent != null &&
+              reasoningContent!.isNotEmpty)
             _ThinkingSection(reasoning: reasoningContent!),
-          // 工具调用指示（仅 AI 且有 tool_calls 时显示）
-          if (!isUser && toolCallsJson != null && toolCallsJson!.isNotEmpty)
+          // 工具调用指示（仅 AI 且有 tool_calls 时显示，简洁样式）
+          if (!isUser &&
+              toolCallsJson != null &&
+              toolCallsJson!.isNotEmpty)
             _ToolCallIndicator(toolCallsJson: toolCallsJson!),
           // 气泡（长按复制）
           GestureDetector(
@@ -66,17 +71,22 @@ class ChatBubble extends StatelessWidget {
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.78,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: s14, vertical: s10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: s14, vertical: s10),
               decoration: BoxDecoration(
                 color: isUser ? mint : Colors.white,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(radiusCard),
                   topRight: const Radius.circular(radiusCard),
-                  bottomLeft: Radius.circular(isUser ? radiusCard : s4),
-                  bottomRight: Radius.circular(isUser ? s4 : radiusCard),
+                  bottomLeft:
+                      Radius.circular(isUser ? radiusCard : s4),
+                  bottomRight:
+                      Radius.circular(isUser ? s4 : radiusCard),
                 ),
                 border: Border.all(
-                  color: isUser ? Colors.transparent : line.withValues(alpha: 0.4),
+                  color: isUser
+                      ? Colors.transparent
+                      : line.withValues(alpha: 0.4),
                 ),
               ),
               child: _buildContent(),
@@ -105,32 +115,26 @@ class ChatBubble extends StatelessWidget {
       );
     }
 
-    // 简单的格式化处理
-    final formatted = _formatContent(content);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        ...formatted.map((span) => Padding(
-              padding: EdgeInsets.only(
-                bottom: span.style == _SpanStyle.bold ? s2 : 0,
-                top: span.style == _SpanStyle.bold && formatted.indexOf(span) > 0
-                    ? s6
-                    : 0,
-              ),
-              child: Text(
-                span.text,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.5,
-                  color: ink,
-                  fontWeight: span.style == _SpanStyle.bold
-                      ? FontWeight.w600
-                      : FontWeight.w400,
-                ),
-              ),
-            )),
+        // 用户消息保持纯文本，AI 消息用 Markdown 渲染
+        if (isUser)
+          Text(
+            content,
+            style: const TextStyle(
+              fontSize: 15,
+              height: 1.5,
+              color: ink,
+            ),
+          )
+        else
+          MarkdownBody(
+            data: content,
+            selectable: true,
+            styleSheet: _mdStyleSheet,
+          ),
         if (isStreaming)
           const Padding(
             padding: EdgeInsets.only(top: s2),
@@ -140,33 +144,35 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  List<_FormattedSpan> _formatContent(String text) {
-    // 基础处理：**bold** → bold
-    final spans = <_FormattedSpan>[];
-    final regex = RegExp(r'\*\*(.+?)\*\*');
-    int lastEnd = 0;
-
-    for (final match in regex.allMatches(text)) {
-      if (match.start > lastEnd) {
-        spans.add(_FormattedSpan(
-          text.substring(lastEnd, match.start),
-          _SpanStyle.normal,
-        ));
-      }
-      spans.add(_FormattedSpan(match.group(1)!, _SpanStyle.bold));
-      lastEnd = match.end;
-    }
-
-    if (lastEnd < text.length) {
-      spans.add(_FormattedSpan(text.substring(lastEnd), _SpanStyle.normal));
-    }
-
-    if (spans.isEmpty) {
-      spans.add(_FormattedSpan(text, _SpanStyle.normal));
-    }
-
-    return spans;
-  }
+  static final MarkdownStyleSheet _mdStyleSheet = MarkdownStyleSheet(
+    p: const TextStyle(fontSize: 15, height: 1.5, color: ink),
+    strong: const TextStyle(
+        fontSize: 15,
+        height: 1.5,
+        color: ink,
+        fontWeight: FontWeight.w600),
+    code: TextStyle(
+        fontSize: 13,
+        color: textTertiary,
+        backgroundColor: Colors.grey.shade100,
+        fontFamily: 'monospace'),
+    codeblockDecoration: BoxDecoration(
+      color: Colors.grey.shade100,
+      borderRadius: BorderRadius.circular(s8),
+    ),
+    h1: const TextStyle(
+        fontSize: 18, fontWeight: FontWeight.w700, color: ink),
+    h2: const TextStyle(
+        fontSize: 16, fontWeight: FontWeight.w700, color: ink),
+    h3: const TextStyle(
+        fontSize: 15, fontWeight: FontWeight.w600, color: ink),
+    listBullet: const TextStyle(fontSize: 15, color: ink),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(
+        top: BorderSide(color: line.withValues(alpha: 0.5), width: 1),
+      ),
+    ),
+  );
 }
 
 /// 流式输出光标。
@@ -177,7 +183,8 @@ class _Cursor extends StatefulWidget {
   State<_Cursor> createState() => _CursorState();
 }
 
-class _CursorState extends State<_Cursor> with SingleTickerProviderStateMixin {
+class _CursorState extends State<_Cursor>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -216,14 +223,6 @@ class _CursorState extends State<_Cursor> with SingleTickerProviderStateMixin {
   }
 }
 
-enum _SpanStyle { normal, bold }
-
-class _FormattedSpan {
-  final String text;
-  final _SpanStyle style;
-  const _FormattedSpan(this.text, this.style);
-}
-
 // ---------------------------------------------------------------------------
 // 思考过程折叠区域
 // ---------------------------------------------------------------------------
@@ -249,7 +248,8 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.78,
           ),
-          padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s6),
+          padding:
+              const EdgeInsets.symmetric(horizontal: s10, vertical: s6),
           decoration: BoxDecoration(
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(s8),
@@ -299,7 +299,7 @@ class _ThinkingSectionState extends State<_ThinkingSection> {
 }
 
 // ---------------------------------------------------------------------------
-// 工具调用指示
+// 工具调用指示（简洁版）
 // ---------------------------------------------------------------------------
 
 class _ToolCallIndicator extends StatelessWidget {
@@ -328,29 +328,26 @@ class _ToolCallIndicator extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: s4),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s6),
-        decoration: BoxDecoration(
-          color: mint.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(s8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.build_rounded, size: 13, color: mintDeep),
-            const SizedBox(width: s6),
-            Text(
-              '已执行：${names.join("、")}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: mintDeep,
-                fontWeight: FontWeight.w500,
-              ),
+      child: GestureDetector(
+        onTap: () {}, // 无操作，仅视觉提示
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
+          ),
+          padding:
+              const EdgeInsets.symmetric(horizontal: s8, vertical: s4),
+          decoration: BoxDecoration(
+            color: mint.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(s6),
+          ),
+          child: Text(
+            '🔧 ${names.join(" · ")}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: mintDeep,
+              fontWeight: FontWeight.w500,
             ),
-          ],
+          ),
         ),
       ),
     );

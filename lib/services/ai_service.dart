@@ -607,8 +607,9 @@ class AiService {
   /// [messages] 为完整消息历史（含 system prompt + 历史对话 + 当前用户消息）。
   /// 每条 assistant 消息应包含 `reasoning_content` 字段（如果有）。
   Stream<StreamEvent> streamChatMessages(
-    List<Map<String, Object?>> messages,
-  ) async* {
+    List<Map<String, Object?>> messages, {
+    bool thinkingEnabled = true,
+  }) async* {
     try {
       final request = http.Request('POST', Uri.parse(_baseUrl));
       request.headers.addAll({
@@ -618,7 +619,7 @@ class AiService {
       request.body = jsonEncode(_buildRequestParams(
         model: _modelFlash,
         messages: messages,
-        thinking: true,
+        thinking: thinkingEnabled,
         stream: true,
         tools: _chatTools,
         maxTokens: 2000,
@@ -736,6 +737,7 @@ class AiService {
   Stream<StreamEvent> sendAgentLoop({
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
+    bool thinkingEnabled = true,
     int maxTurns = 5,
   }) async* {
     for (var turn = 0; turn < maxTurns; turn++) {
@@ -743,7 +745,8 @@ class AiService {
       final contentBuf = StringBuffer();
       final reasoningBuf = StringBuffer();
 
-      await for (final event in streamChatMessages(messages)) {
+      await for (final event in streamChatMessages(messages,
+          thinkingEnabled: thinkingEnabled)) {
         switch (event) {
           case ContentDelta(text: final t):
             contentBuf.write(t);

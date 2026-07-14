@@ -45,6 +45,10 @@ class _MainShellState extends State<MainShell> {
             }
             return;
           }
+          // 离开 Sumi Tab 时清理空对话
+          if (_tab == 0) {
+            SumiScope.read(context).cleanupEmptyConversation();
+          }
           setState(() => _tab = i);
         },
         destinations: const [

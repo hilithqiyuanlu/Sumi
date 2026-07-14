@@ -8,6 +8,7 @@ mixin SumiStoreChat on ChangeNotifier {
   ChatDatabase? get chatDatabase;
   AiService? get aiService;
   ToolExecutor? get toolExecutor;
+  bool get thinkingEnabled;
   void afterMutation();
 
   // --- 状态 ---
@@ -48,15 +49,45 @@ mixin SumiStoreChat on ChangeNotifier {
     notifyListeners();
   }
 
-  /// 创建新会话并设为当前。
+  /// 创建新会话并设为当前（仅在列表界面点击"新建"时调用）。
   Future<void> createConversation() async {
     final db = chatDatabase;
     if (db == null) return;
+    // 先清理当前空对话
+    await cleanupEmptyConversation();
     final conv = await db.createConversation();
     _conversations.insert(0, conv);
     _currentConversationId = conv.id;
     _currentMessages = [];
     notifyListeners();
+  }
+
+  /// 确保有活跃对话：优先加载最近对话，无对话时创建新的。
+  Future<void> ensureLastConversation() async {
+    final db = chatDatabase;
+    if (db == null) return;
+    if (_conversations.isNotEmpty) {
+      await switchConversation(_conversations.first.id);
+    } else {
+      await createConversation();
+    }
+  }
+
+  /// 清理空对话：当前对话无任何用户消息时删除。
+  Future<void> cleanupEmptyConversation() async {
+    final db = chatDatabase;
+    if (db == null) return;
+    if (_currentConversationId == null) return;
+    final hasUserMsg = _currentMessages.any((m) => m.role == 'user');
+    if (!hasUserMsg) {
+      final convId = _currentConversationId!;
+      // 从 DB 和内存中移除
+      await db.deleteConversation(convId);
+      _conversations.removeWhere((c) => c.id == convId);
+      _currentConversationId = null;
+      _currentMessages = [];
+      notifyListeners();
+    }
   }
 
   /// 删除会话。
@@ -168,6 +199,7 @@ mixin SumiStoreChat on ChangeNotifier {
     try {
       await for (final event in svc.sendAgentLoop(
         messages: messages,
+        thinkingEnabled: thinkingEnabled,
         executeTool: (call) async {
           lastToolName = call.name;
           _currentToolCallLabel = _toolLabel(call.name);
@@ -336,6 +368,7 @@ mixin SumiStoreChat on ChangeNotifier {
     try {
       await for (final event in svc.sendAgentLoop(
         messages: messages,
+        thinkingEnabled: thinkingEnabled,
         executeTool: (call) async {
           _currentToolCallLabel = _toolLabel(call.name);
           _isThinking = false;
