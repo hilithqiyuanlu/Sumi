@@ -164,9 +164,12 @@ class _LockedMonthCard extends StatelessWidget {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('提示'),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+            ),
+            title: const Text('提示', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             content:
-                const Text('前方的区域还没有开放，过段时间再来探索吧'),
+                const Text('前方的区域还没有开放，过段时间再来探索吧', style: TextStyle(fontSize: 14)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),

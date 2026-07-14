@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Bar — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 0;
+      background: var(--surface);
+      min-height: 100vh;
+    }
+
+    .variant-title {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 16px 16px var(--space-6);
+    }
+
+    /* App bar */
+    .app-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 48px;
+      padding: 0 var(--space-7);
+      background: var(--surface);
+    }
+
+    .app-bar-left {
+      display: flex;
+      align-items: center;
+    }
+
+    .app-bar-right {
+      display: flex;
+      align-items: center;
+    }
+
+    .app-bar .icon-button {
+      width: var(--size-button-md);
+      height: var(--size-button-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--on-surface);
+    }
+    .app-bar .icon-button svg {
+      width: var(--size-icon-lg);
+      height: var(--size-icon-lg);
+    }
+
+    /* Title area — thinking state */
+    .app-bar-title {
+      flex: 1;
+      text-align: center;
+      font-size: var(--font-size-h-2xs);
+      font-weight: 400;
+      color: var(--neutral-500);
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-container">
+
+    <!-- THINKING variant -->
+    <div class="variant-title">THINKING</div>
+    <div class="app-bar">
+      <div class="app-bar-left">
+        <button class="icon-button" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <span class="app-bar-title">思考中...</span>
+      <div class="app-bar-right">
+        <button class="icon-button" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/>
+            <line x1="4" y1="12" x2="20" y2="12"/>
+            <line x1="4" y1="18" x2="20" y2="18"/>
+            <circle cx="8" cy="6" r="2" fill="none" stroke="currentColor"/>
+            <circle cx="16" cy="12" r="2" fill="none" stroke="currentColor"/>
+            <circle cx="10" cy="18" r="2" fill="none" stroke="currentColor"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

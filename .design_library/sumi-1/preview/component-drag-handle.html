@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drag Handle — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: 16px; background: var(--surface); min-height: 100vh; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .drag-handle { width: 36px; height: 4px; border-radius: var(--radius-2); background: rgba(161,161,161,0.3); margin: 0 auto; }
+    .sheet-sim { background: var(--surface); border-radius: var(--radius-card-header) var(--radius-card-header) 0 0; box-shadow: var(--shadow-5); overflow: hidden; }
+    .sheet-sim-header { padding: 10px 20px 0 20px; display: flex; justify-content: center; }
+    .sheet-sim-title { padding: 8px 20px 16px 20px; font-size: 15px; font-weight: 600; color: var(--on-surface); text-align: center; }
+    .sheet-sim-body { padding: 0 20px 24px 20px; font-size: var(--font-size-body-base); color: var(--on-surface-variant); line-height: 1.6; }
+    .standalone-demo { background: var(--surface-container); border-radius: var(--radius-8); padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .standalone-label { font-size: var(--font-size-body-sm); color: var(--on-surface-variant); margin-top: 8px; }
+  </style>
+</head>
+<body><div class="preview-container">
+
+  <!-- Standalone Drag Handle -->
+  <div class="section">
+    <div class="section-title">Standalone</div>
+    <div class="standalone-demo">
+      <div class="drag-handle"></div>
+      <span class="standalone-label">36 x 4px / neutral-400 @ 30%</span>
+    </div>
+  </div>
+
+  <!-- In Context (Bottom Sheet) -->
+  <div class="section">
+    <div class="section-title">In Context (Bottom Sheet Header)</div>
+    <div class="sheet-sim">
+      <div class="sheet-sim-header">
+        <div class="drag-handle"></div>
+      </div>
+      <div class="sheet-sim-title">选择操作</div>
+      <div class="sheet-sim-body">
+        <div style="padding: 12px 0; border-bottom: 1px solid var(--outline-variant); font-size: var(--font-size-body-base); color: var(--on-surface);">
+          分享学习计划
+        </div>
+        <div style="padding: 12px 0; border-bottom: 1px solid var(--outline-variant); font-size: var(--font-size-body-base); color: var(--on-surface);">
+          导出为 PDF
+        </div>
+        <div style="padding: 12px 0; font-size: var(--font-size-body-base); color: var(--error-default);">
+          删除
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div></body>
+</html>

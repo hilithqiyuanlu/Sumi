@@ -25,12 +25,14 @@ class AppSettings {
   final String tavilyApiKey;
   final bool thinkingEnabled;
   final bool showAllMonthCards; // 开发者开关：披露全部月卡
+  final String userName; // 用户昵称
 
   const AppSettings({
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
     this.thinkingEnabled = true,
     this.showAllMonthCards = false,
+    this.userName = '',
   });
 
   AppSettings copyWith({
@@ -38,12 +40,14 @@ class AppSettings {
     String? tavilyApiKey,
     bool? thinkingEnabled,
     bool? showAllMonthCards,
+    String? userName,
   }) {
     return AppSettings(
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
       thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
       showAllMonthCards: showAllMonthCards ?? this.showAllMonthCards,
+      userName: userName ?? this.userName,
     );
   }
 
@@ -52,6 +56,7 @@ class AppSettings {
         'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
         'thinkingEnabled': thinkingEnabled,
         'showAllMonthCards': showAllMonthCards,
+        'userName': userName,
       };
 
   factory AppSettings.fromJson(Map<String, Object?> json) => AppSettings(
@@ -59,6 +64,7 @@ class AppSettings {
         tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
         thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
         showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
+        userName: (json['userName'] as String?) ?? '',
       );
 }
 
@@ -354,24 +360,24 @@ class MonthCard {
 
 class Conversation {
   final String id;
-  final String title;
+  final String dateKey;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   const Conversation({
     required this.id,
-    this.title = '',
+    this.dateKey = '',
     required this.createdAt,
     required this.updatedAt,
   });
 
   Conversation copyWith({
-    String? title,
+    String? dateKey,
     DateTime? updatedAt,
   }) {
     return Conversation(
       id: id,
-      title: title ?? this.title,
+      dateKey: dateKey ?? this.dateKey,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -379,14 +385,14 @@ class Conversation {
 
   Map<String, Object?> toJson() => {
         'id': id,
-        'title': title,
+        'dateKey': dateKey,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
 
   factory Conversation.fromJson(Map<String, Object?> json) => Conversation(
         id: (json['id'] as String?) ?? '',
-        title: (json['title'] as String?) ?? '',
+        dateKey: (json['dateKey'] as String?) ?? '',
         createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
             DateTime.now(),
         updatedAt: DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
@@ -491,6 +497,11 @@ class TodoItem {
     this.reminderTime,
     required this.createdAt,
   });
+
+  /// 判断 todo 是否属于指定日期。
+  /// [date] 为 null 的 todo 仅归入今天。
+  static bool belongsToDate(TodoItem t, String selectedDateKey, String todayKey) =>
+      t.date != null ? t.date == selectedDateKey : selectedDateKey == todayKey;
 
   TodoItem copyWith({
     String? title,

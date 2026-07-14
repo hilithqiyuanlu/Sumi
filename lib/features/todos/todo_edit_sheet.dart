@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
 import '../shared/drag_handle.dart';
 
-/// 底部弹出编辑面板 —— 文本编辑 + 润色/项目/定时/复制。
+/// 底部弹出编辑面板 —— 标题 + 备注编辑，标记/项目/定时操作，删除/保存。
 Future<void> showTodoEditSheet(
   BuildContext context,
   SumiStore store,
@@ -35,8 +34,7 @@ class _TodoEditSheet extends StatefulWidget {
 class _TodoEditSheetState extends State<_TodoEditSheet> {
   late final TextEditingController _titleCtrl;
   late final TextEditingController _bodyCtrl;
-  bool _polishing = false;
-  String? _polishedText;
+  bool _saving = false;
   bool _showProjects = false;
 
   SumiStore get _store => widget.store;
@@ -63,36 +61,6 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   // Actions
   // ---------------------------------------------------------------------------
 
-  Future<void> _polish() async {
-    setState(() => _polishing = true);
-    _polishedText = null;
-
-    final result = await _store.polishTodoTitle(_todo.id);
-
-    if (!mounted) return;
-    setState(() => _polishing = false);
-
-    if (result == null || result.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('润色失败，请检查网络或 API 配置'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    _polishedText = result;
-  }
-
-  void _applyPolish() {
-    if (_polishedText == null) return;
-    _titleCtrl.text = _polishedText!;
-    setState(() {
-      _polishedText = null;
-    });
-  }
-
   void _toggleProjects() {
     setState(() => _showProjects = !_showProjects);
   }
@@ -102,88 +70,10 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
     setState(() => _showProjects = false);
   }
 
-  Future<void> _pickReminder() async {
-    // 已有定时 → 弹出选择
-    if (_todo.reminderTime != null) {
-      final action = await showModalBottomSheet<String>(
-        context: context,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
-        ),
-        builder: (ctx) {
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(s16, s16, s16, s8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const DragHandle(),
-                  const SizedBox(height: s16),
-                  ListTile(
-                    leading: const Icon(Icons.schedule, color: ink),
-                    title: Text('修改定时（当前 ${_todo.reminderTime}）'),
-                    onTap: () => Navigator.pop(ctx, 'edit'),
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.close, color: danger),
-                    title: Text('清除定时', style: TextStyle(color: danger)),
-                    onTap: () => Navigator.pop(ctx, 'clear'),
-                  ),
-                  const SizedBox(height: s8),
-                ],
-              ),
-            ),
-          );
-        },
-      );
-
-      if (!mounted) return;
-      if (action == 'clear') {
-        _clearReminder();
-        return;
-      }
-      if (action != 'edit') return;
-    }
-
-    final initial = _todo.reminderTime != null
-        ? _parseTime(_todo.reminderTime!)
-        : null;
-
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: initial ?? const TimeOfDay(hour: 9, minute: 0),
-    );
-
-    if (picked != null) {
-      final formatted =
-          '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-      _store.updateTodoReminder(_todo.id, formatted);
-      if (mounted) setState(() {});
-    }
-  }
-
-  void _clearReminder() {
-    _store.updateTodoReminder(_todo.id, null);
-    if (mounted) setState(() {});
-  }
-
-  void _copy() {
-    HapticFeedback.selectionClick();
-    Clipboard.setData(ClipboardData(text: _todo.title));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('已复制'),
-        duration: Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   Future<void> _save() async {
     final newTitle = _titleCtrl.text.trim();
     final newBody = _bodyCtrl.text.trim();
 
-    // 标题为空或没有任何改动 → 直接关闭
     if (newTitle.isEmpty) {
       Navigator.pop(context);
       return;
@@ -199,10 +89,10 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
 
     // 标题 >18 字触发 AI 凝练
     if (titleChanged && newTitle.length > 18) {
-      setState(() => _polishing = true);
+      setState(() => _saving = true);
       final condensed = await _store.polishText(newTitle);
       if (mounted) {
-        setState(() => _polishing = false);
+        setState(() => _saving = false);
         _store.updateTodo(
           _todo.id,
           title: condensed ?? newTitle,
@@ -244,7 +134,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
 
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(s16, s16, s16, bottomInset + s8),
+        padding: EdgeInsets.fromLTRB(s16, s16, s16, bottomInset + s16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,76 +183,46 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
             ),
             const SizedBox(height: s12),
 
-            // 四个操作按钮
+            // 操作栏：左侧 chips + 右侧按钮
             Row(
               children: [
                 _ActionChip(
-                  icon: Icons.auto_awesome,
-                  label: '润色',
-                  loading: _polishing,
-                  onTap: _polish,
+                  icon: todo.done ? Icons.radio_button_unchecked : Icons.check_circle_outline,
+                  label: todo.done ? '标记未完成' : '标记完成',
+                  active: todo.done,
+                  onTap: () {
+                    _store.toggleTodo(_todo.id);
+                    if (mounted) setState(() {});
+                  },
                 ),
-                const SizedBox(width: s8),
+                const SizedBox(width: s6),
                 _ActionChip(
                   icon: Icons.folder_outlined,
                   label: '项目',
                   active: todo.projectId != null,
                   onTap: _toggleProjects,
                 ),
-                const SizedBox(width: s8),
-                _ActionChip(
-                  icon: Icons.schedule,
-                  label: todo.reminderTime ?? '定时',
-                  active: todo.reminderTime != null,
-                  onTap: _pickReminder,
+                const Spacer(),
+                _TextButton(
+                  label: '删除',
+                  color: danger,
+                  onTap: _delete,
                 ),
                 const SizedBox(width: s8),
-                _ActionChip(
-                  icon: Icons.content_copy,
-                  label: '复制',
-                  onTap: _copy,
+                _FilledButton(
+                  label: '保存',
+                  loading: _saving,
+                  onTap: _save,
                 ),
               ],
             ),
             const SizedBox(height: s12),
-
-            // 润色结果预览
-            if (_polishedText != null) _PolishPreview(
-              original: todo.title,
-              polished: _polishedText!,
-              onApply: _applyPolish,
-              onRetry: _polish,
-            ),
 
             // 项目选择
             if (_showProjects) _ProjectPicker(
               store: _store,
               selectedId: todo.projectId,
               onSelect: _assignProject,
-            ),
-
-            const SizedBox(height: s8),
-
-            // 底部按钮
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _delete,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: danger,
-                    ),
-                    child: const Text('删除'),
-                  ),
-                ),
-                const SizedBox(width: s12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _save,
-                    child: const Text('保存'),
-                  ),
-                ),
-              ],
             ),
             const SizedBox(height: s8),
           ],
@@ -376,20 +236,52 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
 // Sub-widgets
 // ---------------------------------------------------------------------------
 
-/// 操作按钮 chip。
-class _ActionChip extends StatelessWidget {
-  final IconData icon;
+/// 紧凑文字按钮。
+class _TextButton extends StatelessWidget {
   final String label;
+  final Color color;
   final VoidCallback onTap;
-  final bool loading;
-  final bool active;
 
-  const _ActionChip({
-    required this.icon,
+  const _TextButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
+        decoration: BoxDecoration(
+          color: surfaceAlt,
+          borderRadius: BorderRadius.circular(radiusPill),
+          border: Border.all(color: line.withValues(alpha: 0.2), width: 0.5),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 紧凑实心按钮。
+class _FilledButton extends StatelessWidget {
+  final String label;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _FilledButton({
     required this.label,
     required this.onTap,
     this.loading = false,
-    this.active = false,
   });
 
   @override
@@ -397,116 +289,80 @@ class _ActionChip extends StatelessWidget {
     return GestureDetector(
       onTap: loading ? null : onTap,
       child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s8),
+        decoration: BoxDecoration(
+          color: primary500,
+          borderRadius: BorderRadius.circular(radiusPill),
+        ),
+        child: loading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+/// 操作按钮 chip。
+class _ActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+  final Color? color;
+
+  const _ActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color;
+    final iconColor = c ?? (active ? mintDeep : ink);
+    final textColor = c ?? (active ? mintDeep : ink);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
         decoration: BoxDecoration(
-          color: active ? mintDeep.withValues(alpha: 0.12) : surfaceAlt,
+          color: active && c == null ? mintDeep.withValues(alpha: 0.12) : surfaceAlt,
           borderRadius: BorderRadius.circular(radiusPill),
-          border: active
+          border: active && c == null
               ? Border.all(color: mintDeep.withValues(alpha: 0.4))
-              : null,
+              : Border.all(color: line.withValues(alpha: 0.2), width: 0.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            loading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 1.5),
-                  )
-                : Icon(icon, size: 16, color: active ? mintDeep : ink),
+            Icon(icon, size: 16, color: iconColor),
             const SizedBox(width: s4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: active ? mintDeep : ink,
+                color: textColor,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 润色结果预览。
-class _PolishPreview extends StatelessWidget {
-  final String original;
-  final String polished;
-  final VoidCallback onApply;
-  final VoidCallback onRetry;
-
-  const _PolishPreview({
-    required this.original,
-    required this.polished,
-    required this.onApply,
-    required this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: s12),
-      padding: const EdgeInsets.all(s12),
-      decoration: BoxDecoration(
-        color: mint.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(radiusPanel),
-        boxShadow: const [...shadow1],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.auto_awesome, size: 16, color: mintDeep),
-              const SizedBox(width: s6),
-              Text(
-                '润色结果',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: mintDeep,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: s8),
-          Text(
-            polished,
-            style: const TextStyle(fontSize: 14, color: ink, height: 1.35),
-          ),
-          const SizedBox(height: s8),
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: onApply,
-                icon: Icon(Icons.check, size: 16, color: mintDeep),
-                label: Text(
-                  '应用',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: mintDeep,
-                  ),
-                ),
-              ),
-              const SizedBox(width: s4),
-              TextButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text(
-                  '重试',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

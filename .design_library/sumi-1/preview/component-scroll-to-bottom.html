@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scroll To Bottom — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: 16px; background: var(--surface); min-height: 100vh; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .demo-area { position: relative; height: 200px; background: var(--surface-container); border-radius: var(--radius-8); overflow: hidden; }
+    .fake-messages { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .fake-msg { background: var(--surface); border-radius: 12px 12px 12px 4px; padding: 8px 12px; font-size: var(--font-size-body-base); color: var(--on-surface); max-width: 70%; align-self: flex-start; box-shadow: var(--shadow-1); }
+    .fake-msg-user { background: var(--primary-100); border-radius: 12px 12px 4px 12px; align-self: flex-end; color: var(--primary-900); }
+    .scroll-btn { position: absolute; bottom: 16px; right: 16px; width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--shadow-1); display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; }
+    .scroll-btn svg { width: 20px; height: 20px; color: var(--primary-600); }
+    .scroll-btn:hover { box-shadow: var(--shadow-2); }
+    /* Standalone */
+    .standalone-row { display: flex; gap: 24px; align-items: center; }
+    .standalone-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .standalone-label { font-size: var(--font-size-body-sm); color: var(--on-surface-variant); }
+  </style>
+</head>
+<body><div class="preview-container">
+
+  <!-- Standalone -->
+  <div class="section">
+    <div class="section-title">Standalone</div>
+    <div class="standalone-row">
+      <div class="standalone-item">
+        <button class="scroll-btn" style="position:static;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <span class="standalone-label">Default</span>
+      </div>
+      <div class="standalone-item">
+        <button class="scroll-btn" style="position:static; box-shadow: var(--shadow-4);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <span class="standalone-label">Elevated</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- In Context -->
+  <div class="section">
+    <div class="section-title">In Chat Context</div>
+    <div class="demo-area">
+      <div class="fake-messages">
+        <div class="fake-msg">今天学什么？</div>
+        <div class="fake-msg fake-msg-user">帮我复习线性代数</div>
+        <div class="fake-msg">好的，我们从矩阵运算开始</div>
+        <div class="fake-msg fake-msg-user">矩阵乘法的规则是什么</div>
+        <div class="fake-msg">矩阵乘法要求左边矩阵的列数等于右边矩阵的行数...</div>
+        <div class="fake-msg fake-msg-user">能举个例子吗</div>
+      </div>
+      <button class="scroll-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    </div>
+  </div>
+
+</div></body>
+</html>

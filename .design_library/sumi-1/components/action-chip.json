@@ -8,7 +8,7 @@
   "variants": [
     {
       "name": "default",
-      "description": "默认态，surface-chip 背景"
+      "description": "默认态，surface-chip 背景 + 0.5px 微边框"
     },
     {
       "name": "active",
@@ -27,6 +27,7 @@
     "activeBorderColor": "rgba(var(--primary-500), 0.4)",
     "iconSize": "var(--size-icon-sm)",
     "fontSize": "var(--font-size-body-sm)",
+    "inactiveBorder": "0.5px solid var(--color-outline-variant) at 20% opacity",
     "padding": "var(--space-3) var(--space-5)"
   },
   "uiCopySamples": {

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'main_shell.dart';
+import 'features/home/home_page.dart';
 import 'store/sumi_store.dart';
 import 'sumi_scope.dart';
 import 'theme/app_theme.dart';
@@ -40,7 +40,7 @@ class _SumiAppState extends State<SumiApp> {
         title: 'Sumi',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
-        home: const MainShell(),
+        home: const HomePage(),
       ),
     );
   }

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Input — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: var(--space-7); background: var(--surface); min-height: 100vh; }
+    .section-label { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-4); }
+    .section { margin-bottom: var(--space-9); }
+    .input-list { display: flex; flex-direction: column; gap: var(--space-6); }
+
+    /* @component-css-start */
+    .input-field {
+      display: flex;
+      align-items: center;
+      background: var(--surface-chip);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-12);
+      height: var(--size-input-height);
+      padding: 0 var(--space-5);
+      font-family: var(--font-body);
+      font-size: var(--font-size-body-base);
+      color: var(--on-surface);
+      transition: border-color var(--duration-fast) var(--easing-standard),
+                  box-shadow var(--duration-fast) var(--easing-standard);
+      width: 100%;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .input-field::placeholder {
+      color: var(--on-surface-variant);
+    }
+
+    /* Focused */
+    .input-field--focused {
+      border-color: var(--primary-600);
+      box-shadow: 0 0 0 2px rgba(75, 63, 227, 0.12);
+    }
+
+    /* Error */
+    .input-field--error {
+      border-color: var(--error-default);
+    }
+
+    .input-field--error + .input-error-text {
+      display: block;
+    }
+
+    .input-error-text {
+      display: none;
+      font-size: var(--font-size-body-sm);
+      color: var(--error-default);
+      margin-top: var(--space-2);
+      padding-left: var(--space-5);
+    }
+
+    /* Search variant */
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+
+    .input-wrapper .input-field {
+      padding-left: 36px;
+      padding-right: 36px;
+    }
+
+    .input-wrapper__icon-left {
+      position: absolute;
+      left: var(--space-5);
+      top: 50%;
+      transform: translateY(-50%);
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+      color: var(--on-surface-variant);
+      pointer-events: none;
+    }
+
+    .input-wrapper__icon-left svg {
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+    }
+
+    .input-wrapper__icon-right {
+      position: absolute;
+      right: var(--space-5);
+      top: 50%;
+      transform: translateY(-50%);
+      width: var(--size-icon-sm);
+      height: var(--size-icon-sm);
+      color: var(--neutral-400);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .input-wrapper__icon-right svg {
+      width: var(--size-icon-sm);
+      height: var(--size-icon-sm);
+    }
+
+    /* Multiline */
+    .input-field--multiline {
+      height: auto;
+      min-height: 80px;
+      padding: var(--space-4) var(--space-5);
+      resize: none;
+      line-height: var(--line-height-body-base);
+    }
+
+    /* @component-css-end */
+  </style>
+</head>
+<body>
+<div class="preview-container">
+
+  <!-- DEFAULT -->
+  <div class="section">
+    <div class="section-label">Default</div>
+    <div class="input-list">
+      <input class="input-field" type="text" placeholder="输入标题">
+      <input class="input-field" type="text" placeholder="添加备注" value="已完成第三章内容">
+    </div>
+  </div>
+
+  <!-- FOCUSED -->
+  <div class="section">
+    <div class="section-label">Focused</div>
+    <div class="input-list">
+      <input class="input-field input-field--focused" type="text" placeholder="输入标题" value="撰写微积分课程手册">
+    </div>
+  </div>
+
+  <!-- ERROR -->
+  <div class="section">
+    <div class="section-label">Error</div>
+    <div class="input-list">
+      <div>
+        <input class="input-field input-field--error" type="text" placeholder="输入标题" value="">
+        <div class="input-error-text">标题不能为空</div>
+      </div>
+      <div>
+        <input class="input-field input-field--error" type="text" placeholder="输入标题" value="a">
+        <div class="input-error-text">标题至少需要 2 个字符</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="section">
+    <div class="section-label">Search</div>
+    <div class="input-list">
+      <div class="input-wrapper">
+        <span class="input-wrapper__icon-left">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
+        <input class="input-field" type="text" placeholder="搜索...">
+        <button class="input-wrapper__icon-right">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="input-wrapper">
+        <span class="input-wrapper__icon-left">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
+        <input class="input-field" type="text" placeholder="搜索..." value="微积分">
+      </div>
+    </div>
+  </div>
+
+  <!-- MULTILINE -->
+  <div class="section">
+    <div class="section-label">Multiline</div>
+    <div class="input-list">
+      <textarea class="input-field input-field--multiline" placeholder="添加备注..."></textarea>
+      <textarea class="input-field input-field--multiline" placeholder="添加备注...">第三章主要介绍了极限与连续性的基本概念，包括左极限、右极限以及函数在某点的连续性判定。</textarea>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

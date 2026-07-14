@@ -93,7 +93,7 @@ class _BubbleBarrageState extends State<BubbleBarrage>
         return AnimatedBuilder(
           animation: data.animation,
           builder: (context, child) {
-            final opacity = (1.0 - data.controller.value).clamp(0.0, 1.0);
+            final opacity = (1.0 - Curves.easeIn.transform(data.controller.value)).clamp(0.0, 1.0);
             return Positioned(
               left: MediaQuery.of(context).size.width * data.startX / 100,
               top: MediaQuery.of(context).size.height * data.animation.value,

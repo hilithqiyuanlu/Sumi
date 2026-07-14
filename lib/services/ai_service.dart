@@ -197,112 +197,80 @@ class AiService {
       '1. 如果文本描述的是单一事项（尽管很长），不要拆分，在 items 中返回一条凝练后的文本。\n'
       '2. 如果包含多个独立步骤或事项，拆分为独立 todo。\n'
       '3. 每条 todo 保留完整的语义，可脱离上下文理解。\n'
-      '4. 每条 todo 凝练到 2-18 字。\n'
+      '4. 每条 todo 凝练到 2-20 字。\n'
       '5. 以 JSON 格式回复，不要带任何额外文字。\n'
       '\n'
       '回复格式：\n'
       '{"split": true/false, "items": ["事项1", "事项2"]}';
 
-  static const _planningSystemPrompt =
-      '你是 Sumi，一个专业的自学规划师。\n'
-          '\n'
-          '用户正在创建一个自学项目，你需要根据项目信息和评估报告为其生成完整的学习计划。\n'
-          '\n'
-          '## 核心约束\n'
-          '\n'
-          '### 认知科学原则\n'
-          '1. **心流模型**：每月难度递进 10-20%，挑战略高于当前能力，保持用户在心流通道\n'
-          '2. **最近发展区 (ZPD)**：每月内容必须落在用户可独立做到与有指导可做到的区间内\n'
-          '3. **刻意练习**：每月必须有明确的核心技能目标 + 检验标准 + 即时反馈机会\n'
-          '4. **时间数学**：∑每月预估小时 ≤ 周期月数 × 每周小时 × 4.3\n'
-          '\n'
-          '### 领域对齐\n'
-          '- 月计划内容必须与搜索结果中的真实学习路径一致\n'
-          '- 引用搜索到的具体资源和方法，不要凭空编造\n'
-          '- 如果搜索结果中有推荐的时间线，优先参考\n'
-          '\n'
-          '## 要求\n'
-          '\n'
-          '### 月计划\n'
-          '- 为每个月生成一个月计划卡\n'
-          '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-120 字）\n'
-          '- 摘要要高维度、战略性，不要过于具体（具体步骤留给每日 todo）\n'
-          '- 内容量匹配当月实际天数：如果起始月份剩余天数少，计划应紧凑\n'
-          '- 各月之间应有递进关系（基础 → 进阶 → 综合）\n'
-          '- 每张卡应隐含该月的核心技能目标和检验标准\n'
-          '\n'
-          '### 每日 Todo（仅生成第一天的）\n'
-          '- 基于第一个月计划拆解为具体的可执行 todo\n'
-          '- 标题 2-20 字，可附带更详细的 body\n'
-          '- 数量：1 条（默认），最多 2 条（仅当首日内容确实需要拆分时）\n'
-          '- 考虑每周投入时间约束，不要超出用户能力\n'
-          '\n'
-          '## 输出格式\n'
-          '严格按以下 JSON 格式输出，不要带任何额外文字：\n'
-          '\n'
-          '{\n'
-          '  "monthPlans": [\n'
-          '    {"monthIndex": 0, "title": "月主题", "summary": "月计划摘要..."},\n'
-          '    ...\n'
-          '  ],\n'
-          '  "todayTodos": [\n'
-          '    {"title": "todo 标题", "body": "更详细的说明（可选）", "date": "YYYY-MM-DD"}\n'
-          '  ]\n'
-          '}';
-
-  /// 增强版规划 prompt（06 轮新增，含评估报告 + 领域知识）。
-  static const _enhancedPlanningSystemPrompt =
-      '你是 Sumi，一个专业的自学规划师。\n'
-          '\n'
-          '用户正在创建一个自学项目。你已经有了评估报告和领域调研数据，请基于这些信息生成完整的学习计划。\n'
-          '\n'
-          '## 核心约束\n'
-          '\n'
-          '### 认知科学原则\n'
-          '1. **心流模型 (Flow)**：每月难度递进 10-20%，挑战略高于当前能力\n'
-          '2. **最近发展区 (ZPD)**：每月内容必须落在用户可独立做到与有指导可做到的区间内\n'
-          '3. **刻意练习**：每月必须有明确的核心技能目标 + 检验标准\n'
-          '4. **时间数学**：∑每月预估小时 ≤ 周期月数 × 每周小时 × 4.3\n'
-          '5. **评估反馈**：如果评估报告指出了问题（如周期偏短），在计划中给出缓解策略\n'
-          '\n'
-          '### 领域对齐\n'
-          '- 月计划内容必须与领域知识中的真实学习路径一致\n'
-          '- 引用搜索到的具体资源、方法和时间线\n'
-          '- 不要凭空编造学习路径\n'
-          '\n'
-          '## 要求\n'
-          '\n'
-          '### 月计划\n'
-          '- 为每个月生成一个月计划卡\n'
-          '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-120 字）\n'
-          '- 摘要要高维度、战略性\n'
-          '- 内容量匹配当月实际天数\n'
-          '- 各月之间递进关系清晰（基础 → 进阶 → 综合）\n'
-          '- 每张卡隐含核心技能目标和检验标准\n'
-          '\n'
-          '### 每日 Todo（仅第一天）\n'
-          '- 基于第一个月计划拆解为可执行 todo\n'
-          '- 标题 2-20 字，可附带 body\n'
-          '- 数量：1-2 条\n'
-          '- 考虑时间约束，不超出用户能力\n'
-          '\n'
-          '## 输出格式\n'
-          '严格 JSON，不要带任何额外文字：\n'
-          '{\n'
-          '  "monthPlans": [\n'
-          '    {"monthIndex": 0, "title": "月主题", "summary": "月计划摘要..."},\n'
-          '    ...\n'
-          '  ],\n'
-          '  "todayTodos": [\n'
-          '    {"title": "todo 标题", "body": "详细说明（可选）", "date": "YYYY-MM-DD"}\n'
-          '  ]\n'
-          '}';
+  /// 构建规划 system prompt，通过 [hasAssessment] 控制是否包含评估反馈段落。
+  static String _buildPlanningPrompt({bool hasAssessment = false}) {
+    final assessmentLine = hasAssessment
+        ? '5. **评估反馈**：如果评估报告指出了问题（如周期偏短），在计划中给出缓解策略\n'
+        : '';
+    return '你是 Sumi，一个专业的自学规划师。\n'
+        '\n'
+        '用户正在创建一个自学项目，请根据提供的项目信息${hasAssessment ? '、评估报告和领域调研数据' : '和搜索结果'}为其生成完整的学习计划。\n'
+        '\n'
+        '## 核心约束\n'
+        '\n'
+        '### 认知科学原则\n'
+        '1. **难度递进**：每月难度递进 10-20%，内容应比用户当前水平稍难但通过努力可以完成\n'
+        '2. **刻意练习**：每月必须有明确的核心技能目标 + 检验标准\n'
+        '3. **时间约束**：∑每月预估小时 ≤ 周期月数 × 每周小时 × 4.3\n'
+        '$assessmentLine'
+        '\n'
+        '### 领域对齐\n'
+        '- 月计划内容必须与提供的${hasAssessment ? '领域知识' : '搜索结果'}中的真实学习路径一致\n'
+        '- 引用搜索到的具体资源和方法，不要凭空编造\n'
+        '- 如果搜索结果中有推荐的时间线，优先参考\n'
+        '\n'
+        '## 要求\n'
+        '\n'
+        '### 月计划\n'
+        '- 为每个月生成一个月计划卡\n'
+        '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-120 字）\n'
+        '- 摘要要高维度、战略性，具体步骤留给每日 todo\n'
+        '- 内容量匹配当月实际天数\n'
+        '- 各月之间递进关系清晰（基础 → 进阶 → 综合）\n'
+        '\n'
+        '### 每日 Todo（仅第一天）\n'
+        '- 基于第一个月计划拆解为可执行 todo\n'
+        '- 标题 2-20 字，可附带 body\n'
+        '- 数量：1-2 条，考虑时间约束不超出用户能力\n'
+        '\n'
+        '## 输出格式\n'
+        '严格 JSON，不要带任何额外文字：\n'
+        '{\n'
+        '  "monthPlans": [\n'
+        '    {"monthIndex": 0, "title": "月主题", "summary": "月计划摘要..."},\n'
+        '    ...\n'
+        '  ],\n'
+        '  "todayTodos": [\n'
+        '    {"title": "todo 标题", "body": "详细说明（可选）", "date": "YYYY-MM-DD"}\n'
+        '  ]\n'
+        '}';
+  }
 
   static const _dailyTodoSystemPrompt =
-      '你是 Sumi。根据当前月计划，为指定日期生成 1 条系统 todo。\n'
+      '你是 Sumi。根据月计划为指定日期生成 1-3 条待办。\n'
           '\n'
-          '要求：todo 标题 2-20 字，可附带 body。\n'
-          '输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
+          '要求：\n'
+          '- 标题 2-20 字，是可执行的具体动作（不是抽象描述）\n'
+          '- 如果当天已有足够的待办，可以返回空列表\n'
+          '- 可附带 body 作为补充说明\n'
+          '- 输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
+
+  static const _suggestionsSystemPrompt =
+      '你是 Sumi。根据用户的待办列表，生成 3 条用户可能想让你执行的操作建议。\n'
+          '\n'
+          '要求：\n'
+          '1. 每条是用户会对助手说的自然指令（如"帮我..."、"建议我..."、"总结..."）。\n'
+          '2. 必须基于今日待办的具体内容，不要泛泛而谈。\n'
+          '3. 每条 8-20 字。\n'
+          '4. 只输出 JSON，不要任何额外文字。\n'
+          '\n'
+          '输出格式：{"suggestions": ["建议1", "建议2", "建议3"]}';
 
   static const _assessmentSystemPrompt =
       '你是 Sumi，一个专业的自学规划评估师。\n'
@@ -618,7 +586,7 @@ class AiService {
                 {
                   'role': 'system',
                   'content': '你是 Sumi，一个个人助手。优化用户提供的 todo 标题。\n'
-                      '要求：凝练清晰、保留原意、2-18 字。\n'
+                      '要求：凝练清晰、保留原意、2-20 字。\n'
                       '只返回优化后的文本，不要加引号或额外文字。',
                 },
                 {'role': 'user', 'content': text},
@@ -681,7 +649,7 @@ $searchSection
 
     // 注意：thinking 与 response_format: json_object 冲突，不可同时使用
     final result = await _callJsonApi(
-      systemPrompt: _planningSystemPrompt,
+      systemPrompt: _buildPlanningPrompt(),
       userPrompt: userPrompt,
       model: _modelPro,
       thinking: false,
@@ -720,7 +688,7 @@ $domainKnowledge
 
     // 注意：thinking 与 response_format: json_object 冲突，不可同时使用
     final result = await _callJsonApi(
-      systemPrompt: _enhancedPlanningSystemPrompt,
+      systemPrompt: _buildPlanningPrompt(hasAssessment: true),
       userPrompt: userPrompt,
       model: _modelPro,
       thinking: false,
@@ -757,6 +725,32 @@ $domainKnowledge
     );
     if (result == null) return null;
     return DailyTodoResult.fromJson(result);
+  }
+
+  /// 基于当前上下文生成建议提问。
+  Future<List<String>> generateSuggestions({
+    required String todayTodosText,
+    required String memory,
+  }) async {
+    final userPrompt = '''
+今日待办：
+$todayTodosText
+
+记忆：
+${memory.trim().isEmpty ? '（暂无记忆）' : memory}''';
+
+    final result = await _callJsonApi(
+      systemPrompt: _suggestionsSystemPrompt,
+      userPrompt: userPrompt,
+      model: _modelFlash,
+      thinking: false,
+      maxTokens: 800,
+      timeoutSeconds: 20,
+    );
+    if (result == null) return [];
+    final raw = result['suggestions'] as List<Object?>?;
+    if (raw == null) return [];
+    return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
   }
 
   // ---------------------------------------------------------------------------

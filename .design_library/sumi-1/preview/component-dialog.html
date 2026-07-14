@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dialog — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: 16px; background: var(--surface); min-height: 100vh; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .dialog-demo { position: relative; border-radius: var(--radius-20); overflow: hidden; }
+    .scrim { background: rgba(0,0,0,0.4); border-radius: var(--radius-8); padding: 32px 16px; display: flex; align-items: center; justify-content: center; }
+    .dialog { background: var(--surface); border-radius: var(--radius-20); padding: 24px; width: 280px; box-shadow: var(--shadow-5); }
+    .dialog-title { font-size: 15px; font-weight: 600; color: var(--on-surface); margin-bottom: 8px; line-height: 1.4; }
+    .dialog-body { font-size: var(--font-size-body-base); color: var(--on-surface-variant); line-height: 1.5; margin-bottom: 20px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border-radius: var(--radius-full); font-size: var(--font-size-body-base); font-weight: 500; border: none; cursor: pointer; transition: background 150ms; font-family: var(--font-body); }
+    .btn-text { background: transparent; color: var(--primary-600); }
+    .btn-text:hover { background: var(--interactive-hover); }
+    .btn-filled { background: var(--primary-600); color: var(--on-primary); }
+    .btn-filled:hover { background: var(--primary-700); }
+    .btn-danger { background: var(--error-default); color: #fff; }
+    .btn-danger:hover { background: var(--error-600); }
+    .btn-danger-text { background: transparent; color: var(--error-default); }
+    .btn-danger-text:hover { background: var(--error-surface-l1); }
+  </style>
+</head>
+<body><div class="preview-container">
+
+  <!-- Alert Dialog -->
+  <div class="section">
+    <div class="section-title">Alert Dialog</div>
+    <div class="dialog-demo">
+      <div class="scrim">
+        <div class="dialog">
+          <div class="dialog-title">需要更新</div>
+          <div class="dialog-body">发现新版本可用，请更新以获得最新功能和修复。</div>
+          <div class="dialog-actions">
+            <button class="btn btn-filled">我知道了</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div class="section">
+    <div class="section-title">Confirm Dialog</div>
+    <div class="dialog-demo">
+      <div class="scrim">
+        <div class="dialog">
+          <div class="dialog-title">确认删除</div>
+          <div class="dialog-body">删除后将无法恢复，确定要删除这条学习记录吗？</div>
+          <div class="dialog-actions">
+            <button class="btn btn-text">取消</button>
+            <button class="btn btn-danger">确认删除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog (text danger) -->
+  <div class="section">
+    <div class="section-title">Confirm Dialog (Text Danger)</div>
+    <div class="dialog-demo">
+      <div class="scrim">
+        <div class="dialog">
+          <div class="dialog-title">退出登录</div>
+          <div class="dialog-body">确定要退出当前账号吗？</div>
+          <div class="dialog-actions">
+            <button class="btn btn-text">取消</button>
+            <button class="btn btn-danger-text">退出</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div></body>
+</html>

@@ -13,16 +13,20 @@ class ChatBubble extends StatelessWidget {
   final String content;
   final bool isUser;
   final bool isStreaming;
-  final String? reasoningContent; // AI 思考过程
-  final String? toolCallsJson; // 工具调用 JSON
+  final DateTime? timestamp;
+  final String? reasoningContent;
+  final String? toolCallsJson;
+  final VoidCallback? onDelete;
 
   const ChatBubble({
     super.key,
     required this.content,
     required this.isUser,
     this.isStreaming = false,
+    this.timestamp,
     this.reasoningContent,
     this.toolCallsJson,
+    this.onDelete,
   });
 
   @override
@@ -34,18 +38,22 @@ class ChatBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: alignment,
         children: [
-          // 角色标签
-          Padding(
-            padding: const EdgeInsets.only(bottom: s4),
-            child: Text(
-              isUser ? '你' : 'Sumi',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: textTertiary,
+          // 用户消息时间坐标（居中显示）
+          if (isUser && timestamp != null)
+            Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: s4),
+                child: Text(
+                  '${timestamp!.month}/${timestamp!.day} ${timestamp!.hour.toString().padLeft(2, '0')}:${timestamp!.minute.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: textTertiary,
+                  ),
+                ),
               ),
             ),
-          ),
           // 思考过程（仅 AI 且有内容时显示折叠区域）
           if (!isUser &&
               reasoningContent != null &&
@@ -63,40 +71,79 @@ class ChatBubble extends StatelessWidget {
               toolCallsJson != null &&
               toolCallsJson!.isNotEmpty)
             _ToolCallIndicator(toolCallsJson: toolCallsJson!),
-          // 气泡（长按复制）
+          // 气泡（长按删除或复制）
           GestureDetector(
             onLongPress: () {
               HapticFeedback.selectionClick();
-              Clipboard.setData(ClipboardData(text: content));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('已复制'),
-                  duration: Duration(seconds: 1),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              if (onDelete != null) {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+                    ),
+                    title: const Text('删除这条对话？',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    content: const Text('将同时删除这一来一回的全部内容，包括思考过程和工具信息。',
+                        style: TextStyle(fontSize: 14)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: danger,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          onDelete!.call();
+                        },
+                        child: const Text('删除'),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                Clipboard.setData(ClipboardData(text: content));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('已复制'),
+                    duration: Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
             child: Container(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.78,
+                maxWidth: MediaQuery.of(context).size.width * 0.72,
               ),
               padding: const EdgeInsets.symmetric(
                   horizontal: s12, vertical: s10),
               decoration: BoxDecoration(
                 color: isUser ? mint : Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(radius20),
-                  topRight: const Radius.circular(radius20),
-                  bottomLeft:
-                      Radius.circular(isUser ? radius20 : s4),
-                  bottomRight:
-                      Radius.circular(isUser ? s4 : radius20),
+                  topLeft: Radius.circular(isUser ? radius20 : s4),
+                  topRight: Radius.circular(isUser ? s4 : radius20),
+                  bottomLeft: const Radius.circular(radius20),
+                  bottomRight: const Radius.circular(radius20),
                 ),
                 border: Border.all(
                   color: isUser
                       ? Colors.transparent
                       : line.withValues(alpha: 0.3),
                 ),
+                boxShadow: isUser
+                    ? null
+                    : const [
+                        BoxShadow(
+                          color: Color(0x080E1115),
+                          offset: Offset(0, 1),
+                          blurRadius: 3,
+                        ),
+                      ],
               ),
               child: _buildContent(),
             ),
@@ -280,7 +327,7 @@ class _ToolCallIndicator extends StatelessWidget {
             borderRadius: BorderRadius.circular(s6),
           ),
           child: Text(
-            '🔧 ${names.join(" · ")}',
+            '${names.join(" · ")}',
             style: const TextStyle(
               fontSize: 11,
               color: mintDeep,

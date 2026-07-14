@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -280,96 +281,109 @@ class _TodoInputState extends State<TodoInput> {
             ),
           ),
         // 输入栏
-        Container(
-          decoration: BoxDecoration(
-            color: paper,
-            border: Border(
-              top: BorderSide(color: line.withValues(alpha: 0.3)),
-            ),
-          ),
+        Padding(
           padding: EdgeInsets.fromLTRB(
             s16,
-            s10,
+            s8,
             s16,
-            MediaQuery.of(context).padding.bottom + s10,
+            MediaQuery.of(context).padding.bottom + s8,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Listener(
-                  onPointerDown:
-                      hasVoice ? _onPointerDown : null,
-                  onPointerMove:
-                      hasVoice ? _onPointerMove : null,
-                  onPointerUp:
-                      hasVoice ? _onPointerUp : null,
-                  child: AbsorbPointer(
-                    absorbing: _isRecording,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: _isRecording
-                            ? mint.withValues(alpha: 0.08)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(radiusPill),
-                        border: Border.all(
-                          color: _isRecording
-                              ? mintDeep.withValues(alpha: 0.5)
-                              : line.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _submit(),
-                        enabled: !_loading,
-                        decoration: InputDecoration(
-                          hintText: _isRecording ? '正在收听…' : '尽管说',
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: s16,
-                            vertical: s10,
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 132),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(radiusPill),
+              border: Border.all(
+                color: _isRecording
+                    ? mintDeep.withValues(alpha: 0.45)
+                    : Colors.white.withValues(alpha: 0.55),
+                width: 0.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 2),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 1,
+                  offset: const Offset(0, 0),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radiusPill),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Listener(
+                        onPointerDown:
+                            hasVoice ? _onPointerDown : null,
+                        onPointerMove:
+                            hasVoice ? _onPointerMove : null,
+                        onPointerUp:
+                            hasVoice ? _onPointerUp : null,
+                        child: AbsorbPointer(
+                          absorbing: _isRecording,
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _submit(),
+                            enabled: !_loading,
+                            style: const TextStyle(fontSize: 15),
+                            decoration: InputDecoration(
+                              hintText: _isRecording ? '正在收听…' : '尽管说',
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: s16,
+                                vertical: 22,
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                    if (showSendButton) ...[
+                      GestureDetector(
+                        onTap: _submit,
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          margin: const EdgeInsets.only(right: s6),
+                          decoration: const BoxDecoration(
+                            color: primary500,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.send,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ] else if (_loading) ...[
+                      const Padding(
+                        padding: EdgeInsets.only(right: s12),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: primary500),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (showSendButton) ...[
-                const SizedBox(width: s8),
-                Material(
-                  color: primary500,
-                  borderRadius: BorderRadius.circular(radiusPill),
-                  child: InkWell(
-                    onTap: _submit,
-                    borderRadius: BorderRadius.circular(radiusPill),
-                    child: Container(
-                      width: sizeButtonMd,
-                      height: sizeButtonMd,
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.send,
-                        size: iconMedium,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ] else if (_loading) ...[
-                const SizedBox(width: s8),
-                Padding(
-                  padding: const EdgeInsets.all(s10),
-                  child: SizedBox(
-                    width: sizeButtonMd,
-                    height: sizeButtonMd,
-                    child: const CircularProgressIndicator(
-                        strokeWidth: 2, color: primary500),
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ],

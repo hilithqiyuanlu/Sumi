@@ -22,6 +22,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     todoItems.add(TodoItem(
       id: newSumiId('todo'),
       source: TodoSource.user,
+      date: dateKey(selectedDate),
       title: title.trim(),
       sortOrder: nextOrder,
       createdAt: DateTime.now(),

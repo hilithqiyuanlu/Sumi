@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toast — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: 16px; background: var(--surface); min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; padding-top: 24px; }
+    .section-title { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .toast-area { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; }
+    .toast { display: flex; align-items: center; justify-content: space-between; background: var(--neutral-800); color: #fff; border-radius: var(--radius-12); padding: 12px 16px; min-height: 48px; box-shadow: var(--shadow-4); }
+    .toast-text { font-size: var(--font-size-body-base); font-weight: 400; line-height: 20px; }
+    .toast-action { font-size: var(--font-size-body-base); font-weight: 500; color: var(--primary-300); cursor: pointer; padding: 0 4px; white-space: nowrap; border: none; background: none; font-family: var(--font-body); }
+    .toast-action:hover { color: var(--primary-200); }
+    .label-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .label { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; }
+  </style>
+</head>
+<body><div class="preview-container">
+
+  <div class="label-row"><span class="label">Toast</span></div>
+
+  <div class="toast-area">
+    <div class="toast">
+      <span class="toast-text">已复制</span>
+    </div>
+    <div class="toast">
+      <span class="toast-text">已复制</span>
+      <button class="toast-action">撤销</button>
+    </div>
+    <div class="toast">
+      <span class="toast-text">已移至回收站</span>
+      <button class="toast-action">撤销</button>
+    </div>
+  </div>
+
+</div></body>
+</html>

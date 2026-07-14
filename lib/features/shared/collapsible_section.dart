@@ -35,10 +35,11 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
     final hasBody = widget.body != null && widget.body!.isNotEmpty;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _expanded = !_expanded),
       child: Container(
         padding:
-            const EdgeInsets.symmetric(horizontal: s10, vertical: s6),
+            const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
         decoration: BoxDecoration(
           color: widget.backgroundColor,
           borderRadius: BorderRadius.circular(s8),

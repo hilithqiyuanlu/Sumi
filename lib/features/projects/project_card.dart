@@ -11,8 +11,11 @@ void confirmDeleteProject(BuildContext context, SumiStore store, Project p) {
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('删除项目'),
-      content: Text('确定要删除「${p.name}」吗？\n\n该项目的所有月卡和系统事项将一并删除。'),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+      ),
+      title: const Text('删除项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      content: Text('确定要删除「${p.name}」吗？\n\n该项目的所有月卡和系统事项将一并删除。', style: const TextStyle(fontSize: 14)),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),

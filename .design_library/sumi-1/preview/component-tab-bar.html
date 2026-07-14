@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tab Bar — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--surface);
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* Tab bar fixed at bottom */
+    .tab-bar-wrapper {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 390px;
+      background: var(--surface);
+    }
+
+    .tab-bar {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      height: 56px;
+      border-top: 1px solid var(--outline-variant);
+      padding: 0 var(--space-4);
+      background: var(--surface);
+    }
+
+    /* Tab item */
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      cursor: pointer;
+      text-decoration: none;
+      position: relative;
+    }
+
+    .tab-item .tab-icon-wrapper {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-12);
+    }
+
+    .tab-item .tab-icon-wrapper svg {
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+    }
+
+    .tab-item .tab-label {
+      font-size: var(--font-size-body-sm);
+      font-weight: 400;
+      line-height: 1;
+    }
+
+    /* Inactive state */
+    .tab-item.inactive .tab-icon-wrapper svg {
+      color: var(--neutral-500);
+    }
+    .tab-item.inactive .tab-label {
+      color: var(--neutral-500);
+    }
+
+    /* Active state */
+    .tab-item.active .tab-icon-wrapper {
+      background: var(--primary-100);
+    }
+    .tab-item.active .tab-icon-wrapper svg {
+      color: var(--primary-600);
+    }
+    .tab-item.active .tab-label {
+      color: var(--primary-600);
+      font-weight: 500;
+    }
+
+    /* Spacer content so tab bar doesn't overlap */
+    .content-spacer {
+      height: 120px;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-container">
+
+    <!-- Spacer content -->
+    <div class="variant-title">TAB BAR</div>
+    <div class="content-spacer"></div>
+
+    <!-- Tab bar -->
+    <div class="tab-bar-wrapper">
+      <div class="tab-bar">
+        <!-- Sumi tab (inactive) -->
+        <div class="tab-item inactive">
+          <span class="tab-icon-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/>
+            </svg>
+          </span>
+          <span class="tab-label">Sumi</span>
+        </div>
+
+        <!-- 事项 tab (active) -->
+        <div class="tab-item active">
+          <span class="tab-icon-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <polyline points="8.5 12.5 11 15 16 9.5"/>
+            </svg>
+          </span>
+          <span class="tab-label">事项</span>
+        </div>
+
+        <!-- 设置 tab (inactive) -->
+        <div class="tab-item inactive">
+          <span class="tab-icon-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6"/>
+              <line x1="4" y1="12" x2="20" y2="12"/>
+              <line x1="4" y1="18" x2="20" y2="18"/>
+              <circle cx="8" cy="6" r="2" fill="none" stroke="currentColor"/>
+              <circle cx="16" cy="12" r="2" fill="none" stroke="currentColor"/>
+              <circle cx="10" cy="18" r="2" fill="none" stroke="currentColor"/>
+            </svg>
+          </span>
+          <span class="tab-label">设置</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

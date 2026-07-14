@@ -15,48 +15,57 @@ class ChatDatabase {
   // Conversations
   // ---------------------------------------------------------------------------
 
-  /// 加载全部会话（按更新时间降序）。
+  /// 加载全部会话（按日期降序）。
   Future<List<Conversation>> loadConversations() async {
     final db = await _db;
     final rows = await db.query(
       'conversations',
-      orderBy: 'updated_at DESC',
+      orderBy: 'date_key DESC',
     );
     return rows.map((r) => Conversation(
       id: r['id'] as String,
-      title: (r['title'] as String?) ?? '',
+      dateKey: (r['date_key'] as String?) ?? '',
       createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse((r['updated_at'] as String?) ?? '') ?? DateTime.now(),
     )).toList();
   }
 
-  /// 创建新会话，返回创建的 Conversation。
-  Future<Conversation> createConversation({String title = ''}) async {
+  /// 按日期查找会话，不存在则返回 null。
+  Future<Conversation?> findConversationByDate(String dateKey) async {
+    final db = await _db;
+    final rows = await db.query(
+      'conversations',
+      where: 'date_key = ?',
+      whereArgs: [dateKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final r = rows.first;
+    return Conversation(
+      id: r['id'] as String,
+      dateKey: (r['date_key'] as String?) ?? '',
+      createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse((r['updated_at'] as String?) ?? '') ?? DateTime.now(),
+    );
+  }
+
+  /// 为指定日期创建新会话。
+  Future<Conversation> createConversationForDate(String dateKey) async {
     final db = await _db;
     final now = DateTime.now();
     final id = 'conv-${now.microsecondsSinceEpoch}';
     await db.insert('conversations', {
       'id': id,
-      'title': title,
+      'date_key': dateKey,
       'created_at': now.toIso8601String(),
       'updated_at': now.toIso8601String(),
+      'pinned': 0,
     });
     return Conversation(
       id: id,
-      title: title,
+      dateKey: dateKey,
       createdAt: now,
       updatedAt: now,
-    );
-  }
-
-  /// 更新会话标题。
-  Future<void> updateConversationTitle(String id, String title) async {
-    final db = await _db;
-    await db.update(
-      'conversations',
-      {'title': title, 'updated_at': DateTime.now().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
     );
   }
 
@@ -120,6 +129,24 @@ class ChatDatabase {
       if (message.toolCallId != null)
         'tool_call_id': message.toolCallId,
     });
+  }
+
+  /// 删除单条消息。
+  Future<void> deleteMessage(String messageId) async {
+    final db = await _db;
+    await db.delete('messages', where: 'id = ?', whereArgs: [messageId]);
+  }
+
+  /// 批量删除消息。
+  Future<void> deleteMessagesByIds(List<String> ids) async {
+    if (ids.isEmpty) return;
+    final db = await _db;
+    final placeholders = ids.map((_) => '?').join(',');
+    await db.delete(
+      'messages',
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
+    );
   }
 
   /// 更新消息内容 + 可选 reasoning / tool_calls（用于流式输出完成后写入）。

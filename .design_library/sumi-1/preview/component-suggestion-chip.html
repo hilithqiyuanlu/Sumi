@@ -1,27 +1,114 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Suggestion Chip</title>
-<link rel="stylesheet" href="../colors_and_type.css">
-<style>
-  body { margin: 0; padding: 12px; background: var(--color-surface); font-family: var(--font-sans); color: var(--color-on-surface); }
-  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .label { font-size: 10px; color: var(--color-muted-foreground); min-width: 80px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-  .divider { border: none; border-top: 1px solid var(--color-border); margin: 4px 0 10px; }
-  /* @component-css-start */
-  .chip { display: inline-flex; align-items: center; padding: var(--space-2) var(--space-3); background: var(--suggestion-bg); color: var(--suggestion-text); font-size: var(--font-size-body); font-family: var(--font-sans); border: none; border-radius: var(--radius-pill); cursor: pointer; white-space: nowrap; transition: background .15s; }
-  .chip:hover { background: var(--primary-100); }
-  /* @component-css-end */
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suggestion Chip — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--surface);
+      min-height: 100vh;
+    }
+
+    .variant-title {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-6);
+    }
+
+    .suggestion-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    /* Suggestion chip — pill shape */
+    .suggestion-chip {
+      display: flex;
+      align-items: center;
+      gap: var(--space-5);
+      padding: var(--space-5) var(--space-7);
+      background: var(--primary-100);
+      border-radius: var(--radius-full);
+      border: none;
+      cursor: pointer;
+      transition: background var(--duration-fast) var(--easing-standard);
+    }
+    .suggestion-chip:hover {
+      background: var(--primary-200);
+    }
+
+    .suggestion-chip .chip-icon {
+      flex-shrink: 0;
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .suggestion-chip .chip-icon svg {
+      width: var(--size-icon-sm);
+      height: var(--size-icon-sm);
+      color: var(--primary-600);
+    }
+
+    .suggestion-chip .chip-text {
+      font-size: var(--font-size-h-xs);
+      font-weight: 400;
+      color: var(--primary-600);
+      line-height: 1.4;
+    }
+  </style>
 </head>
 <body>
-  <div class="row">
-    <span class="label">Suggestions</span>
-    <button class="chip">建议以什么顺序开展我今天的待办</button>
-    <button class="chip">推荐些深度学习的配套资源</button>
-    <button class="chip">帮我制定本周的学习计划</button>
+  <div class="preview-container">
+
+    <!-- SUGGESTIONS variant -->
+    <div class="variant-section">
+      <div class="variant-title">SUGGESTIONS</div>
+      <div class="suggestion-list">
+        <button class="suggestion-chip" type="button">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </span>
+          <span class="chip-text">建议以什么顺序开展我今天的待办</span>
+        </button>
+        <button class="suggestion-chip" type="button">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </span>
+          <span class="chip-text">推荐些深度学习的配套资源</span>
+        </button>
+        <button class="suggestion-chip" type="button">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </span>
+          <span class="chip-text">帮我制定本周的学习计划</span>
+        </button>
+      </div>
+    </div>
+
   </div>
 </body>
 </html>

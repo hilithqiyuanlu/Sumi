@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Badge — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: 16px; background: var(--surface); min-height: 100vh; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .row { display: flex; align-items: center; gap: 16px; }
+    .icon-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; color: var(--on-surface); }
+    .icon-wrap svg { width: 20px; height: 20px; }
+    /* Dot badge */
+    .badge-dot { position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--error-default); border: 2px solid var(--surface); }
+    /* Count badge */
+    .badge-count { position: absolute; top: -4px; right: -8px; min-width: 16px; height: 16px; border-radius: var(--radius-full); background: var(--error-default); color: #fff; font-size: 10px; font-weight: 500; line-height: 16px; text-align: center; padding: 0 4px; box-sizing: border-box; }
+    /* Label badge */
+    .badge-label { display: inline-flex; align-items: center; justify-content: center; height: 18px; padding: 0 6px; border-radius: var(--radius-full); background: var(--error-default); color: #fff; font-size: var(--font-size-body-xs); font-weight: 500; line-height: 18px; }
+    .demo-area { display: flex; align-items: center; gap: 24px; }
+  </style>
+</head>
+<body><div class="preview-container">
+
+  <!-- Section: Dot -->
+  <div class="section">
+    <div class="section-title">Dot Badge</div>
+    <div class="demo-area">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="badge-dot"></span>
+      </div>
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <span class="badge-dot"></span>
+      </div>
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="badge-dot"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Count -->
+  <div class="section">
+    <div class="section-title">Count Badge</div>
+    <div class="demo-area">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="badge-count">3</span>
+      </div>
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <span class="badge-count">12</span>
+      </div>
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="badge-count">99</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Label -->
+  <div class="section">
+    <div class="section-title">Label Badge</div>
+    <div class="demo-area" style="gap: 12px;">
+      <span class="badge-label">新</span>
+      <span class="badge-label" style="background: var(--primary-600);">Beta</span>
+      <span class="badge-label" style="background: var(--success-default);">已完成</span>
+    </div>
+  </div>
+
+</div></body>
+</html>

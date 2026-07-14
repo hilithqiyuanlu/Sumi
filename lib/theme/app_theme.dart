@@ -337,22 +337,14 @@ class AppTheme {
         backgroundColor: primary800,
       ),
 
-      // Switch — iOS style: white thumb + translucent track
+      // Switch — iOS style: white thumb + solid track (Material3 compatible)
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.disabled)) {
-            return neutral200;
-          }
-          return Colors.white;
-        }),
+        thumbColor: const WidgetStatePropertyAll(Colors.white),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return primary500.withValues(alpha: 0.38);
+            return primary500;
           }
-          if (states.contains(WidgetState.disabled)) {
-            return neutral200;
-          }
-          return neutral300.withValues(alpha: 0.5);
+          return neutral300;
         }),
         trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
         trackOutlineWidth: const WidgetStatePropertyAll(0),

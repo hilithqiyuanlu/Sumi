@@ -24,7 +24,7 @@
     { "name": "dismissing", "description": "fadeOut 动画" }
   ],
   "renderHints": {
-    "radius": "var(--radius-20)",
+    "radius": "var(--radius-card-header)",
     "bg": "var(--surface)",
     "padding": "var(--space-7)",
     "shadow": "var(--shadow-5)",
@@ -38,5 +38,5 @@
     "bodies": ["此操作不可撤销，确定要删除吗？"],
     "buttons": ["取消", "确认删除"]
   },
-  "unknowns": []
+  "unknowns": ["AlertDialogs now use radiusCardHeader top radius"]
 }

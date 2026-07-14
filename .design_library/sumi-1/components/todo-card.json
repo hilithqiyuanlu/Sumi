@@ -10,7 +10,7 @@
     {
       "id": "default",
       "name": "Default",
-      "description": "白色背景 + shadow-1，含 done 图标 + 标题 + pin 图标"
+      "description": "白色背景 + shadow-1 + 0.5px 微边框，含 done 图标 + 标题 + pin 图标"
     },
     {
       "id": "project-colored",
@@ -62,7 +62,8 @@
     "pressedFilter": "brightness(0.97)",
     "draggingShadow": "var(--shadow-4)",
     "draggingOpacity": "0.3",
-    "projectBgOpacity": "0.25"
+    "projectBgOpacity": "0.25",
+    "border": "0.5px solid var(--color-outline-variant) at 15% opacity"
   },
   "uiCopySamples": {
     "pendingTasks": [

@@ -23,9 +23,16 @@ class TodoGrid extends StatelessWidget {
 
     if (items.isEmpty) {
       return Center(
-        child: Text(
-          '还没有事项，在下方输入框创建吧',
-          style: TextStyle(fontSize: 14, color: textTertiary),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome, size: 48, color: primary100),
+            const SizedBox(height: s8),
+            Text(
+              '还没有事项，在下方输入框创建吧',
+              style: TextStyle(fontSize: 15, color: textTertiary),
+            ),
+          ],
         ),
       );
     }

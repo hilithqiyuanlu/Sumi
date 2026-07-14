@@ -31,7 +31,7 @@ class VerdictBadge extends StatelessWidget {
     return switch (verdict) {
       AssessmentVerdict.a => Icons.check_circle,
       AssessmentVerdict.b => Icons.thumb_up_outlined,
-      AssessmentVerdict.c => Icons.warning_amber_rounded,
+      AssessmentVerdict.c => Icons.warning_amber,
       AssessmentVerdict.d => Icons.cancel,
     };
   }

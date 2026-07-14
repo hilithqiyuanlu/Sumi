@@ -39,7 +39,7 @@ class _DateStripState extends State<DateStrip> {
     _programmaticScroll = true;
     final store = SumiScope.read(context);
     final selected = dateOnly(store.selectedDate);
-    const itemExtent = 54.0 + 8.0; // chip 宽 + 间距
+    const itemExtent = 52.0 + 8.0; // chip 宽 + 间距
     final viewport = _scrollController.position.viewportDimension;
     final dayIndex = selected.day;
     final selectedCenter = (dayIndex - 1) * itemExtent + 27.0;
@@ -69,67 +69,72 @@ class _DateStripState extends State<DateStrip> {
         borderRadius: BorderRadius.circular(radiusCardHeader),
       ),
       child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 日期条
-            SizedBox(
-              height: 72,
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (notification) {
-                  if (_programmaticScroll) return false;
-                  if (notification is ScrollUpdateNotification) {
-                    _checkCenterChange(store, daysInMonth, selected);
-                  } else if (notification is ScrollEndNotification) {
-                    _lastCenterDay = null;
-                    _selectCenterDate(store, daysInMonth);
-                  }
-                  return false;
-                },
-                child: ListView.separated(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: s16),
-                  itemCount: dates.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: s8),
-                  itemBuilder: (context, index) {
-                    final date = dates[index];
-                    final isSelected = isSameDate(date, selected);
-                    final isToday = isSameDate(date, today);
-                    final isPast = date.isBefore(today) && !isToday;
-                    return _DraggableDateChip(
-                      date: date,
-                      store: store,
-                      child: _DateChip(
-                        date: date,
-                        selected: isSelected,
-                        isToday: isToday,
-                        isPast: isPast,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          store.selectDate(date);
-                        },
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            // 拖拽把手
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                widget.onExpandMonth();
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 日期条
+          SizedBox(
+            height: 72,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (_programmaticScroll) return false;
+                if (notification is ScrollUpdateNotification) {
+                  _checkCenterChange(store, daysInMonth, selected);
+                } else if (notification is ScrollEndNotification) {
+                  _lastCenterDay = null;
+                  _selectCenterDate(store, daysInMonth);
+                }
+                return false;
               },
-              child: Container(
-                height: 48,
-                alignment: const Alignment(0, 0.4),
-                child: const DragHandle(),
+              child: ListView.separated(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: s16),
+                itemCount: dates.length,
+                separatorBuilder: (_, _) => const SizedBox(width: s8),
+                itemBuilder: (context, index) {
+                  final date = dates[index];
+                  final isSelected = isSameDate(date, selected);
+                  final isToday = isSameDate(date, today);
+                  final isPast = date.isBefore(today) && !isToday;
+                  final todayKey = dateKey(today);
+                  final hasTodos = store.todoItems.any(
+                    (t) => !t.done && (t.date == dateKey(date) || (t.date == null && dateKey(date) == todayKey)),
+                  );
+                  return _DraggableDateChip(
+                    date: date,
+                    store: store,
+                    child: _DateChip(
+                      date: date,
+                      selected: isSelected,
+                      isToday: isToday,
+                      isPast: isPast,
+                      hasTodos: hasTodos,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        store.selectDate(date);
+                      },
+                    ),
+                  );
+                },
               ),
             ),
-          ],
-        ),
-      );
+          ),
+          // 拖拽把手 —— 点击展开月视图（拖拽由父级 GestureDetector 处理）
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              widget.onExpandMonth();
+            },
+            child: Container(
+              height: 48,
+              alignment: const Alignment(0, 0.4),
+              child: const DragHandle(),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 滚动中检测中心日期变化，触发线性马达轻震（模拟 iOS 拨轮手感）。
@@ -138,7 +143,7 @@ class _DateStripState extends State<DateStrip> {
     final offset = _scrollController.offset;
     final viewport = _scrollController.position.viewportDimension;
     final center = offset + viewport / 2;
-    const itemExtent = 62.0;
+    const itemExtent = 60.0; // 52 + 8 spacing
     final dayIndex = (center / itemExtent).floor().clamp(0, daysInMonth - 1);
     if (dayIndex != _lastCenterDay) {
       _lastCenterDay = dayIndex;
@@ -156,7 +161,7 @@ class _DateStripState extends State<DateStrip> {
     final offset = _scrollController.offset;
     final viewport = _scrollController.position.viewportDimension;
     final center = offset + viewport / 2;
-    const itemExtent = 62.0;
+    const itemExtent = 60.0; // 52 + 8 spacing
     final dayIndex = (center / itemExtent).floor().clamp(0, daysInMonth - 1);
     final centerDate =
         DateTime(selected.year, selected.month, dayIndex + 1);
@@ -173,6 +178,7 @@ class _DateChip extends StatelessWidget {
   final bool selected;
   final bool isToday;
   final bool isPast;
+  final bool hasTodos;
   final VoidCallback onTap;
 
   const _DateChip({
@@ -180,6 +186,7 @@ class _DateChip extends StatelessWidget {
     required this.selected,
     required this.isToday,
     required this.isPast,
+    required this.hasTodos,
     required this.onTap,
   });
 
@@ -198,7 +205,7 @@ class _DateChip extends StatelessWidget {
       bgColor = mint.withValues(alpha: 0.5);
       txtColor = ink;
     } else {
-      bgColor = Colors.transparent;
+      bgColor = surfaceMuted;
       txtColor = isPast ? textTertiary : ink;
     }
 
@@ -206,7 +213,7 @@ class _DateChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        width: 54,
+        width: 52,
         height: 72,
         decoration: BoxDecoration(
           color: bgColor,
@@ -227,11 +234,22 @@ class _DateChip extends StatelessWidget {
             Text(
               '${date.day}',
               style: TextStyle(
-                fontSize: 22,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: txtColor,
               ),
             ),
+            if (hasTodos) ...[
+              const SizedBox(height: s4),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: const BoxDecoration(
+                  color: primary500,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -274,6 +292,7 @@ class _DraggableDateChip extends StatelessWidget {
         }
         final key = dateKey(date);
         store.updateTodoDate(details.data.id, key);
+        store.selectDate(date);
       },
       builder: (context, candidates, rejects) {
         final hovering = candidates.isNotEmpty;

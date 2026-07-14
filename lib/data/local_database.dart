@@ -18,7 +18,7 @@ class SumiLocalDatabase {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 4,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -40,6 +40,12 @@ class SumiLocalDatabase {
         if (oldVersion < 4) {
           await _migrateV3toV4(db);
         }
+        if (oldVersion < 5) {
+          await _migrateV4toV5(db);
+        }
+        if (oldVersion < 6) {
+          await _migrateV5toV6(db);
+        }
       },
     );
     return _db!;
@@ -50,8 +56,10 @@ class SumiLocalDatabase {
       CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL DEFAULT '',
+        date_key TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -87,6 +95,24 @@ class SumiLocalDatabase {
   Future<void> _migrateV3toV4(Database db) async {
     await db.execute(
       "ALTER TABLE messages ADD COLUMN tool_call_id TEXT",
+    );
+  }
+
+  /// v4→v5: conversations 表新增 pinned 列。
+  Future<void> _migrateV4toV5(Database db) async {
+    await db.execute(
+      "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
+  /// v5→v6: conversations 表新增 date_key 列，并回填已有数据。
+  Future<void> _migrateV5toV6(Database db) async {
+    await db.execute(
+      "ALTER TABLE conversations ADD COLUMN date_key TEXT",
+    );
+    // 回填已有会话的 date_key 为 created_at 的日期部分
+    await db.rawUpdate(
+      "UPDATE conversations SET date_key = substr(created_at, 1, 10) WHERE date_key IS NULL",
     );
   }
 

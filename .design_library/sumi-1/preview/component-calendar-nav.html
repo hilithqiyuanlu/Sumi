@@ -1,56 +1,198 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Calendar Navigation</title>
-<link rel="stylesheet" href="../colors_and_type.css">
-<style>
-  body { margin: 0; padding: 12px; background: var(--color-surface); font-family: var(--font-sans); color: var(--color-on-surface); }
-  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .label { font-size: 10px; color: var(--color-muted-foreground); min-width: 80px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-  .divider { border: none; border-top: 1px solid var(--color-border); margin: 4px 0 10px; }
-  /* @component-css-start */
-  .cal-nav { display: flex; gap: var(--space-2); align-items: center; }
-  .cal-day { display: flex; flex-direction: column; align-items: center; min-width: 44px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-pill); cursor: pointer; transition: background .15s; }
-  .cal-day:hover { background: var(--surface-container); }
-  .cal-day.is-selected { background: var(--color-primary); }
-  .cal-day.is-selected:hover { background: var(--primary-400); }
-  .cal-date { font-family: var(--font-sans); font-size: var(--font-size-body); font-weight: 400; line-height: 1; color: var(--color-on-surface); }
-  .cal-day.is-selected .cal-date { font-weight: 700; color: var(--color-on-primary); }
-  .cal-weekday { font-size: var(--font-size-caption); color: var(--color-muted-foreground); line-height: 1; margin-top: 2px; }
-  .cal-day.is-selected .cal-weekday { color: var(--color-on-primary); opacity: .8; }
-  .cal-dot-wrap { height: 6px; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
-  .cal-dot { width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--task-dot); }
-  .cal-day.is-selected .cal-dot { background: var(--color-on-primary); }
-  /* @component-css-end */
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar Nav — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--surface);
+      min-height: 100vh;
+    }
+
+    /* Variant title */
+    .variant-title {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-6);
+    }
+    .variant-section + .variant-section {
+      margin-top: var(--space-9);
+    }
+
+    /* Calendar nav horizontal scroll */
+    .calendar-nav {
+      display: flex;
+      gap: var(--space-4);
+      overflow-x: auto;
+      padding-bottom: var(--space-2);
+    }
+
+    /* Date chip */
+    .date-chip {
+      flex-shrink: 0;
+      width: 48px;
+      height: 68px;
+      border-radius: var(--radius-12);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      transition: background var(--duration-fast) var(--easing-standard);
+    }
+
+    .date-chip .weekday {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      line-height: 1;
+    }
+
+    .date-chip .day {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--on-surface);
+      line-height: 1;
+    }
+
+    .date-chip .task-dot-wrapper {
+      width: var(--space-4);
+      height: var(--space-4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .date-chip .task-dot {
+      width: var(--space-4);
+      height: var(--space-4);
+      border-radius: 50%;
+      background: var(--primary-400);
+    }
+
+    /* Today state */
+    .date-chip.today {
+      background: rgba(229, 234, 255, 0.5);
+    }
+
+    /* Selected state */
+    .date-chip.selected {
+      background: var(--primary-600);
+    }
+    .date-chip.selected .weekday {
+      color: rgba(255, 255, 255, 0.8);
+    }
+    .date-chip.selected .day {
+      color: var(--on-primary);
+    }
+    .date-chip.selected .task-dot {
+      background: var(--primary-200);
+    }
+  </style>
 </head>
 <body>
-  <div class="row">
-    <span class="label">Default Week</span>
-    <div class="cal-nav">
-      <div class="cal-day"><span class="cal-date">11</span><span class="cal-weekday">六</span></div>
-      <div class="cal-day"><span class="cal-date">12</span><span class="cal-weekday">日</span></div>
-      <div class="cal-day"><span class="cal-date">13</span><span class="cal-weekday">一</span></div>
-      <div class="cal-day is-selected"><span class="cal-date">14</span><span class="cal-weekday">二</span></div>
-      <div class="cal-day"><span class="cal-date">15</span><span class="cal-weekday">三</span></div>
-      <div class="cal-day"><span class="cal-date">16</span><span class="cal-weekday">四</span></div>
-      <div class="cal-day"><span class="cal-date">17</span><span class="cal-weekday">五</span></div>
+  <div class="preview-container">
+
+    <!-- DEFAULT variant -->
+    <div class="variant-section">
+      <div class="variant-title">DEFAULT</div>
+      <div class="calendar-nav">
+        <div class="date-chip">
+          <span class="weekday">一</span>
+          <span class="day">11</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">二</span>
+          <span class="day">12</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip today">
+          <span class="weekday">三</span>
+          <span class="day">13</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip selected">
+          <span class="weekday">四</span>
+          <span class="day">14</span>
+          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">五</span>
+          <span class="day">15</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">六</span>
+          <span class="day">16</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">日</span>
+          <span class="day">17</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+      </div>
     </div>
-  </div>
-  <hr class="divider">
-  <div class="row">
-    <span class="label">With Task Dots</span>
-    <div class="cal-nav">
-      <div class="cal-day"><span class="cal-date">11</span><span class="cal-weekday">六</span><div class="cal-dot-wrap"></div></div>
-      <div class="cal-day"><span class="cal-date">12</span><span class="cal-weekday">日</span><div class="cal-dot-wrap"><span class="cal-dot"></span></div></div>
-      <div class="cal-day"><span class="cal-date">13</span><span class="cal-weekday">一</span><div class="cal-dot-wrap"></div></div>
-      <div class="cal-day is-selected"><span class="cal-date">14</span><span class="cal-weekday">二</span><div class="cal-dot-wrap"></div></div>
-      <div class="cal-day"><span class="cal-date">15</span><span class="cal-weekday">三</span><div class="cal-dot-wrap"></div></div>
-      <div class="cal-day"><span class="cal-date">16</span><span class="cal-weekday">四</span><div class="cal-dot-wrap"><span class="cal-dot"></span></div></div>
-      <div class="cal-day"><span class="cal-date">17</span><span class="cal-weekday">五</span><div class="cal-dot-wrap"></div></div>
+
+    <!-- WITH TASK DOTS variant -->
+    <div class="variant-section">
+      <div class="variant-title">WITH TASK DOTS</div>
+      <div class="calendar-nav">
+        <div class="date-chip">
+          <span class="weekday">一</span>
+          <span class="day">11</span>
+          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">二</span>
+          <span class="day">12</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip today">
+          <span class="weekday">三</span>
+          <span class="day">13</span>
+          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+        </div>
+        <div class="date-chip selected">
+          <span class="weekday">四</span>
+          <span class="day">14</span>
+          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">五</span>
+          <span class="day">15</span>
+          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">六</span>
+          <span class="day">16</span>
+          <span class="task-dot-wrapper"></span>
+        </div>
+        <div class="date-chip">
+          <span class="weekday">日</span>
+          <span class="day">17</span>
+          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+        </div>
+      </div>
     </div>
+
   </div>
 </body>
 </html>

@@ -121,7 +121,10 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(_isEditing ? '编辑项目' : '新建项目'),
+        title: Text(
+          _isEditing ? '编辑项目' : '新建项目',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
         centerTitle: false,
       ),
       body: SingleChildScrollView(

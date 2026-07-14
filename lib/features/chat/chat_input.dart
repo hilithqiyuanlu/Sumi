@@ -1,23 +1,31 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/voice_input_service.dart';
 import '../../theme/app_theme.dart';
+import '../home/home_page.dart';
 
 /// 语音录制状态提示。
 enum _VoiceHint { none, listening, cancel }
 
-/// 底部输入栏 —— 文本输入 + 长按语音（无麦克风图标，隐藏逻辑）。
+/// 底部输入栏 —— 支持 Sumi 对话 / Todo 事项两种模式。
 class ChatInput extends StatefulWidget {
+  final InputMode mode;
   final ValueChanged<String> onSend;
+  final ValueChanged<String>? onAddTodo;
+  final ValueChanged<InputMode>? onModeChanged;
   final bool enabled;
   final VoiceInputService? voiceService;
 
   const ChatInput({
     super.key,
+    required this.mode,
     required this.onSend,
+    this.onAddTodo,
+    this.onModeChanged,
     this.enabled = true,
     this.voiceService,
   });
@@ -90,7 +98,17 @@ class _ChatInputState extends State<ChatInput> {
     _controller.clear();
     _hasText = false;
     _voiceText = '';
-    widget.onSend(text);
+
+    if (widget.mode == InputMode.todo) {
+      widget.onAddTodo?.call(text);
+    } else {
+      widget.onSend(text);
+    }
+  }
+
+  void _toggleMode() {
+    final newMode = widget.mode == InputMode.chat ? InputMode.todo : InputMode.chat;
+    widget.onModeChanged?.call(newMode);
   }
 
   // ---------------------------------------------------------------------------
@@ -239,121 +257,208 @@ class _ChatInputState extends State<ChatInput> {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
+
+  Color get _modeColor {
+    return widget.mode == InputMode.todo ? accent500 : mintDeep;
+  }
+
+  Color get _modeLightColor {
+    return widget.mode == InputMode.todo ? accent50 : primary50;
+  }
+
+  String get _hintText {
+    if (_isRecording) return '正在收听…';
+    return '尽管说';
+  }
+
+  String get _modeLabel {
+    return widget.mode == InputMode.todo ? '说' : '问';
+  }
+
   @override
   Widget build(BuildContext context) {
     final showSendButton = _hasText && widget.enabled && !_isRecording;
     final hasVoice = _voice != null;
+    final isCancelHint = _voiceHint == _VoiceHint.cancel;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         // 录音状态提示条
         if (_isRecording)
-          Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(vertical: s6, horizontal: s16),
-            color: _voiceHint == _VoiceHint.cancel
-                ? surfaceAlt
-                : mint.withValues(alpha: 0.15),
-            child: Text(
-              _voiceHint == _VoiceHint.cancel ? '松开取消' : '正在收听…松开发送',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: _voiceHint == _VoiceHint.cancel
-                    ? textTertiary
-                    : mintDeep,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        // 输入栏
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: line.withValues(alpha: 0.3)),
-            ),
-          ),
-          padding: EdgeInsets.only(
-            left: s16,
-            right: s16,
-            top: s10,
-            bottom: MediaQuery.of(context).padding.bottom + s10,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Listener(
-                  onPointerDown:
-                      hasVoice ? _onPointerDown : null,
-                  onPointerMove:
-                      hasVoice ? _onPointerMove : null,
-                  onPointerUp:
-                      hasVoice ? _onPointerUp : null,
-                  child: AbsorbPointer(
-                    absorbing: _isRecording,
-                    child: Container(
-                      constraints:
-                          const BoxConstraints(maxHeight: 120),
-                      decoration: BoxDecoration(
-                        color: _isRecording
-                            ? mint.withValues(alpha: 0.08)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(radiusPill),
-                        border: Border.all(
-                          color: _isRecording
-                              ? mintDeep.withValues(alpha: 0.5)
-                              : line.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        enabled: widget.enabled,
-                        maxLines: 4,
-                        minLines: 1,
-                        textInputAction: TextInputAction.newline,
-                        decoration: InputDecoration(
-                          hintText: _isRecording ? '正在收听…' : '尽管说',
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(
-                            horizontal: s16,
-                            vertical: s10,
-                          ),
-                        ),
-                        onSubmitted: (_) => _send(),
-                      ),
-                    ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 600),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: isCancelHint ? textTertiary : danger,
+                    shape: BoxShape.circle,
                   ),
                 ),
-              ),
-              // 发送按钮（有文字且非录音时显示）
-              if (showSendButton) ...[
-                const SizedBox(width: s6),
-                Material(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(radiusPill),
-                  child: InkWell(
-                    onTap: _send,
-                    borderRadius: BorderRadius.circular(radiusPill),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.send,
-                        size: 20,
-                        color: paper,
-                      ),
+                const SizedBox(width: s8),
+                Flexible(
+                  child: Text(
+                    isCancelHint ? '松开取消' : '正在收听…松开发送',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isCancelHint ? textTertiary : mintDeep,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
               ],
-            ],
+            ),
+          ),
+        // 悬浮输入栏
+        Padding(
+          padding: EdgeInsets.only(
+            left: s16,
+            right: s16,
+            top: s16,
+            bottom: MediaQuery.of(context).padding.bottom + s8,
+          ),
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 140),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(radiusPill),
+              border: Border.all(
+                color: _isRecording
+                    ? mintDeep.withValues(alpha: 0.6)
+                    : Colors.white.withValues(alpha: 0.5),
+                width: 0.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 2),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 1,
+                  offset: const Offset(0, 0),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radiusPill),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // 模式切换按钮（胶囊内左侧，垂直居中）
+                    Padding(
+                      padding: const EdgeInsets.only(left: s12),
+                      child: GestureDetector(
+                        onTap: widget.enabled ? _toggleMode : null,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 240),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          transitionBuilder: (child, animation) {
+                            return FadeTransition(opacity: animation, child: child);
+                          },
+                          child: Container(
+                            key: ValueKey(widget.mode),
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: _modeLightColor,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              _modeLabel,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: _modeColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // TextField + 语音长按
+                    Expanded(
+                      child: Listener(
+                        onPointerDown: hasVoice ? _onPointerDown : null,
+                        onPointerMove: hasVoice ? _onPointerMove : null,
+                        onPointerUp: hasVoice ? _onPointerUp : null,
+                        child: AbsorbPointer(
+                          absorbing: _isRecording,
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            enabled: widget.enabled,
+                            maxLines: 4,
+                            minLines: 1,
+                            textInputAction: TextInputAction.newline,
+                            style: const TextStyle(fontSize: 15),
+                            decoration: InputDecoration(
+                              hintText: _hintText,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: s8,
+                                vertical: 22,
+                              ),
+                            ),
+                            onSubmitted: (_) => _send(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 内嵌发送按钮（垂直居中）
+                    AnimatedOpacity(
+                      opacity: showSendButton ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 150),
+                      child: AnimatedScale(
+                        scale: showSendButton ? 1.0 : 0.6,
+                        duration: const Duration(milliseconds: 150),
+                        alignment: Alignment.center,
+                        child: Material(
+                          color: Colors.transparent,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            onTap: showSendButton ? _send : null,
+                            customBorder: const CircleBorder(),
+                            overlayColor: WidgetStatePropertyAll(Colors.white.withValues(alpha: 0.3)),
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              margin: const EdgeInsets.only(right: s6),
+                              decoration: BoxDecoration(
+                                color: mintDeep,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.send,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ],

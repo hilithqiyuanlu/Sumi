@@ -1,40 +1,174 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Todo Chip</title>
-<link rel="stylesheet" href="../colors_and_type.css">
-<style>
-  body { margin: 0; padding: 12px; background: var(--color-surface); font-family: var(--font-sans); color: var(--color-on-surface); }
-  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .label { font-size: 10px; color: var(--color-muted-foreground); min-width: 80px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-  .divider { border: none; border-top: 1px solid var(--color-border); margin: 4px 0 10px; }
-  /* @component-css-start */
-  .todo-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 6px; border-radius: var(--radius-pill); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 280px; font-size: var(--font-size-body); }
-  .todo-chip--pending { background: var(--task-chip-bg); color: var(--color-on-surface); }
-  .todo-chip--done { background: var(--task-chip-done-bg); color: var(--color-muted-foreground); }
-  .todo-chip .text { overflow: hidden; text-overflow: ellipsis; }
-  .check-circle { width: 18px; height: 18px; min-width: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-  .check-circle--filled { background: var(--color-primary-container); }
-  .check-circle--empty { background: var(--color-outline-variant); }
-  .check-circle svg { width: 10px; height: 10px; }
-  /* @component-css-end */
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo Chip — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--surface);
+      min-height: 100vh;
+    }
+
+    .variant-title {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-6);
+    }
+    .variant-section + .variant-section {
+      margin-top: var(--space-9);
+    }
+
+    .chip-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    /* Todo chip — pill shape */
+    .todo-chip {
+      display: flex;
+      align-items: center;
+      gap: var(--space-5);
+      padding: var(--space-5) var(--space-7);
+      background: var(--surface-chip);
+      border-radius: var(--radius-full);
+      border: none;
+    }
+
+    .todo-chip .chip-icon {
+      flex-shrink: 0;
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .todo-chip .chip-text {
+      font-size: var(--font-size-h-xs);
+      font-weight: 400;
+      color: var(--on-surface);
+      line-height: 1.4;
+    }
+
+    /* Pending — hollow circle */
+    .todo-chip.pending .chip-icon svg {
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+    }
+    .todo-chip.pending .circle-outlined {
+      fill: none;
+      stroke: var(--neutral-400);
+      stroke-width: 1.5;
+    }
+
+    /* Completed — filled checkmark circle */
+    .todo-chip.completed {
+      opacity: 0.5;
+    }
+    .todo-chip.completed .chip-icon svg {
+      width: var(--size-icon-md);
+      height: var(--size-icon-md);
+    }
+    .todo-chip.completed .circle-filled {
+      fill: var(--success-default);
+      stroke: none;
+    }
+    .todo-chip.completed .check-mark {
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .todo-chip.completed .chip-text {
+      text-decoration: line-through;
+    }
+  </style>
 </head>
 <body>
-  <div class="row">
-    <span class="label">Pending</span>
-    <span class="todo-chip todo-chip--pending"><span class="check-circle check-circle--empty"></span><span class="text">看深度学习入门</span></span>
-    <span class="todo-chip todo-chip--pending"><span class="check-circle check-circle--empty"></span><span class="text">去B站看知识图谱导论课</span></span>
-    <span class="todo-chip todo-chip--pending"><span class="check-circle check-circle--empty"></span><span class="text">线性代数与统计学入门</span></span>
-    <span class="todo-chip todo-chip--pending"><span class="check-circle check-circle--empty"></span><span class="text">撰写微积分课程手册第6章内容</span></span>
-  </div>
-  <hr class="divider">
-  <div class="row">
-    <span class="label">Completed</span>
-    <span class="todo-chip todo-chip--done"><span class="check-circle check-circle--filled"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5L5 9L9.5 3.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="text">准备读机器学习西瓜书</span></span>
-    <span class="todo-chip todo-chip--done"><span class="check-circle check-circle--filled"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5L5 9L9.5 3.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="text">开发Sumi的Skill与Mcp等插件</span></span>
+  <div class="preview-container">
+
+    <!-- PENDING variant -->
+    <div class="variant-section">
+      <div class="variant-title">PENDING</div>
+      <div class="chip-list">
+        <div class="todo-chip pending">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-outlined" cx="12" cy="12" r="9"/>
+            </svg>
+          </span>
+          <span class="chip-text">看深度学习入门</span>
+        </div>
+        <div class="todo-chip pending">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-outlined" cx="12" cy="12" r="9"/>
+            </svg>
+          </span>
+          <span class="chip-text">去B站看知识图谱导论课</span>
+        </div>
+        <div class="todo-chip pending">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-outlined" cx="12" cy="12" r="9"/>
+            </svg>
+          </span>
+          <span class="chip-text">线性代数与统计</span>
+        </div>
+        <div class="todo-chip pending">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-outlined" cx="12" cy="12" r="9"/>
+            </svg>
+          </span>
+          <span class="chip-text">撰写微积分课程手册第6章</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPLETED variant -->
+    <div class="variant-section">
+      <div class="variant-title">COMPLETED</div>
+      <div class="chip-list">
+        <div class="todo-chip completed">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-filled" cx="12" cy="12" r="9"/>
+              <polyline class="check-mark" points="8 12.5 11 15.5 16.5 9"/>
+            </svg>
+          </span>
+          <span class="chip-text">准备读机器学习西瓜书</span>
+        </div>
+        <div class="todo-chip completed">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-filled" cx="12" cy="12" r="9"/>
+              <polyline class="check-mark" points="8 12.5 11 15.5 16.5 9"/>
+            </svg>
+          </span>
+          <span class="chip-text">开发Sumi的Skill与Mcp等插件</span>
+        </div>
+      </div>
+    </div>
+
   </div>
 </body>
 </html>

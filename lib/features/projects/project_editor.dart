@@ -62,8 +62,8 @@ void showProjectEditor(
                   Text(
                     isEditing ? '编辑项目' : '新建项目',
                     style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                       color: ink,
                     ),
                   ),

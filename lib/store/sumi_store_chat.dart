@@ -9,101 +9,83 @@ mixin SumiStoreChat on ChangeNotifier {
   AiService? get aiService;
   ToolExecutor? get toolExecutor;
   bool get thinkingEnabled;
+  DateTime get selectedDate;
+  set selectedDate(DateTime d);
   Future<String> readMemory();
   void afterMutation();
+  void notifyMessageSent();
+  void triggerNavigateToToday();
 
   // --- 状态 ---
-  List<Conversation> _conversations = [];
   String? _currentConversationId;
+  String? _currentDateKey;
   List<ChatMessage> _currentMessages = [];
   bool _isStreaming = false;
+  bool _isLoadingConversation = false;
 
   /// Agent 状态
   bool _isThinking = false;
   String? _currentToolCallLabel;
 
-  List<Conversation> get conversations => List.unmodifiable(_conversations);
+  /// 用户发起对话时的首页问候语（仅首条消息注入一次上下文）
+  String? _activeGreeting;
+
   String? get currentConversationId => _currentConversationId;
   List<ChatMessage> get currentMessages => List.unmodifiable(_currentMessages);
   bool get isStreaming => _isStreaming;
   bool get isThinking => _isThinking;
+  bool get isLoadingConversation => _isLoadingConversation;
   String? get currentToolCallLabel => _currentToolCallLabel;
 
-  /// 当前会话标题。
-  String get currentConversationTitle {
-    final conv = _conversations.cast<Conversation?>().firstWhere(
-      (c) => c?.id == _currentConversationId,
-      orElse: () => null,
-    );
-    return conv?.title ?? '';
-  }
-
   // ---------------------------------------------------------------------------
-  // 会话 CRUD
+  // 日期驱动会话
   // ---------------------------------------------------------------------------
 
-  /// 从 DB 加载会话列表。
-  Future<void> loadConversations() async {
+  /// 获取或创建指定日期的会话，加载其消息。
+  Future<void> _getOrCreateConversationForDate(String dateKey) async {
     final db = chatDatabase;
     if (db == null) return;
-    _conversations = await db.loadConversations();
+    if (_currentDateKey == dateKey && _currentConversationId != null) return;
+
+    _isLoadingConversation = true;
     notifyListeners();
-  }
 
-  /// 创建新会话并设为当前（仅在列表界面点击"新建"时调用）。
-  Future<void> createConversation() async {
-    final db = chatDatabase;
-    if (db == null) return;
-    // 先清理当前空对话
-    await cleanupEmptyConversation();
-    final conv = await db.createConversation();
-    _conversations.insert(0, conv);
+    // 查找或创建
+    Conversation? conv = await db.findConversationByDate(dateKey);
+    conv ??= await db.createConversationForDate(dateKey);
+
     _currentConversationId = conv.id;
-    _currentMessages = [];
+    _currentDateKey = dateKey;
+    _currentMessages = await db.loadMessages(conv.id);
+    _isLoadingConversation = false;
     notifyListeners();
   }
 
-  /// 确保有活跃对话：优先加载最近对话，无对话时创建新的。
-  Future<void> ensureLastConversation() async {
+  /// 删除一个消息对：从指定 user 消息开始，直到下一个 user 消息（或末尾）。
+  Future<void> deleteMessagePair(int userMsgIndex) async {
     final db = chatDatabase;
     if (db == null) return;
-    if (_conversations.isNotEmpty) {
-      await switchConversation(_conversations.first.id);
-    } else {
-      await createConversation();
-    }
-  }
+    if (userMsgIndex < 0 || userMsgIndex >= _currentMessages.length) return;
+    if (_currentMessages[userMsgIndex].role != 'user') return;
 
-  /// 清理空对话：当前对话无任何用户消息时删除。
-  Future<void> cleanupEmptyConversation() async {
-    final db = chatDatabase;
-    if (db == null) return;
-    if (_currentConversationId == null) return;
-    final hasUserMsg = _currentMessages.any((m) => m.role == 'user');
-    if (!hasUserMsg) {
-      final convId = _currentConversationId!;
-      // 从 DB 和内存中移除
-      await db.deleteConversation(convId);
-      _conversations.removeWhere((c) => c.id == convId);
-      _currentConversationId = null;
-      _currentMessages = [];
-      notifyListeners();
-    }
-  }
-
-  /// 删除会话。
-  Future<void> deleteConversation(String id) async {
-    final db = chatDatabase;
-    if (db == null) return;
-    await db.deleteConversation(id);
-    _conversations.removeWhere((c) => c.id == id);
-    if (_currentConversationId == id) {
-      _currentConversationId = _conversations.isNotEmpty ? _conversations.first.id : null;
-      _currentMessages = [];
-      if (_currentConversationId != null) {
-        _currentMessages = await db.loadMessages(_currentConversationId!);
+    // 找到删除范围：从 userMsgIndex 到下一个 user 消息之前
+    int endIndex = _currentMessages.length - 1;
+    for (var i = userMsgIndex + 1; i < _currentMessages.length; i++) {
+      if (_currentMessages[i].role == 'user') {
+        endIndex = i - 1;
+        break;
       }
     }
+
+    // 收集要删除的消息 ID
+    final idsToDelete = <String>[];
+    for (var i = userMsgIndex; i <= endIndex; i++) {
+      idsToDelete.add(_currentMessages[i].id);
+    }
+
+    // 从 DB 和内存中删除
+    await db.deleteMessagesByIds(idsToDelete);
+    _currentMessages.removeRange(userMsgIndex, endIndex + 1);
     notifyListeners();
   }
 
@@ -113,18 +95,9 @@ mixin SumiStoreChat on ChangeNotifier {
     if (db != null) {
       await db.clearAll();
     }
-    _conversations.clear();
     _currentConversationId = null;
+    _currentDateKey = null;
     _currentMessages.clear();
-    notifyListeners();
-  }
-
-  /// 切换会话。
-  Future<void> switchConversation(String id) async {
-    final db = chatDatabase;
-    if (db == null) return;
-    _currentConversationId = id;
-    _currentMessages = await db.loadMessages(id);
     notifyListeners();
   }
 
@@ -133,35 +106,28 @@ mixin SumiStoreChat on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 发送用户消息并进入 Agent Loop。
-  Future<void> sendMessage(String content) async {
+  /// [currentGreeting] 首页问候语，仅在首条消息时作为上下文注入一次。
+  Future<void> sendMessage(String content, {String? currentGreeting}) async {
     final db = chatDatabase;
     final svc = aiService;
     final exec = toolExecutor;
     if (db == null || svc == null || exec == null) return;
     if (content.trim().isEmpty) return;
 
-    // 确保有当前会话
-    if (_currentConversationId == null) {
-      await createConversation();
-    }
-    final convId = _currentConversationId!;
-    if (convId.isEmpty) return;
+    // 记录问候语上下文（仅用于新会话首条消息）
+    _activeGreeting = currentGreeting;
 
-    // 自动设置会话标题
-    final conv = _conversations.cast<Conversation?>().firstWhere(
-      (c) => c?.id == convId,
-      orElse: () => null,
-    );
-    if (conv != null && conv.title.isEmpty) {
-      final title = content.length > 20
-          ? '${content.substring(0, 20)}…'
-          : content;
-      await db.updateConversationTitle(convId, title);
-      final ci = _conversations.indexWhere((c) => c.id == convId);
-      if (ci != -1) {
-        _conversations[ci] = _conversations[ci].copyWith(title: title);
-      }
+    // 对话模式始终使用今天的会话，发送后回到今天
+    final today = dateKey(DateTime.now());
+    await _getOrCreateConversationForDate(today);
+    final convId = _currentConversationId!;
+
+    // 如果当前不在今天，切回今天
+    if (dateKey(selectedDate) != today) {
+      selectedDate = dateOnly(DateTime.now());
+      triggerNavigateToToday();
     }
+    if (convId.isEmpty) return;
 
     // 保存用户消息
     final userMsg = ChatMessage(
@@ -175,6 +141,7 @@ mixin SumiStoreChat on ChangeNotifier {
     await db.touchConversation(convId);
     _currentMessages = [..._currentMessages, userMsg];
     notifyListeners();
+    notifyMessageSent(); // 通知 UI 滚动到用户消息
 
     // 构建 API 消息上下文
     final messages = await _buildMessagesContextForAgent();
@@ -204,14 +171,6 @@ mixin SumiStoreChat on ChangeNotifier {
     );
 
     await db.touchConversation(convId);
-
-    // 更新会话列表排序
-    final ci = _conversations.indexWhere((c) => c.id == convId);
-    if (ci > 0) {
-      final c = _conversations.removeAt(ci);
-      _conversations.insert(0, c);
-    }
-
     notifyListeners();
   }
 
@@ -400,46 +359,15 @@ mixin SumiStoreChat on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   static const _chatSystemPrompt =
-      '你是 Sumi，一个能干的个人学习助手。你有工具可以帮助用户。\n'
-      '\n'
-      '## 风格\n'
-      '- 简洁直接，像朋友聊天，不要机器人套话\n'
-      '- 用户没要求时，默认 ≤ 100 字\n'
-      '- 不要用"当然可以！""希望对你有帮助！"这类 AI 废话\n'
-      '- 用工具来做对的事，而不是反复问用户\n'
+      '你是 Sumi，一个个人学习助手。风格：简洁直接，≤100 字，不用"当然可以""希望对你有帮助"这类 AI 废话。\n'
       '\n'
       '## 工具\n'
-      '你可以搜索网络、读写记忆、管理待办事项。需要时直接用工具。\n'
+      '你有搜索网络、读写记忆、管理待办的工具，需要时直接使用。\n'
       '\n'
-      '## 你的记忆（MEMORY.md）\n'
-      'MEMORY.md 是你的持久记忆文件，记录你从对话中学到的一切。\n'
-      '对话开始时它已加载到你的上下文中，你不需要重复调用 read_memory。\n'
-      '\n'
-      '### 核心规则：归属\n'
-      'MEMORY.md 中的每一条内容，默认描述的是**你（Sumi）自己**。\n'
-      '如果要记录关于用户的信息，必须在内容开头加 `用户：` 前缀。\n'
-      '对比：\n'
-      '  ❌ `喜欢简洁回复` → 被理解为 Sumi 自己喜欢简洁回复\n'
-      '  ✅ `用户：喜欢简洁回复` → 明确是用户的偏好\n'
-      '  ❌ `正在学微积分` → 谁在学？\n'
-      '  ✅ `用户：正在学微积分，已完成导数章节` → 明确归属+具体进度\n'
-      '\n'
-      '### 何时写入记忆\n'
-      '遇到以下情况，主动调用 write_memory：\n'
-      '1. 用户明确表达了长期偏好或习惯（不是一次性请求）\n'
-      '2. 用户给了关于你工作方式的反馈（"以后都这样"、"别再说XX"）\n'
-      '3. 你帮用户完成了一个里程碑式的任务\n'
-      '4. 对话中出现了用户长期关注的主题或目标\n'
-      '5. 你发现记忆中有过时或矛盾的内容，需要更新\n'
-      '不要每句话都记。只记那些"如果下次对话不知道这个，会让我显得不够了解用户"的事。\n'
-      '\n'
-      '### 怎么写\n'
-      '- 每条记忆要**简洁、独立、可检索**——即使只看这一条也能理解\n'
-      '- 写**提炼后的事实**，不要写"某天用户说了XX"这种流水账\n'
-      '- 相关的事实合并成一条，不要分散成碎片\n'
-      '- 如果信息有时效性，注明时间范围（"目前"、"今年"、"截至7月"）\n'
-      '- 好的记忆：`用户：偏好 Rust，有 3 年后端经验，最近在学嵌入式开发`\n'
-      '- 差的记忆：`2026-07-14 用户说他想学 Rust 因为他觉得很有意思`\n'
+      '## 记忆（MEMORY.md）\n'
+      '已加载到上下文中，不需要重复读取。记录关于用户的信息时加「用户：」前缀。\n'
+      '遇到长期偏好、工作反馈、里程碑、长期目标时主动写入，不要每句话都记。\n'
+      '每条记忆简洁独立，写提炼后的事实而非流水账。\n'
       '\n'
       '--- MEMORY.md ---\n'
       '{memory}\n'
@@ -450,10 +378,16 @@ mixin SumiStoreChat on ChangeNotifier {
   Future<List<Map<String, Object?>>> _buildMessagesContextForAgent() async {
     // 读取 Sumi 自身记忆
     final memoryContent = await readMemory();
-    final systemPrompt = _chatSystemPrompt.replaceAll(
+    var systemPrompt = _chatSystemPrompt.replaceAll(
       '{memory}',
       memoryContent.trim().isEmpty ? '（暂无记忆）' : memoryContent,
     );
+
+    // 新会话首条消息：注入问候语上下文，帮助 AI 判断用户是否在回应问候语
+    if (_activeGreeting != null && _currentMessages.length <= 1) {
+      systemPrompt += '\n\n[上下文] 首页问候语："${_activeGreeting}"。请自行判断用户是否在回应它。';
+      _activeGreeting = null; // 仅用一次
+    }
 
     final messages = <Map<String, Object?>>[
       {'role': 'system', 'content': systemPrompt},

@@ -4,12 +4,12 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "Bottom text input bar: rounded pill input field, no leading icon, send button on the right, with long-press voice input support",
+  "description": "Floating capsule input bar: pill-shaped container with send button embedded inside the capsule on the right side, no leading icon, long-press voice input support. Liquid glass aesthetic with soft shadow elevation.",
   "variants": [
     {
       "id": "default",
       "name": "Default",
-      "description": "Rounded pill input field with placeholder, send button hidden when empty"
+      "description": "Capsule container with placeholder text, send button hidden when empty"
     },
     {
       "id": "recording",
@@ -19,22 +19,31 @@
   ],
   "states": [
     { "name": "default", "description": "Empty input with placeholder, no send button" },
-    { "name": "has-text", "description": "Text entered, send button visible on the right" },
-    { "name": "focused", "description": "Input field with focus ring" },
-    { "name": "loading", "description": "AI processing, input field disabled" }
+    { "name": "has-text", "description": "Text entered, send button appears inside capsule on the right" },
+    { "name": "focused", "description": "Capsule with subtle glow/shadow enhancement" },
+    { "name": "loading", "description": "AI processing, input field disabled, send button hidden" }
   ],
   "renderHints": {
     "radius": "var(--radius-full)",
     "bg": "var(--color-surface)",
-    "border": "1px solid var(--color-outline-variant)",
+    "bgOpacity": "0.85",
+    "backdropFilter": "blur(20px) saturate(180%)",
+    "border": "1px solid rgba(255,255,255,0.3)",
+    "shadow": "0 2px 16px rgba(0,0,0,0.08), 0 0 1px rgba(0,0,0,0.04)",
+    "shadowFocused": "0 4px 24px rgba(75,63,227,0.12), 0 0 1px rgba(75,63,227,0.2)",
     "textColor": "var(--color-on-surface)",
     "placeholderColor": "var(--color-muted-foreground)",
     "fontSize": "var(--font-size-body)",
-    "minHeight": "40px",
+    "minHeight": "48px",
     "maxHeight": "120px",
     "maxLines": 4,
-    "padding": "var(--space-5) var(--space-7)",
-    "gap": "8px"
+    "padding": "var(--space-5) var(--space-6) var(--space-5) var(--space-7)",
+    "gap": "8px",
+    "sendButtonSize": "32px",
+    "sendButtonRadius": "50%",
+    "sendButtonBg": "var(--color-primary)",
+    "sendButtonIconColor": "#ffffff",
+    "sendButtonPosition": "inside-capsule-right"
   },
   "features": [
     {

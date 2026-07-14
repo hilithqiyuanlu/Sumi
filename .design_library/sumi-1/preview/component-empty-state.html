@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Empty State — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: 16px; background: var(--surface); min-height: 100vh; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; }
+    .empty-icon { width: 64px; height: 64px; color: var(--primary-400); opacity: 0.4; margin-bottom: 16px; }
+    .empty-icon svg { width: 100%; height: 100%; }
+    .empty-title { font-size: var(--font-size-body-base); font-weight: 500; color: var(--on-surface); margin-bottom: 6px; line-height: 1.5; }
+    .empty-desc { font-size: var(--font-size-body-sm); color: var(--on-surface-variant); line-height: 1.5; max-width: 240px; }
+    .empty-icon-outline { color: var(--neutral-300); opacity: 1; }
+  </style>
+</head>
+<body><div class="preview-container">
+
+  <!-- Chat Empty -->
+  <div class="section">
+    <div class="section-title">Chat Empty</div>
+    <div style="border: 1px solid var(--outline-variant); border-radius: var(--radius-8); overflow: hidden;">
+      <div class="empty-state" style="min-height: 260px;">
+        <div class="empty-icon">
+          <!-- Sparkle icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/>
+            <path d="M19 15l.75 2.75L22.5 18.5l-2.75.75L19 22l-.75-2.75-2.75-.75 2.75-.75L19 15z" opacity="0.6"/>
+            <path d="M5 1l.5 2L8 3.5l-2.5.5L5 6l-.5-2L2 3.5l2.5-.5L5 1z" opacity="0.4"/>
+          </svg>
+        </div>
+        <div class="empty-title">和 Sumi 聊聊学习计划吧</div>
+        <div class="empty-desc">我可以帮你制定计划、解答疑问</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Todo Empty -->
+  <div class="section">
+    <div class="section-title">Todo Empty</div>
+    <div style="border: 1px solid var(--outline-variant); border-radius: var(--radius-8); overflow: hidden;">
+      <div class="empty-state" style="min-height: 200px;">
+        <div class="empty-icon empty-icon-outline">
+          <!-- Checklist icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <path d="M8 12l2.5 2.5L16 9"/>
+          </svg>
+        </div>
+        <div class="empty-title">还没有事项，在下方输入框创建吧</div>
+      </div>
+    </div>
+  </div>
+
+</div></body>
+</html>

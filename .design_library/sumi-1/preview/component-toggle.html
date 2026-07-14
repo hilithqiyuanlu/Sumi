@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toggle — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body { margin: 0; padding: 0; background: var(--neutral-100); font-family: var(--font-body); color: var(--on-surface); -webkit-font-smoothing: antialiased; }
+    .preview-container { max-width: 390px; margin: 0 auto; padding: var(--space-7); background: var(--surface); min-height: 100vh; }
+    .section-label { font-size: var(--font-size-body-xs); font-weight: 600; color: var(--on-surface-variant); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-4); }
+    .section { margin-bottom: var(--space-9); }
+    .toggle-list { display: flex; flex-direction: column; gap: var(--space-6); }
+
+    /* @component-css-start */
+    .toggle {
+      width: 44px;
+      height: 26px;
+      border-radius: var(--radius-full);
+      border: none;
+      cursor: pointer;
+      position: relative;
+      transition: background var(--duration-normal) var(--easing-standard);
+      flex-shrink: 0;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #ffffff;
+      top: 2px;
+      left: 2px;
+      transition: transform var(--duration-normal) var(--easing-standard);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+
+    /* OFF */
+    .toggle--off {
+      background: var(--neutral-300);
+    }
+
+    .toggle--off::after {
+      transform: translateX(0);
+    }
+
+    /* ON */
+    .toggle--on {
+      background: var(--primary-600);
+    }
+
+    .toggle--on::after {
+      transform: translateX(18px);
+    }
+
+    /* With Label */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-7);
+      padding: var(--space-4) 0;
+    }
+
+    .toggle-row__label {
+      font-size: var(--font-size-body-base);
+      font-weight: 500;
+      color: var(--on-surface);
+      line-height: var(--line-height-body-base);
+    }
+
+    .toggle-row__description {
+      font-size: var(--font-size-body-sm);
+      color: var(--on-surface-variant);
+      line-height: var(--line-height-body-sm);
+      margin-top: var(--space-1);
+    }
+
+    .toggle-row__text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* @component-css-end */
+  </style>
+</head>
+<body>
+<div class="preview-container">
+
+  <!-- DEFAULT OFF / ON -->
+  <div class="section">
+    <div class="section-label">Default</div>
+    <div class="toggle-list">
+      <div style="display: flex; gap: var(--space-7); align-items: center;">
+        <div class="toggle toggle--off" role="switch" aria-checked="false"></div>
+        <span style="font-size: var(--font-size-body-md); color: var(--on-surface-variant);">OFF</span>
+      </div>
+      <div style="display: flex; gap: var(--space-7); align-items: center;">
+        <div class="toggle toggle--on" role="switch" aria-checked="true"></div>
+        <span style="font-size: var(--font-size-body-md); color: var(--on-surface-variant);">ON</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- WITH LABEL -->
+  <div class="section">
+    <div class="section-label">With Label</div>
+    <div class="toggle-list">
+      <div class="toggle-row">
+        <div class="toggle-row__text">
+          <span class="toggle-row__label">推送通知</span>
+          <span class="toggle-row__description">接收任务提醒和更新</span>
+        </div>
+        <div class="toggle toggle--on" role="switch" aria-checked="true"></div>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row__text">
+          <span class="toggle-row__label">自动同步</span>
+          <span class="toggle-row__description">自动同步数据到云端</span>
+        </div>
+        <div class="toggle toggle--off" role="switch" aria-checked="false"></div>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-row__text">
+          <span class="toggle-row__label">深色模式</span>
+        </div>
+        <div class="toggle toggle--off" role="switch" aria-checked="false"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

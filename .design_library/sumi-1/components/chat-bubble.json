@@ -19,7 +19,7 @@
     {
       "id": "ai-response",
       "name": "AI Response",
-      "description": "AI's reply in white bubble with outline-variant border, aligned to the left"
+      "description": "AI's reply in white bubble with outline-variant border and subtle shadow, aligned to the left"
     },
     {
       "id": "streaming",
@@ -50,7 +50,7 @@
     "userBg": "var(--color-primary-100)",
     "userText": "var(--color-on-surface)",
     "userAlign": "right",
-    "userRadius": "var(--radius-20) var(--radius-20) var(--radius-20) 4px",
+    "userRadius": "20px var(--radius-20) var(--radius-20) var(--radius-20)",
     "aiBg": "var(--color-surface)",
     "aiText": "var(--color-on-surface)",
     "aiBorder": "1px solid var(--color-outline-variant)",
@@ -70,6 +70,7 @@
     "timestampAlignment": "center",
     "timestampMarginBottom": "var(--space-3)",
     "maxWidth": "78%",
+    "aiShadow": "0 1px 3px rgba(14,17,21,.03)",
     "padding": "10px 14px"
   },
   "uiCopySamples": {

@@ -1,36 +1,190 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat Input</title>
-<link rel="stylesheet" href="../colors_and_type.css">
-<style>
-  body { margin: 0; padding: 12px; background: var(--color-surface); font-family: var(--font-sans); color: var(--color-on-surface); }
-  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .label { font-size: 10px; color: var(--color-muted-foreground); min-width: 80px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-  .divider { border: none; border-top: 1px solid var(--color-border); margin: 4px 0 10px; }
-  /* @component-css-start */
-  .chat-input { display: flex; align-items: center; width: 100%; max-width: 420px; height: var(--size-button-lg); background: var(--surface-chip); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-pill); padding: 0 var(--space-4); box-sizing: border-box; transition: border-color .2s, box-shadow .2s; }
-  .chat-input:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(var(--color-primary), .18); }
-  .chat-input__field { flex: 1; border: none; outline: none; background: none; font-family: var(--font-sans); font-size: var(--font-size-body); color: var(--color-on-surface); }
-  .chat-input__field::placeholder { color: var(--color-muted-foreground); }
-  /* @component-css-end */
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Input — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--surface);
+      min-height: 100vh;
+    }
+
+    .variant-title {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-6);
+    }
+    .variant-section + .variant-section {
+      margin-top: var(--space-9);
+    }
+
+    /* ===== Floating Capsule Input ===== */
+    .chat-capsule {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      min-height: 48px;
+      max-height: 120px;
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow:
+        0 2px 16px rgba(0, 0, 0, 0.08),
+        0 0 1px rgba(0, 0, 0, 0.04);
+      padding: var(--space-5) var(--space-6) var(--space-5) var(--space-7);
+      gap: var(--space-4);
+      transition: box-shadow 250ms var(--easing-standard);
+      box-sizing: border-box;
+    }
+
+    /* Text input inside capsule */
+    .chat-capsule .input-field {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font-size: var(--font-size-body-base);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      outline: none;
+      line-height: 1.4;
+      padding: 0;
+      min-width: 0;
+      resize: none;
+    }
+    .chat-capsule .input-field::placeholder {
+      color: var(--on-surface-variant);
+    }
+
+    /* Send button INSIDE capsule */
+    .chat-capsule .send-btn {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--primary-600);
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 150ms var(--easing-standard);
+    }
+    .chat-capsule .send-btn:hover {
+      background: var(--primary-500);
+    }
+    .chat-capsule .send-btn svg {
+      width: 16px;
+      height: 16px;
+      color: #ffffff;
+    }
+
+    /* Hidden placeholder to keep layout when no send button */
+    .chat-capsule .send-placeholder {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      visibility: hidden;
+    }
+
+    /* Focused state — subtle purple glow */
+    .chat-capsule.focused {
+      box-shadow:
+        0 4px 24px rgba(75, 63, 227, 0.12),
+        0 0 1px rgba(75, 63, 227, 0.2);
+      border-color: rgba(75, 63, 227, 0.15);
+    }
+
+    /* Dark background demo */
+    .dark-bg {
+      background: linear-gradient(135deg, #1a1759 0%, #2c2290 100%);
+      border-radius: var(--radius-16);
+      padding: 32px 16px;
+      margin-top: var(--space-9);
+    }
+    .dark-bg .variant-title {
+      color: rgba(255, 255, 255, 0.5);
+    }
+    .dark-bg .chat-capsule {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow:
+        0 2px 20px rgba(0, 0, 0, 0.2),
+        0 0 1px rgba(255, 255, 255, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    .dark-bg .chat-capsule .input-field {
+      color: #ffffff;
+    }
+    .dark-bg .chat-capsule .input-field::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+  </style>
 </head>
 <body>
-  <div class="row">
-    <span class="label">Default</span>
-    <div class="chat-input">
-      <input class="chat-input__field" type="text" placeholder="尽管问">
+  <div class="preview-container">
+
+    <!-- DEFAULT — empty state -->
+    <div class="variant-section">
+      <div class="variant-title">DEFAULT</div>
+      <div class="chat-capsule">
+        <input type="text" class="input-field" placeholder="尽管说" readonly>
+        <span class="send-placeholder"></span>
+      </div>
     </div>
-  </div>
-  <hr class="divider">
-  <div class="row">
-    <span class="label">With Text</span>
-    <div class="chat-input">
-      <input class="chat-input__field" type="text" value="建议以什么顺序开展我今天的待办">
+
+    <!-- WITH TEXT — send button inside capsule -->
+    <div class="variant-section">
+      <div class="variant-title">WITH TEXT</div>
+      <div class="chat-capsule focused">
+        <input type="text" class="input-field" value="建议以什么顺序开展我今天的待办" readonly>
+        <button class="send-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="12" x2="20" y2="12"/>
+            <polyline points="14 6 20 12 14 18"/>
+          </svg>
+        </button>
+      </div>
     </div>
+
+    <!-- Dark background — liquid glass effect -->
+    <div class="variant-section dark-bg">
+      <div class="variant-title">LIQUID GLASS (DARK BG)</div>
+      <div class="chat-capsule">
+        <input type="text" class="input-field" placeholder="尽管说" readonly>
+        <span class="send-placeholder"></span>
+      </div>
+    </div>
+    <div class="variant-section dark-bg">
+      <div class="variant-title">LIQUID GLASS + SEND</div>
+      <div class="chat-capsule focused">
+        <input type="text" class="input-field" value="帮我制定本周的学习计划" readonly>
+        <button class="send-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="12" x2="20" y2="12"/>
+            <polyline points="14 6 20 12 14 18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
   </div>
 </body>
 </html>

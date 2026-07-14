@@ -57,6 +57,15 @@ class SumiStore extends ChangeNotifier
     notifyListeners();
   }
 
+  // --- 消息发送信号（不持久化） ---
+  int _messageSentSignal = 0;
+  int get messageSentSignal => _messageSentSignal;
+
+  void notifyMessageSent() {
+    _messageSentSignal++;
+    notifyListeners();
+  }
+
   // --- 数据列表（mixin 需要访问，不可私有） ---
   final List<TodoItem> todoItems = [];
   final List<Project> projectList = [];
@@ -98,8 +107,8 @@ class SumiStore extends ChangeNotifier
 
     store._initAiService();
 
-    // 加载对话列表
-    await store.loadConversations();
+    // 加载今天的会话
+    await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
 
     // 检测并生成每日 todo
     await store.checkAndGenerateDaily();
@@ -223,13 +232,21 @@ class SumiStore extends ChangeNotifier
     afterMutation();
   }
 
+  /// 更新用户昵称。
+  void updateUserName(String name) {
+    appSettings = appSettings.copyWith(userName: name.trim());
+    afterMutation();
+  }
+
   // ---------------------------------------------------------------------------
   // 核心方法
   // ---------------------------------------------------------------------------
 
-  void selectDate(DateTime date) {
+  Future<void> selectDate(DateTime date) async {
     selectedDate = dateOnly(date);
     afterMutation();
+    // 切换到该日期的会话
+    await _getOrCreateConversationForDate(dateKey(selectedDate));
   }
 
   // ---------------------------------------------------------------------------
