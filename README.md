@@ -13,8 +13,9 @@
 
 - **📋 Keep 风格事项网格** — Masonry 瀑布流布局，Pin 置顶 / 完成态 / 长按拖拽排序 / 拖到日期分配
 - **🤖 AI 智能拆分与润色** — 输入 >18 字触发 DeepSeek 拆分；编辑面板一键 AI 润色标题
-- **💬 米糖 Tab** — 内建 AI 对话助手，支持流式输出、多会话管理、Markdown 渲染、语音输入
+- **💬 米糖 Tab** — 内建 AI 对话助手，流式输出、多会话管理、Markdown 渲染、Thinking 模式开关
 - **🔧 Function Calling** — AI 可调用工具读写 todo / memory，支持 Agent 自主循环
+- **🛠 Wrench 工具面板** — 对话页侧边面板，整合语音输入、工具调用等快捷操作
 - **📅 日历导航** — 折叠态日期条 + 展开月视图，垂直拖拽手势切换
 - **📂 项目系统** — 最多 3 个学习项目，AI 生成月计划，月卡解锁机制追踪进度
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Secure Storage，无需服务器
@@ -75,10 +76,10 @@ lib/
 ├── theme/app_theme.dart              # 浅色扁平主题
 └── features/
     ├── todos/                        # 事项网格、卡片、输入栏、编辑面板
-    ├── chat/                         # 对话页面、气泡、输入、会话列表、语音按钮
+    ├── chat/                         # 对话页面、气泡、输入、会话列表、Wrench 工具面板
     ├── calendar/                     # 日期条、月历、月视图展开层
     ├── projects/                     # 项目卡、月卡 Pager、项目编辑器
-    └── settings/                     # API Key 配置、清除数据
+    └── settings/                     # API Key 配置、Thinking 开关、清除数据
 ```
 
 ## License
