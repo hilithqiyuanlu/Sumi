@@ -38,7 +38,7 @@ class _HomePageState extends State<HomePage>
     stiffness: 250,
     damping: 22,
   );
-  InputMode _inputMode = InputMode.chat;
+  InputMode _inputMode = InputMode.todo;
   List<String> _suggestions = [];
   Timer? _suggestionTimer;
   bool _isGeneratingSuggestions = false;
@@ -213,6 +213,7 @@ class _HomePageState extends State<HomePage>
   // ---------------------------------------------------------------------------
 
   void _onMonthDragUpdate(DragUpdateDetails d) {
+    _dismissKeyboard();
     final h = MediaQuery.of(context).size.height;
     _monthController.value =
         (_monthController.value + d.delta.dy / h).clamp(0.0, 1.0);
@@ -220,7 +221,13 @@ class _HomePageState extends State<HomePage>
 
   void _onMonthDragEnd(DragEndDetails d) {
     final velocity = d.primaryVelocity ?? 0;
-    final shouldOpen = _monthController.value > 0.2 || velocity > 500;
+    // 有速度时按方向决定；慢拖时以 0.35 为界：展开易关，收起易开
+    final bool shouldOpen;
+    if (velocity.abs() > 250) {
+      shouldOpen = velocity > 0;
+    } else {
+      shouldOpen = _monthController.value > 0.35;
+    }
     final target = shouldOpen ? 1.0 : 0.0;
     _monthController.animateWith(SpringSimulation(
       _monthSpring,
@@ -336,7 +343,7 @@ class _HomePageState extends State<HomePage>
                       0,
                       (_monthController.value - 1) *
                           MediaQuery.of(context).size.height),
-                  child: MonthViewSheet(onClose: _closeMonthView),
+                  child: const MonthViewSheet(),
                 ),
               ),
             ),

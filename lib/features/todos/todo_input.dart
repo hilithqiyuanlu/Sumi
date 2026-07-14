@@ -337,7 +337,7 @@ class _TodoInputState extends State<TodoInput> {
                             enabled: !_loading,
                             style: const TextStyle(fontSize: 15),
                             decoration: InputDecoration(
-                              hintText: _isRecording ? '正在收听…' : '尽管说',
+                              hintText: _isRecording ? '正在收听…' : '新增事项',
                               filled: false,
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,

@@ -3,7 +3,7 @@
 一个 **AI 原生**的个人效率伴侣 — 以对话为主要界面，融合事项管理、学习规划与知识记忆。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-iOS%2013%2B-lightgrey" alt="platform">
+  <img src="https://img.shields.io/badge/platform-iOS%2016%2B%20%7C%20Android-lightgrey" alt="platform">
   <img src="https://img.shields.io/badge/framework-Flutter-02569B?logo=flutter" alt="flutter">
   <img src="https://img.shields.io/badge/AI-DeepSeek-4B6BFB" alt="deepseek">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
@@ -12,7 +12,7 @@
 ## 功能
 
 - **💬 AI 对话** — 首页即对话，流式输出 Markdown 渲染，支持 Thinking 过程展示与 Function Calling 工具调用
-- **📋 事项管理** — 输入 >16 字自动触发 AI 智能拆分；支持置顶、完成态、长按排序、拖拽分配日期、编辑面板 AI 润色
+- **📋 事项管理** — 输入 >18 字自动触发 AI 智能拆分；支持置顶、完成态、长按排序、拖拽分配日期、编辑面板 AI 润色
 - **📂 学习项目** — 最多 3 个项目，AI 生成月度学习计划，月卡解锁机制追踪进度
 - **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 8 维度评分，生成分阶段学习计划
 - **📅 日历导航** — 折叠日期条 + 展开月视图，垂直拖拽手势自然切换
@@ -43,8 +43,8 @@ cd Sumi
 flutter pub get
 
 # 3. 运行
-flutter run              # Debug
-flutter run --release    # 发布到 iPhone
+flutter run              # Debug（iOS / Android）
+flutter run --release    # 发布模式
 ```
 
 > 首次使用需在设置中配置 [DeepSeek API Key](https://platform.deepseek.com/)，AI 功能依赖此项。

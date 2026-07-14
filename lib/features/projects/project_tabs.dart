@@ -79,8 +79,12 @@ class ProjectTabs extends StatelessWidget {
               ),
             );
           }),
-          // 添加按钮
-          GestureDetector(
+          // 添加按钮 —— InkWell + Material 确保在 ScrollView 内可靠响应
+          Material(
+            color: surfaceAlt,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
               onTap: () {
                 HapticFeedback.selectionClick();
                 Navigator.of(context).push(
@@ -91,28 +95,26 @@ class ProjectTabs extends StatelessWidget {
                 );
               },
               child: Container(
+                constraints: const BoxConstraints(minHeight: 44),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
+                    const EdgeInsets.symmetric(horizontal: s16, vertical: s12),
                 decoration: BoxDecoration(
-                  color: surfaceAlt,
+                  border: Border.all(
+                      color: line.withValues(alpha: 0.3), width: 1),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: line.withValues(alpha: 0.3), width: 1),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add,
-                        size: iconSmall, color: textTertiary),
-                    const SizedBox(width: s4),
-                    Text(
-                      '新建',
-                      style: TextStyle(
-                          fontSize: 13, color: textTertiary),
-                    ),
+                    Icon(Icons.add, size: iconSmall, color: textTertiary),
+                    SizedBox(width: s6),
+                    Text('新建',
+                        style: TextStyle(fontSize: 13, color: textTertiary)),
                   ],
                 ),
               ),
             ),
+          ),
         ],
       ),
     );

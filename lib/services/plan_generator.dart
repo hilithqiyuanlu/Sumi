@@ -60,50 +60,46 @@ class PlanGenerator {
 
     Future<void> sleep(int ms) => Future.delayed(Duration(milliseconds: ms));
 
-    // Phase 1: 置信度检查
+    // Phase 1: 置信度检查（放慢节奏）
     emit(BubbleType.searching, '让我梳理一下已有的信息…');
-    await sleep(800);
+    await sleep(1200);
 
     if (domainKnowledge.contains('未能搜索到') ||
         domainKnowledge.length < 200) {
       emit(BubbleType.thinking,
           '关于这个方向的信息有点少，我先基于已知的来规划…');
-      await sleep(600);
+      await sleep(900);
     } else {
       emit(BubbleType.searching, '找到不少参考信息，开始规划…');
-      await sleep(600);
+      await sleep(900);
     }
 
     // Phase 2: 规划生成（弹幕在 AI 调用期间继续发射）
     emit(BubbleType.thinking, '根据你的水平，我来设计一个合适的学习节奏…');
-    await sleep(300);
+    await sleep(400);
 
-    // 异步发射更多弹幕，同时等待 AI 响应
+    // 异步发射弹幕，同时等待 AI 响应
     final bubbleFutures = <Future<void>>[];
     final presetThinking = List<String>.from(
         _bubblePresets[BubbleType.thinking]!..shuffle());
-    for (final text in presetThinking.take(4)) {
+    for (final text in presetThinking.take(3)) {
       bubbleFutures.add(
-        sleep(1500).then((_) => emit(BubbleType.thinking, text)),
+        sleep(2000 + bubbleFutures.length * 100)
+            .then((_) => emit(BubbleType.thinking, text)),
       );
     }
 
     // 发起 AI 规划
     PlanResult? plan;
-    try {
-      plan = await ai.generatePlanEnhanced(
-        goal: goal,
-        level: level,
-        cycleMonths: cycleMonths,
-        timeConstraint: timeConstraint,
-        startDate: startDate,
-        assessmentReport: assessmentReport,
-        domainKnowledge: domainKnowledge,
-      );
-    } catch (_) {
-      emit(BubbleType.info, '规划生成遇到了问题，请稍后重试…');
-      return null;
-    }
+    plan = await ai.generatePlanEnhanced(
+      goal: goal,
+      level: level,
+      cycleMonths: cycleMonths,
+      timeConstraint: timeConstraint,
+      startDate: startDate,
+      assessmentReport: assessmentReport,
+      domainKnowledge: domainKnowledge,
+    );
 
     // 等弹幕先发完
     await Future.wait(bubbleFutures);
@@ -113,22 +109,22 @@ class PlanGenerator {
       return null;
     }
 
-    // Phase 3: 验证
+    // Phase 3: 验证（放慢节奏）
     emit(BubbleType.validating, '让我验证一下整体计划的合理性…');
-    await sleep(1000);
+    await sleep(1500);
 
     if (plan.monthPlans.length < cycleMonths) {
       emit(BubbleType.thinking,
           '注意：生成的月计划数 (${plan.monthPlans.length}) 少于设定周期 ($cycleMonths)…');
-      await sleep(600);
+      await sleep(900);
     }
 
     emit(BubbleType.validating, '确认每个月的递进关系…');
-    await sleep(800);
+    await sleep(1200);
 
     // Phase 4: 完成
     emit(BubbleType.info, '计划已经生成好了！');
-    await sleep(400);
+    await sleep(500);
 
     return plan;
   }

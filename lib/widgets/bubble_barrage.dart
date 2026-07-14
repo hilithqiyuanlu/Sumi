@@ -22,6 +22,8 @@ class _BubbleBarrageState extends State<BubbleBarrage>
   final _random = Random();
   StreamSubscription<PlanningBubble>? _subscription;
 
+  static const _maxBubbles = 3;
+
   @override
   void initState() {
     super.initState();
@@ -40,18 +42,30 @@ class _BubbleBarrageState extends State<BubbleBarrage>
   void _onBubble(PlanningBubble bubble) {
     final controller = AnimationController(
       vsync: this as TickerProvider,
-      duration: const Duration(milliseconds: 5000),
+      duration: const Duration(milliseconds: 8000),
     );
 
-    final startX = 10.0 + _random.nextDouble() * 70.0; // 10%-80% 屏幕宽度
-    final animation = Tween<double>(begin: 0.65, end: 0.05).animate(
-      CurvedAnimation(parent: controller, curve: Curves.easeOutCubic),
+    // 水平位置：15%-75% 屏幕宽度
+    final startX = 15.0 + _random.nextDouble() * 60.0;
+
+    // 上浮动画：从底部 80% 到顶部 3%
+    final floatAnimation = Tween<double>(begin: 0.80, end: 0.03).animate(
+      CurvedAnimation(parent: controller, curve: Curves.easeOutQuart),
+    );
+
+    // 缩放动画：从 0.92 到 1.0，制造"冒泡"感
+    final scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: const Interval(0.0, 0.3, curve: Curves.easeOutBack),
+      ),
     );
 
     final data = _BubbleData(
       bubble: bubble,
       controller: controller,
-      animation: animation,
+      floatAnimation: floatAnimation,
+      scaleAnimation: scaleAnimation,
       startX: startX,
     );
 
@@ -66,8 +80,7 @@ class _BubbleBarrageState extends State<BubbleBarrage>
 
     setState(() => _activeBubbles.add(data));
 
-    // 限制最多 4 个气泡
-    if (_activeBubbles.length > 4) {
+    if (_activeBubbles.length > _maxBubbles) {
       final oldest = _activeBubbles.removeAt(0);
       oldest.controller.dispose();
     }
@@ -86,28 +99,36 @@ class _BubbleBarrageState extends State<BubbleBarrage>
 
   @override
   Widget build(BuildContext context) {
-    // 需要 TickerProvider，必须用 SingleTickerProviderStateMixin
-    // StatefulWidget 不能直接当 vsync，需要加 mixin
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Stack(
       children: _activeBubbles.map((data) {
         return AnimatedBuilder(
-          animation: data.animation,
+          animation: data.floatAnimation,
           builder: (context, child) {
-            final opacity = (1.0 - Curves.easeIn.transform(data.controller.value)).clamp(0.0, 1.0);
+            // 透明度：使用 easeInSine 更慢地淡出
+            final opacity =
+                (1.0 - Curves.easeInSine.transform(data.controller.value))
+                    .clamp(0.0, 1.0);
             return Positioned(
-              left: MediaQuery.of(context).size.width * data.startX / 100,
-              top: MediaQuery.of(context).size.height * data.animation.value,
+              left: screenWidth * data.startX / 100,
+              top: screenHeight * data.floatAnimation.value,
               child: Opacity(
                 opacity: opacity,
-                child: child,
+                child: Transform.scale(
+                  scale: data.scaleAnimation.value,
+                  child: child,
+                ),
               ),
             );
           },
           child: Container(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
+              maxWidth: screenWidth * 0.75,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: s16, vertical: s10),
             decoration: BoxDecoration(
               color: _bubbleBg(data.bubble.type),
               borderRadius: BorderRadius.circular(radiusPill),
@@ -131,13 +152,15 @@ class _BubbleBarrageState extends State<BubbleBarrage>
 class _BubbleData {
   final PlanningBubble bubble;
   final AnimationController controller;
-  final Animation<double> animation;
+  final Animation<double> floatAnimation;
+  final Animation<double> scaleAnimation;
   final double startX;
 
   _BubbleData({
     required this.bubble,
     required this.controller,
-    required this.animation,
+    required this.floatAnimation,
+    required this.scaleAnimation,
     required this.startX,
   });
 }

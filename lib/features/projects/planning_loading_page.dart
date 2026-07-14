@@ -116,14 +116,26 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
 
   void _stopAndGoBack() {
     _bubbleController.close();
+    // 清理草稿项目
+    final store = SumiScope.read(context);
+    store.deleteProject(widget.projectId);
     // pop 回编辑页
+    Navigator.of(context).pop();
+  }
+
+  /// 返回编辑并清理草稿。
+  void _goBackAndCleanup() {
+    _bubbleController.close();
+    final store = SumiScope.read(context);
+    store.deleteProject(widget.projectId);
     Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+
     return Scaffold(
-      appBar: AppBar(leading: const SizedBox.shrink()),
       body: Stack(
         children: [
           // 弹幕层
@@ -137,16 +149,19 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
           // 中央状态
           Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: s32),
+              padding: EdgeInsets.fromLTRB(
+                  s32, topPadding + 56 + s16, s32, s16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_hasError) ...[
-                    const Icon(Icons.error_outline, size: 48, color: textTertiary),
+                    const Icon(Icons.error_outline,
+                        size: 48, color: textTertiary),
                     const SizedBox(height: s16),
                     Text(
                       _errorMessage,
-                      style: const TextStyle(fontSize: 15, color: textTertiary),
+                      style: const TextStyle(
+                          fontSize: 15, color: textTertiary),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: s24),
@@ -165,13 +180,14 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
                         ),
                         const SizedBox(width: s12),
                         TextButton(
-                          onPressed: _stopAndGoBack,
+                          onPressed: _goBackAndCleanup,
                           child: const Text('返回编辑'),
                         ),
                       ],
                     ),
                   ] else ...[
-                    const Icon(Icons.auto_awesome, size: 48, color: mintDeep),
+                    const Icon(Icons.auto_awesome,
+                        size: 48, color: mintDeep),
                     const SizedBox(height: s16),
                     const Text(
                       'Sumi 正在定制学习计划',
@@ -183,7 +199,8 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
                     const SizedBox(height: s8),
                     const Text(
                       '正在分析评估报告并结合领域知识…',
-                      style: TextStyle(fontSize: 13, color: textTertiary),
+                      style:
+                          TextStyle(fontSize: 13, color: textTertiary),
                     ),
                   ],
                 ],
@@ -205,6 +222,39 @@ class _PlanningLoadingPageState extends State<PlanningLoadingPage> {
                 ),
               ),
             ),
+
+          // 顶部渐变遮罩
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topPadding + 56,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white,
+                      Colors.white.withValues(alpha: 0.92),
+                      Colors.white.withValues(alpha: 0),
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // 返回按钮
+          Positioned(
+            top: topPadding,
+            left: 4,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _stopAndGoBack,
+            ),
+          ),
         ],
       ),
     );

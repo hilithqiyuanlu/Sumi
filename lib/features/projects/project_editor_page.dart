@@ -55,6 +55,9 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
     _timeConstraint = p?.timeConstraint ?? 0;
     if (!_hourValues.contains(_timeConstraint)) _timeConstraint = _hourValues.first;
+
+    // 监听目标输入以更新按钮状态
+    _goalCtrl.addListener(() => setState(() {}));
   }
 
   @override
@@ -88,8 +91,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
       );
     } else {
       // 新建：创建空壳项目（不含月卡，等规划完成后一次性写入）
-      projectId = newSumiIdLocal();
-      store.addProjectDraft(
+      projectId = store.addProjectDraft(
         name: name,
         color: _color,
         goal: goal,
@@ -115,128 +117,170 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          _isEditing ? '编辑项目' : '新建项目',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        centerTitle: false,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(s20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 名称
-            TextField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(
-                labelText: '项目名称',
-                hintText: '未命名项目',
-              ),
-            ),
-            const SizedBox(height: s16),
-
-            // 颜色选择
-            const Text('颜色',
-                style: TextStyle(fontSize: 13, color: textTertiary)),
-            const SizedBox(height: s8),
-            Wrap(
-              spacing: s6,
-              runSpacing: s6,
-              children: ProjectColor.values.map((c) {
-                final selected = c == _color;
-                final fill = projectFillColor(c);
-                return GestureDetector(
-                  onTap: () => setState(() => _color = c),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: fill,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: selected ? mintDeep : Colors.transparent,
-                        width: 2.5,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: s16),
-
-            // 目标（必填）
-            TextField(
-              controller: _goalCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '目标 *',
-                hintText: '描述你的学习目标',
-              ),
-            ),
-            const SizedBox(height: s16),
-
-            // 水平
-            TextField(
-              controller: _levelCtrl,
-              decoration: const InputDecoration(
-                labelText: '当前水平',
-                hintText: '如：零基础 / 入门 / 进阶',
-              ),
-            ),
-            const SizedBox(height: s16),
-
-            // 周期 + 投入时间并排
-            Row(
+      body: Stack(
+        children: [
+          GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            behavior: HitTestBehavior.translucent,
+            child: SingleChildScrollView(
+              padding:
+                  EdgeInsets.fromLTRB(s20, topPadding + 56 + s8, s20, s20),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _PickerColumn<int>(
-                    label: '周期',
-                    value: _cycleMonths,
-                    items: _cycleValues,
-                    labels: _cycleLabels,
-                    onChanged: (v) => setState(() => _cycleMonths = v),
+                // 名称
+                TextField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '项目名称',
+                    hintText: '未命名项目',
                   ),
                 ),
-                const SizedBox(width: s12),
-                Expanded(
-                  child: _PickerColumn<int>(
-                    label: '投入时间',
-                    value: _timeConstraint,
-                    items: _hourValues,
-                    labels: _hourLabels,
-                    onChanged: (v) => setState(() => _timeConstraint = v),
+                const SizedBox(height: s16),
+
+                // 颜色选择
+                const Text('颜色',
+                    style: TextStyle(fontSize: 13, color: textTertiary)),
+                const SizedBox(height: s8),
+                Wrap(
+                  spacing: s6,
+                  runSpacing: s6,
+                  children: ProjectColor.values.map((c) {
+                    final selected = c == _color;
+                    final fill = projectFillColor(c);
+                    return GestureDetector(
+                      onTap: () => setState(() => _color = c),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: fill,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selected ? mintDeep : Colors.transparent,
+                            width: 2.5,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: s16),
+
+                // 目标（必填）
+                TextField(
+                  controller: _goalCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: '目标 *',
+                    hintText: '描述你的学习目标',
+                  ),
+                ),
+                const SizedBox(height: s16),
+
+                // 水平
+                TextField(
+                  controller: _levelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '当前水平',
+                    hintText: '如：零基础 / 入门 / 进阶',
+                  ),
+                ),
+                const SizedBox(height: s16),
+
+                // 周期 + 投入时间并排
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _PickerColumn<int>(
+                        label: '周期',
+                        value: _cycleMonths,
+                        items: _cycleValues,
+                        labels: _cycleLabels,
+                        onChanged: (v) => setState(() => _cycleMonths = v),
+                      ),
+                    ),
+                    const SizedBox(width: s12),
+                    Expanded(
+                      child: _PickerColumn<int>(
+                        label: '投入时间',
+                        value: _timeConstraint,
+                        items: _hourValues,
+                        labels: _hourLabels,
+                        onChanged: (v) => setState(() => _timeConstraint = v),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: s32),
+
+                // 提交按钮
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _goalCtrl.text.trim().isEmpty ? null : _submit,
+                    child: const Text('开始评估 →'),
+                  ),
+                ),
+                const SizedBox(height: s8),
+                Center(
+                  child: Text(
+                    '填写目标后，Sumi 将评估可行性并生成学习计划',
+                    style: const TextStyle(fontSize: 12, color: textTertiary),
                   ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: s32),
-
-            // 提交按钮
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _goalCtrl.text.trim().isEmpty ? null : _submit,
-                child: const Text('开始评估 →'),
               ),
             ),
-            const SizedBox(height: s8),
-            Center(
-              child: Text(
-                '填写目标后，Sumi 将评估可行性并生成学习计划',
-                style: const TextStyle(fontSize: 12, color: textTertiary),
+          ),
+          // 顶部渐变遮罩
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topPadding + 56,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white,
+                      Colors.white.withValues(alpha: 0.92),
+                      Colors.white.withValues(alpha: 0),
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+          // 关闭按钮 + 标题
+          Positioned(
+            top: topPadding,
+            left: 4,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Text(
+                  _isEditing ? '编辑项目' : '新建项目',
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: ink),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -340,8 +384,4 @@ class _PickerColumnState<T> extends State<_PickerColumn<T>> {
   }
 }
 
-/// 临时 ID 生成（本地，避免循环引用 sumi_store）。
-String newSumiIdLocal() {
-  return 'proj-${DateTime.now().microsecondsSinceEpoch}';
-}
 

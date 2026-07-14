@@ -10,10 +10,9 @@ import '../projects/project_tabs.dart';
 import '../shared/drag_handle.dart';
 import 'month_calendar.dart';
 
-/// 展开的月视图层 —— 包含日历 + 项目区。
+/// 展开的月视图层 —— 日历 + 项目区。上下拖拽把手提供视觉引导，手势由父级处理。
 class MonthViewSheet extends StatelessWidget {
-  final VoidCallback onClose;
-  const MonthViewSheet({required this.onClose, super.key});
+  const MonthViewSheet({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -29,38 +28,18 @@ class MonthViewSheet extends StatelessWidget {
         children: [
           // 系统状态栏避开
           SizedBox(height: MediaQuery.of(context).padding.top),
-          // 拖拽把手
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: s12),
-            child: DragHandle(),
-          ),
-          // 标题 + 关闭按钮
+          // 月份标题（居中）
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: s16, vertical: s4),
-            child: Row(
-              children: [
-                const SizedBox(width: 48),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      '${store.selectedDate.month}月',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: ink,
-                      ),
-                    ),
-                  ),
+            padding: const EdgeInsets.only(top: s16, bottom: s8),
+            child: Center(
+              child: Text(
+                '${store.selectedDate.month}月',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: ink,
                 ),
-                IconButton(
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    onClose();
-                  },
-                  icon: const Icon(Icons.close),
-                ),
-              ],
+              ),
             ),
           ),
           // 可滚动内容
@@ -114,7 +93,14 @@ class MonthViewSheet extends StatelessWidget {
                       ),
                     ),
                   ],
-                  const SizedBox(height: s24),
+                  // 底部拖拽把手（上推收起）
+                  const SizedBox(height: s12),
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: s16),
+                      child: DragHandle(),
+                    ),
+                  ),
                 ],
               ),
             ),

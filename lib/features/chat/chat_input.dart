@@ -46,6 +46,9 @@ class _ChatInputState extends State<ChatInput> {
   Timer? _autoSendTimer;
   bool _userEditedAfterVoice = false;
 
+  // 模式切换按钮按压动画
+  bool _modePressed = false;
+
   // 长按语音手势检测
   Timer? _longPressTimer;
   Offset? _pointerDownPos;
@@ -107,6 +110,11 @@ class _ChatInputState extends State<ChatInput> {
   }
 
   void _toggleMode() {
+    HapticFeedback.selectionClick();
+    setState(() => _modePressed = true);
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _modePressed = false);
+    });
     final newMode = widget.mode == InputMode.chat ? InputMode.todo : InputMode.chat;
     widget.onModeChanged?.call(newMode);
   }
@@ -261,21 +269,9 @@ class _ChatInputState extends State<ChatInput> {
   // UI
   // ---------------------------------------------------------------------------
 
-  Color get _modeColor {
-    return widget.mode == InputMode.todo ? accent500 : mintDeep;
-  }
-
-  Color get _modeLightColor {
-    return widget.mode == InputMode.todo ? accent50 : primary50;
-  }
-
-  String get _hintText {
+  String get _placeholderText {
     if (_isRecording) return '正在收听…';
-    return '尽管说';
-  }
-
-  String get _modeLabel {
-    return widget.mode == InputMode.todo ? '说' : '问';
+    return widget.mode == InputMode.todo ? '新增事项' : '尽管说';
   }
 
   @override
@@ -327,7 +323,7 @@ class _ChatInputState extends State<ChatInput> {
             bottom: MediaQuery.of(context).padding.bottom + s8,
           ),
           child: Container(
-            constraints: const BoxConstraints(maxHeight: 140),
+            constraints: const BoxConstraints(maxHeight: 180),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.82),
               borderRadius: BorderRadius.circular(radiusPill),
@@ -357,34 +353,27 @@ class _ChatInputState extends State<ChatInput> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // 模式切换按钮（胶囊内左侧，垂直居中）
+                    // 模式切换（单按钮 + 切换图标 + 按压反馈）
                     Padding(
-                      padding: const EdgeInsets.only(left: s12),
+                      padding: const EdgeInsets.only(left: 14),
                       child: GestureDetector(
                         onTap: widget.enabled ? _toggleMode : null,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 240),
-                          switchInCurve: Curves.easeOut,
-                          switchOutCurve: Curves.easeIn,
-                          transitionBuilder: (child, animation) {
-                            return FadeTransition(opacity: animation, child: child);
-                          },
+                        child: AnimatedScale(
+                          scale: _modePressed ? 0.82 : 1.0,
+                          duration: const Duration(milliseconds: 120),
+                          curve: Curves.easeOutBack,
                           child: Container(
-                            key: ValueKey(widget.mode),
                             width: 36,
                             height: 36,
-                            decoration: BoxDecoration(
-                              color: _modeLightColor,
+                            decoration: const BoxDecoration(
+                              color: primary50,
                               shape: BoxShape.circle,
                             ),
                             alignment: Alignment.center,
-                            child: Text(
-                              _modeLabel,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: _modeColor,
-                              ),
+                            child: const Icon(
+                              Icons.swap_horiz_rounded,
+                              size: 20,
+                              color: primary500,
                             ),
                           ),
                         ),
@@ -407,14 +396,14 @@ class _ChatInputState extends State<ChatInput> {
                             textInputAction: TextInputAction.newline,
                             style: const TextStyle(fontSize: 15),
                             decoration: InputDecoration(
-                              hintText: _hintText,
+                              hintText: _placeholderText,
                               filled: false,
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: s8,
-                                vertical: 22,
+                                vertical: 24,
                               ),
                             ),
                             onSubmitted: (_) => _send(),
@@ -445,7 +434,7 @@ class _ChatInputState extends State<ChatInput> {
                                 color: mintDeep,
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(
+                              child: const Icon(
                                 Icons.send,
                                 size: 16,
                                 color: Colors.white,

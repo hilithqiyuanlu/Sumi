@@ -136,7 +136,7 @@ class _TodosPageState extends State<TodosPage>
             ignoring: _controller.value < 0.01,
             child: Transform.translate(
               offset: Offset(0, (_controller.value - 1) * screenH),
-              child: MonthViewSheet(onClose: _closeMonth),
+              child: const MonthViewSheet(),
             ),
           ),
         ],
