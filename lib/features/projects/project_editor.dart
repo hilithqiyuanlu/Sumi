@@ -70,7 +70,7 @@ void showProjectEditor(
                   Wrap(
                     spacing: s6,
                     runSpacing: s6,
-                    children: ProjectColor.values.take(7).map((c) {
+                    children: ProjectColor.values.map((c) {
                       final selected = c == color;
                       final fill = projectFillColor(c);
                       return GestureDetector(
@@ -266,64 +266,3 @@ class _ItemWheelPickerState<T> extends State<_ItemWheelPicker<T>> {
   }
 }
 
-/// 月卡编辑弹窗。
-void showMonthCardEditor(
-  BuildContext context,
-  SumiStore store, {
-  required MonthCard card,
-}) {
-  final titleCtrl = TextEditingController(text: card.title);
-  final summaryCtrl = TextEditingController(text: card.summary ?? '');
-
-  showDialog(
-    context: context,
-    builder: (ctx) {
-      return AlertDialog(
-        title: const Text('编辑月卡'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(
-                labelText: '标题',
-                hintText: '输入月卡标题',
-              ),
-            ),
-            const SizedBox(height: s12),
-            TextField(
-              controller: summaryCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '摘要（可选）',
-                hintText: '简短描述本月计划',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (titleCtrl.text.trim().isEmpty) return;
-              store.updateMonthCard(
-                card.id,
-                title: titleCtrl.text.trim(),
-                summary:
-                    summaryCtrl.text.trim().isEmpty ? null : summaryCtrl.text.trim(),
-              );
-              Navigator.pop(ctx);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      );
-    },
-  ).then((_) {
-    titleCtrl.dispose();
-    summaryCtrl.dispose();
-  });
-}

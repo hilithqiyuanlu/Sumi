@@ -382,7 +382,7 @@ mixin SumiStoreProjects on ChangeNotifier {
   /// 找到下一个可用的项目色。
   ProjectColor nextAvailableColor() {
     final used = projectList.map((p) => p.color).toSet();
-    for (final c in ProjectColor.values.take(7)) {
+    for (final c in ProjectColor.values) {
       if (!used.contains(c)) return c;
     }
     return ProjectColor.lemon;

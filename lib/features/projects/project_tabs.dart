@@ -89,20 +89,20 @@ class ProjectTabs extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: surfaceAlt,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey.shade300, width: 1),
+                  border: Border.all(color: line.withValues(alpha: 0.3), width: 1),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.add_rounded,
-                        size: iconSmall, color: Colors.grey.shade600),
+                        size: iconSmall, color: textTertiary),
                     const SizedBox(width: s4),
                     Text(
                       '新建',
                       style: TextStyle(
-                          fontSize: 13, color: Colors.grey.shade600),
+                          fontSize: 13, color: textTertiary),
                     ),
                   ],
                 ),

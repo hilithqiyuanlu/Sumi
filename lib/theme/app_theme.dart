@@ -3,49 +3,168 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 
 // ---------------------------------------------------------------------------
-// Design Tokens
+// Design Tokens — aligned with Sumi Design System
 // ---------------------------------------------------------------------------
 
-// Spacing
+// Spacing (from design spec)
 const double s2 = 2;
 const double s4 = 4;
 const double s6 = 6;
 const double s8 = 8;
 const double s10 = 10;
 const double s12 = 12;
-const double s14 = 14;
 const double s16 = 16;
 const double s20 = 20;
 const double s24 = 24;
+const double s32 = 32;
+const double s48 = 48;
 
-// Radius
-const double radiusPanel = 12;
-const double radiusCard = 18;
-const double radiusCardHeader = 20;
+// Border Radius (from design spec)
+const double radius2 = 2;
+const double radius4 = 4;
+const double radius8 = 8;
+const double radius10 = 10;
+const double radius12 = 12; // panel, seg-control
+const double radius16 = 16; // input
+const double radius18 = 18; // card
+const double radius20 = 20; // card-header, large pill
+const double radius22 = 22;
+const double radius24 = 24;
 const double radiusPill = 999;
 
-// Icon sizes
+// Icon sizes (from design spec)
 const double iconSmall = 16;
-const double iconSection = 20;
+const double iconMedium = 20;
+const double iconLarge = 24;
+
+// Legacy aliases (compat with old token names)
+const double radiusPanel = radius12;
+const double radiusCard = radius18;
+const double radiusCardHeader = radius20;
+const double iconSection = iconMedium;
+
+// Button sizes (from design spec)
+const double sizeButtonSm = 32;
+const double sizeButtonMd = 40;
+const double sizeButtonLg = 48;
+const double sizeInputHeight = 36;
 
 // ---------------------------------------------------------------------------
-// Color Palette
+// Color Palette — aligned with Sumi Design System
 // ---------------------------------------------------------------------------
 
-// Primary / accent
-const Color mint = Color(0xFFBEEEDC);
-const Color mintDeep = Color(0xFF4AAE92);
-const Color lemon = Color(0xFFFFE9A8);
-const Color lilac = Color(0xFFDCCBFF);
+// Primary (Mint)
+const Color primary50 = Color(0xFFE9F7F1);
+const Color primary100 = Color(0xFFC8EBDD);
+const Color primary200 = Color(0xFF9DDBC5);
+const Color primary300 = Color(0xFF6EC5A9);
+const Color primary400 = Color(0xFF4FB895);
+const Color primary500 = Color(0xFF4AAE92); // @primary
+const Color primary600 = Color(0xFF3B967C);
+const Color primary700 = Color(0xFF317A66);
+const Color primary800 = Color(0xFF2A6354);
+const Color primary900 = Color(0xFF1F4D40);
 
-// System todo card backgrounds
-const Color mintLight = Color(0xFFE8F5E9);
+// Accent (Coral)
+const Color accent50 = Color(0xFFFDF1EE);
+const Color accent100 = Color(0xFFF9DED8);
+const Color accent200 = Color(0xFFF3C5BB);
+const Color accent300 = Color(0xFFEBA69A);
+const Color accent400 = Color(0xFFE48E7F);
+const Color accent500 = Color(0xFFDF7D6D); // @primary
+const Color accent600 = Color(0xFFD0695A);
+const Color accent700 = Color(0xFFB55549);
+const Color accent800 = Color(0xFF96473E);
+const Color accent900 = Color(0xFF7A3B34);
+
+// Tertiary (Amber)
+const Color tertiary50 = Color(0xFFFEF8E8);
+const Color tertiary100 = Color(0xFFFDEFCD);
+const Color tertiary200 = Color(0xFFFBE1A7);
+const Color tertiary300 = Color(0xFFF7CF7C);
+const Color tertiary400 = Color(0xFFF3BE59);
+const Color tertiary500 = Color(0xFFEFAE3E); // @primary
+const Color tertiary600 = Color(0xFFD69A31);
+const Color tertiary700 = Color(0xFFB38127);
+const Color tertiary800 = Color(0xFF90681F);
+const Color tertiary900 = Color(0xFF735318);
 
 // Neutral
-const Color ink = Color(0xFF233136);
-const Color paper = Color(0xFFFFFBF6);
-const Color line = Color(0xFFE9E0D8);
-const Color textTertiary = Color(0xFF526166);
+const Color neutral50 = Color(0xFFFAF9F7);
+const Color neutral100 = Color(0xFFF3F1ED);
+const Color neutral200 = Color(0xFFE9E0D8);
+const Color neutral300 = Color(0xFFCFC9BE);
+const Color neutral400 = Color(0xFFB5AD9F);
+const Color neutral500 = Color(0xFF9A9183); // @primary
+const Color neutral600 = Color(0xFF827868);
+const Color neutral700 = Color(0xFF6A6054);
+const Color neutral800 = Color(0xFF554D43);
+const Color neutral900 = Color(0xFF3E372F);
+
+// Success
+const Color success500 = Color(0xFF42B570);
+const Color success600 = Color(0xFF359D5D);
+
+// Warning
+const Color warning500 = Color(0xFFF1BA30);
+const Color warning600 = Color(0xFFDBA228);
+
+// Error
+const Color error50 = Color(0xFFFCF3F2);
+const Color error100 = Color(0xFFF8E0DC);
+const Color error500 = Color(0xFFD95D4F);
+const Color error600 = Color(0xFFC94A3D);
+
+// Info
+const Color info200 = Color(0xFFC4D7F3);
+const Color info500 = Color(0xFF5292D4);
+const Color info800 = Color(0xFF2B5694);
+
+// Semantic aliases (light)
+const Color paper = Color(0xFFFFFBF6); // --bg
+const Color ink = Color(0xFF554D43); // --fg / --on-surface (neutral-800)
+const Color line = Color(0xFFE9E0D8); // --rule (neutral-200)
+const Color textTertiary = Color(0xFF9A9183); // --muted (neutral-500)
+const Color textSecondary = Color(0xFFB5AD9F); // neutral-400
+const Color surfaceChip = Color(0xFFF5F1E9); // --surface-chip
+const Color surfaceAlt = Color(0xFFF3F1ED); // neutral-100 / surface-container-low
+const Color surfaceMuted = Color(0xFFFAF9F7); // neutral-50
+
+const Color mint = Color(0xFFC8EBDD); // primary-100 (lighter shade for user bubble bg)
+const Color mintDeep = Color(0xFF4AAE92); // primary-500
+const Color lemon = Color(0xFFFFE9A8); // tertiary-200
+const Color lilac = Color(0xFFDCCBFF); // tag-violet
+const Color cherry = Color(0xFFF8B4C8); // tag-peach
+const Color sky = Color(0xFFB4D4F8); // tag-blue
+const Color peach = Color(0xFFF8D4B4); // tag-peach
+const Color sage = Color(0xFFD4E8D4); // sage green
+
+const Color danger = Color(0xFFD95D4F); // error-500
+
+// Interactive overlays (from spec)
+const Color interactiveHover = Color(0x144AAE92); // 8% primary
+const Color interactiveFocus = Color(0x1F4AAE92); // 12% primary
+const Color interactivePress = Color(0x294AAE92); // 16% primary
+
+// ---------------------------------------------------------------------------
+// Shadows (from design spec)
+// ---------------------------------------------------------------------------
+
+const List<BoxShadow> shadow1 = [
+  BoxShadow(color: Color(0x083E372F), offset: Offset(0, 1), blurRadius: 2), // Card
+];
+const List<BoxShadow> shadow2 = [
+  BoxShadow(color: Color(0x0A3E372F), offset: Offset(0, 1), blurRadius: 3), // Card Hover
+];
+const List<BoxShadow> shadow3 = [
+  BoxShadow(color: Color(0x0D3E372F), offset: Offset(0, 2), blurRadius: 6), // Float
+];
+const List<BoxShadow> shadow4 = [
+  BoxShadow(color: Color(0x103E372F), offset: Offset(0, 4), blurRadius: 12), // Modal
+];
+const List<BoxShadow> shadow5 = [
+  BoxShadow(color: Color(0x143E372F), offset: Offset(0, 8), blurRadius: 24), // Overlay
+];
 
 // ---------------------------------------------------------------------------
 // Project color helpers
@@ -56,13 +175,10 @@ Color projectFillColor(ProjectColor c) {
     ProjectColor.lemon => lemon,
     ProjectColor.mint => mint,
     ProjectColor.lilac => lilac,
-    ProjectColor.cherry => const Color(0xFFF8B4C8),
-    ProjectColor.sky => const Color(0xFFB4D4F8),
-    ProjectColor.peach => const Color(0xFFF8D4B4),
-    ProjectColor.sage => const Color(0xFFD4E8D4),
-    ProjectColor.lavender => const Color(0xFFE8D4F8),
-    ProjectColor.warmGray => const Color(0xFFD4C8C0),
-    ProjectColor.coolGray => const Color(0xFFC8D0D8),
+    ProjectColor.cherry => cherry,
+    ProjectColor.sky => sky,
+    ProjectColor.peach => peach,
+    ProjectColor.sage => sage,
   };
 }
 
@@ -71,7 +187,7 @@ Color projectCardBackground(ProjectColor c) {
 }
 
 Color projectTextColor(ProjectColor c, {bool selected = true}) {
-  if (!selected) return Colors.black54;
+  if (!selected) return neutral800.withValues(alpha: 0.4);
   return switch (c) {
     ProjectColor.lemon => const Color(0xFF8B6914),
     ProjectColor.mint => const Color(0xFF2D7A62),
@@ -80,9 +196,6 @@ Color projectTextColor(ProjectColor c, {bool selected = true}) {
     ProjectColor.sky => const Color(0xFF3A5F8B),
     ProjectColor.peach => const Color(0xFF8B5A3A),
     ProjectColor.sage => const Color(0xFF4A6B4A),
-    ProjectColor.lavender => const Color(0xFF6B4FA0),
-    ProjectColor.warmGray => const Color(0xFF4A403A),
-    ProjectColor.coolGray => const Color(0xFF4A5460),
   };
 }
 
@@ -95,9 +208,34 @@ class AppTheme {
 
   static ThemeData light() {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: mint,
-      primary: mintDeep,
+      seedColor: primary500,
+      primary: primary500,
+      onPrimary: Colors.white,
+      primaryContainer: primary100,
+      onPrimaryContainer: primary900,
+      secondary: accent100,
+      onSecondary: accent900,
+      secondaryContainer: accent50,
+      onSecondaryContainer: accent800,
+      tertiary: tertiary500,
+      onTertiary: Colors.white,
+      tertiaryContainer: tertiary100,
+      onTertiaryContainer: tertiary900,
       surface: paper,
+      surfaceDim: neutral100,
+      surfaceContainerLowest: paper,
+      surfaceContainerLow: neutral100,
+      surfaceContainer: neutral100,
+      surfaceContainerHigh: neutral200,
+      surfaceContainerHighest: neutral300,
+      onSurface: ink,
+      onSurfaceVariant: neutral500,
+      outline: neutral400,
+      outlineVariant: neutral200,
+      error: error500,
+      onError: Colors.white,
+      errorContainer: error100,
+      onErrorContainer: neutral900,
       brightness: Brightness.light,
     );
 
@@ -105,74 +243,98 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: paper,
-      fontFamily: null, // 使用系统默认字体
+      fontFamily: null,
 
-      // Card
+      // Card — design spec: radius-card (18), shadow-1, no border
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
+        shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusCard),
+          borderRadius: BorderRadius.circular(radius18),
         ),
       ),
 
-      // Chip
+      // Chip — design spec: radius-pill, no border
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusPill),
         ),
-        backgroundColor: line.withValues(alpha: 0.3),
-        labelStyle: const TextStyle(fontSize: 13, color: ink),
+        backgroundColor: surfaceChip,
+        labelStyle: const TextStyle(fontSize: 13, color: ink, fontWeight: FontWeight.w400),
         side: BorderSide.none,
+        padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
       ),
 
-      // Input
+      // Input — design spec: filled, radius-sm (8), no visible border by default
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: s16, vertical: s12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: s16, vertical: s12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPanel),
-          borderSide: BorderSide(color: line),
+          borderRadius: BorderRadius.circular(radius8),
+          borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPanel),
-          borderSide: BorderSide(color: line),
+          borderRadius: BorderRadius.circular(radius8),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPanel),
-          borderSide: const BorderSide(color: mintDeep, width: 1.5),
+          borderRadius: BorderRadius.circular(radius8),
+          borderSide: const BorderSide(color: primary300, width: 1.5),
         ),
         hintStyle: const TextStyle(color: textTertiary, fontSize: 14),
       ),
 
-      // Filled button
+      // Filled button — design spec: primary bg, pill radius
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: mintDeep,
+          backgroundColor: primary500,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusPill),
           ),
           textStyle: const TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w500,
+            height: 1.35,
           ),
+          padding: const EdgeInsets.symmetric(horizontal: s24, vertical: s10),
         ),
       ),
 
-      // Outlined button
+      // Outlined button — design spec: pill radius
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusPill),
           ),
+          side: BorderSide(color: neutral300),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+
+      // Text button
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primary500,
           textStyle: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
         ),
+      ),
+
+      // SnackBar — floating with design spec radius
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radius12),
+        ),
+        backgroundColor: neutral800,
       ),
 
       // Navigation bar
@@ -224,5 +386,3 @@ class AppTheme {
     );
   }
 }
-
-// ProjectColor 定义于 models/models.dart，此处通过 import 使用

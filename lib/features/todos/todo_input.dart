@@ -80,7 +80,7 @@ class _TodoInputState extends State<TodoInput> {
               decoration: const InputDecoration(
                 hintText: '添加新事项...',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: paper,
               ),
             ),
           ),

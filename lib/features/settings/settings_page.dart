@@ -22,7 +22,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('设置'),
+        title: null,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s8),
@@ -61,18 +61,18 @@ class _SettingsPageState extends State<SettingsPage> {
             child: TextButton.icon(
               onPressed: () => _confirmClearData(context, store),
               icon: Icon(Icons.delete_outline_rounded,
-                  size: 16, color: Colors.red.shade400),
+                  size: 16, color: danger),
               label: Text('清除数据',
                   style: TextStyle(
                       fontSize: 13,
-                      color: Colors.red.shade400,
+                      color: danger,
                       fontWeight: FontWeight.w500)),
               style: TextButton.styleFrom(
                 padding:
                     const EdgeInsets.symmetric(horizontal: s20, vertical: s10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(radiusPill),
-                  side: BorderSide(color: Colors.red.shade200, width: 1),
+                  side: BorderSide(color: danger.withValues(alpha: 0.7), width: 1),
                 ),
               ),
             ),
@@ -195,7 +195,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: Colors.red.shade400),
+                  backgroundColor: danger),
               onPressed: () {
                 store.clearAllData(keepSecrets: true);
                 Navigator.pop(ctx);

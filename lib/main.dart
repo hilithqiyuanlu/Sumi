@@ -13,13 +13,6 @@ Future<void> main() async {
 
     final store = await SumiStore.create();
 
-    // 预填 DeepSeek API Key（首次启动）
-    if (store.appSettings.deepseekApiKey.isEmpty) {
-      await store.updateDeepseekApiKey(
-        'sk-7f88c492a5aa4b10b7ffc6a8548fea2f',
-      );
-    }
-
     FlutterError.onError = (details) {
       debugPrint('FlutterError: ${details.exceptionAsString()}');
     };

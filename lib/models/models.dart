@@ -14,9 +14,6 @@ enum ProjectColor {
   sky,
   peach,
   sage,
-  lavender,
-  warmGray,
-  coolGray,
 }
 
 // ---------------------------------------------------------------------------

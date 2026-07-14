@@ -20,7 +20,7 @@ void confirmDeleteProject(BuildContext context, SumiStore store, Project p) {
         ),
         FilledButton(
           style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade400),
+              backgroundColor: danger),
           onPressed: () {
             store.deleteProject(p.id);
             Navigator.pop(ctx);
@@ -41,8 +41,7 @@ class ProjectCard extends StatefulWidget {
   State<ProjectCard> createState() => _ProjectCardState();
 }
 
-class _ProjectCardState extends State<ProjectCard>
-    with SingleTickerProviderStateMixin {
+class _ProjectCardState extends State<ProjectCard> {
   bool _expanded = true;
 
   @override
@@ -144,9 +143,9 @@ class _ProjectCardState extends State<ProjectCard>
                         TextButton.icon(
                           onPressed: () => confirmDeleteProject(context, store, p),
                           icon: Icon(Icons.delete_rounded,
-                              size: iconSmall, color: Colors.red.shade400),
+                              size: iconSmall, color: danger),
                           label: Text('删除',
-                              style: TextStyle(color: Colors.red.shade400)),
+                              style: TextStyle(color: danger)),
                         ),
                       ],
                     ),

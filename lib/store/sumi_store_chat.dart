@@ -9,6 +9,7 @@ mixin SumiStoreChat on ChangeNotifier {
   AiService? get aiService;
   ToolExecutor? get toolExecutor;
   bool get thinkingEnabled;
+  Future<String> readMemory();
   void afterMutation();
 
   // --- 状态 ---
@@ -136,7 +137,7 @@ mixin SumiStoreChat on ChangeNotifier {
     final db = chatDatabase;
     final svc = aiService;
     final exec = toolExecutor;
-    if (db == null || svc == null) return;
+    if (db == null || svc == null || exec == null) return;
     if (content.trim().isEmpty) return;
 
     // 确保有当前会话
@@ -176,131 +177,31 @@ mixin SumiStoreChat on ChangeNotifier {
     notifyListeners();
 
     // 构建 API 消息上下文
-    final messages = _buildMessagesContextForAgent();
+    final messages = await _buildMessagesContextForAgent();
 
     // 创建 AI 消息占位
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
-    final assistantMsg = ChatMessage(
-      id: assistantMsgId,
-      conversationId: convId,
-      role: 'assistant',
-      content: '',
-      createdAt: DateTime.now(),
-    );
-    _currentMessages = [..._currentMessages, assistantMsg];
-    _isStreaming = true;
-    notifyListeners();
-
-    final contentBuf = StringBuffer();
-    final reasoningBuf = StringBuffer();
-    final toolCallsList = <Map<String, Object?>>[];
-    String? lastToolName;
-
-    try {
-      await for (final event in svc.sendAgentLoop(
-        messages: messages,
-        thinkingEnabled: thinkingEnabled,
-        executeTool: (call) async {
-          lastToolName = call.name;
-          _currentToolCallLabel = _toolLabel(call.name);
-          _isThinking = false;
-          notifyListeners();
-          final result = await exec!.execute(call);
-          // 保存 tool call 信息
-          toolCallsList.add({
-            'id': call.id,
-            'type': 'function',
-            'function': {
-              'name': call.name,
-              'arguments': jsonEncode(call.arguments),
-            },
-          });
-          _currentToolCallLabel = null;
-          notifyListeners();
-          return result;
-        },
-      )) {
-        switch (event) {
-          case ContentDelta(text: final t):
-            contentBuf.write(t);
-            final lastIdx = _currentMessages.length - 1;
-            if (lastIdx >= 0) {
-              _currentMessages[lastIdx] =
-                  _currentMessages[lastIdx].copyWith(content: contentBuf.toString());
-            }
-            _isThinking = false;
-            notifyListeners();
-          case ReasoningDelta(text: final t):
-            reasoningBuf.write(t);
-            _isThinking = true;
-            notifyListeners();
-          case ToolCallsComplete():
-            // tool calls 由 executeTool 回调处理
-            break;
-          case StreamDone():
-            break;
-        }
-      }
-    } catch (e) {
-      // 异常 → 保留已收到内容，并提示用户
-      debugPrint('Sumi 对话错误: $e');
-      if (contentBuf.isEmpty) {
-        contentBuf.write('抱歉，请求遇到错误，请稍后重试。');
-      }
-    }
-
-    _isStreaming = false;
-    _isThinking = false;
-    _currentToolCallLabel = null;
-
-    // 持久化 AI 回复
-    final finalContent = contentBuf.toString();
-    if (finalContent.isNotEmpty) {
-      final finalReasoning = reasoningBuf.isNotEmpty ? reasoningBuf.toString() : null;
-      final finalToolCallsJson = toolCallsList.isNotEmpty
-          ? jsonEncode(toolCallsList)
-          : null;
-
-      // 更新内存中的消息
-      final lastIdx = _currentMessages.length - 1;
-      if (lastIdx >= 0) {
-        _currentMessages[lastIdx] = _currentMessages[lastIdx].copyWith(
-          content: finalContent,
-          reasoningContent: finalReasoning,
-          toolCallsJson: finalToolCallsJson,
-        );
-      }
-
-      // 持久化到 DB
-      await db.saveMessage(ChatMessage(
+    _currentMessages = [
+      ..._currentMessages,
+      ChatMessage(
         id: assistantMsgId,
         conversationId: convId,
         role: 'assistant',
-        content: finalContent,
+        content: '',
         createdAt: DateTime.now(),
-        reasoningContent: finalReasoning,
-        toolCallsJson: finalToolCallsJson,
-      ));
-    } else {
-      // 空回复 → 移除占位
-      _currentMessages.removeLast();
-    }
+      ),
+    ];
+    _isStreaming = true;
+    notifyListeners();
 
-    // 持久化 tool 结果消息（agent loop 中新增的 role=tool 消息）
-    for (final m in messages) {
-      if (m['role'] == 'tool') {
-        final toolMsg = ChatMessage(
-          id: 'msg-${DateTime.now().microsecondsSinceEpoch}-tool',
-          conversationId: convId,
-          role: 'tool',
-          content: (m['content'] as String?) ?? '',
-          createdAt: DateTime.now(),
-          toolCallId: (m['tool_call_id'] as String?) ?? '',
-        );
-        await db.saveMessage(toolMsg);
-        _currentMessages = [..._currentMessages, toolMsg];
-      }
-    }
+    await _streamAndPersistReply(
+      messages: messages,
+      assistantMsgId: assistantMsgId,
+      convId: convId,
+      db: db,
+      svc: svc,
+      exec: exec,
+    );
 
     await db.touchConversation(convId);
 
@@ -319,7 +220,7 @@ mixin SumiStoreChat on ChangeNotifier {
     final db = chatDatabase;
     final svc = aiService;
     final exec = toolExecutor;
-    if (db == null || svc == null) return;
+    if (db == null || svc == null || exec == null) return;
     final convId = _currentConversationId;
     if (convId == null) return;
 
@@ -347,20 +248,49 @@ mixin SumiStoreChat on ChangeNotifier {
     if (lastUserContent == null) return;
 
     // 构建上下文
-    final messages = _buildMessagesContextForAgent();
+    final messages = await _buildMessagesContextForAgent();
 
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
-    final assistantMsg = ChatMessage(
-      id: assistantMsgId,
-      conversationId: convId,
-      role: 'assistant',
-      content: '',
-      createdAt: DateTime.now(),
-    );
-    _currentMessages = [..._currentMessages, assistantMsg];
+    _currentMessages = [
+      ..._currentMessages,
+      ChatMessage(
+        id: assistantMsgId,
+        conversationId: convId,
+        role: 'assistant',
+        content: '',
+        createdAt: DateTime.now(),
+      ),
+    ];
     _isStreaming = true;
     notifyListeners();
 
+    await _streamAndPersistReply(
+      messages: messages,
+      assistantMsgId: assistantMsgId,
+      convId: convId,
+      db: db,
+      svc: svc,
+      exec: exec,
+    );
+
+    await db.touchConversation(convId);
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 内部：Agent Loop 流式执行 + 持久化
+  // ---------------------------------------------------------------------------
+
+  /// 执行一次 Agent Loop 流式调用，处理所有事件并持久化结果。
+  /// [messages] 会就地修改（追加 tool 消息）。
+  Future<void> _streamAndPersistReply({
+    required List<Map<String, Object?>> messages,
+    required String assistantMsgId,
+    required String convId,
+    required ChatDatabase db,
+    required AiService svc,
+    required ToolExecutor exec,
+  }) async {
     final contentBuf = StringBuffer();
     final reasoningBuf = StringBuffer();
     final toolCallsList = <Map<String, Object?>>[];
@@ -370,10 +300,10 @@ mixin SumiStoreChat on ChangeNotifier {
         messages: messages,
         thinkingEnabled: thinkingEnabled,
         executeTool: (call) async {
-          _currentToolCallLabel = _toolLabel(call.name);
+          _currentToolCallLabel = toolDisplayName(call.name);
           _isThinking = false;
           notifyListeners();
-          final result = await exec!.execute(call);
+          final result = await exec.execute(call);
           toolCallsList.add({
             'id': call.id,
             'type': 'function',
@@ -408,7 +338,7 @@ mixin SumiStoreChat on ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('Sumi 重新生成错误: $e');
+      debugPrint('Sumi Agent Loop 错误: $e');
       if (contentBuf.isEmpty) {
         contentBuf.write('抱歉，请求遇到错误，请稍后重试。');
       }
@@ -418,13 +348,13 @@ mixin SumiStoreChat on ChangeNotifier {
     _isThinking = false;
     _currentToolCallLabel = null;
 
-    // 持久化 AI 回复（重新生成）
+    // 持久化 AI 回复
     final finalContent = contentBuf.toString();
     if (finalContent.isNotEmpty) {
-      final finalReasoning = reasoningBuf.isNotEmpty ? reasoningBuf.toString() : null;
-      final finalToolCallsJson = toolCallsList.isNotEmpty
-          ? jsonEncode(toolCallsList)
-          : null;
+      final finalReasoning =
+          reasoningBuf.isNotEmpty ? reasoningBuf.toString() : null;
+      final finalToolCallsJson =
+          toolCallsList.isNotEmpty ? jsonEncode(toolCallsList) : null;
 
       final lastIdx = _currentMessages.length - 1;
       if (lastIdx >= 0) {
@@ -448,7 +378,7 @@ mixin SumiStoreChat on ChangeNotifier {
       _currentMessages.removeLast();
     }
 
-    // 持久化 tool 结果消息（agent loop 中新增的 role=tool 消息）
+    // 持久化 tool 结果消息
     for (final m in messages) {
       if (m['role'] == 'tool') {
         final toolMsg = ChatMessage(
@@ -463,9 +393,6 @@ mixin SumiStoreChat on ChangeNotifier {
         _currentMessages = [..._currentMessages, toolMsg];
       }
     }
-
-    await db.touchConversation(convId);
-    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
@@ -484,13 +411,52 @@ mixin SumiStoreChat on ChangeNotifier {
       '## 工具\n'
       '你可以搜索网络、读写记忆、管理待办事项。需要时直接用工具。\n'
       '\n'
-      '## 记忆\n'
-      '使用 read_memory / write_memory 记录用户的重要信息、偏好和学习进度。';
+      '## 你的记忆（MEMORY.md）\n'
+      'MEMORY.md 是你的持久记忆文件，记录你从对话中学到的一切。\n'
+      '对话开始时它已加载到你的上下文中，你不需要重复调用 read_memory。\n'
+      '\n'
+      '### 核心规则：归属\n'
+      'MEMORY.md 中的每一条内容，默认描述的是**你（Sumi）自己**。\n'
+      '如果要记录关于用户的信息，必须在内容开头加 `用户：` 前缀。\n'
+      '对比：\n'
+      '  ❌ `喜欢简洁回复` → 被理解为 Sumi 自己喜欢简洁回复\n'
+      '  ✅ `用户：喜欢简洁回复` → 明确是用户的偏好\n'
+      '  ❌ `正在学微积分` → 谁在学？\n'
+      '  ✅ `用户：正在学微积分，已完成导数章节` → 明确归属+具体进度\n'
+      '\n'
+      '### 何时写入记忆\n'
+      '遇到以下情况，主动调用 write_memory：\n'
+      '1. 用户明确表达了长期偏好或习惯（不是一次性请求）\n'
+      '2. 用户给了关于你工作方式的反馈（"以后都这样"、"别再说XX"）\n'
+      '3. 你帮用户完成了一个里程碑式的任务\n'
+      '4. 对话中出现了用户长期关注的主题或目标\n'
+      '5. 你发现记忆中有过时或矛盾的内容，需要更新\n'
+      '不要每句话都记。只记那些"如果下次对话不知道这个，会让我显得不够了解用户"的事。\n'
+      '\n'
+      '### 怎么写\n'
+      '- 每条记忆要**简洁、独立、可检索**——即使只看这一条也能理解\n'
+      '- 写**提炼后的事实**，不要写"某天用户说了XX"这种流水账\n'
+      '- 相关的事实合并成一条，不要分散成碎片\n'
+      '- 如果信息有时效性，注明时间范围（"目前"、"今年"、"截至7月"）\n'
+      '- 好的记忆：`用户：偏好 Rust，有 3 年后端经验，最近在学嵌入式开发`\n'
+      '- 差的记忆：`2026-07-14 用户说他想学 Rust 因为他觉得很有意思`\n'
+      '\n'
+      '--- MEMORY.md ---\n'
+      '{memory}\n'
+      '--- END MEMORY.md ---';
 
-  /// 构建 agent loop 用的消息上下文（含 system + 历史 + reasoning_content 传回）。
-  List<Map<String, Object?>> _buildMessagesContextForAgent() {
+  /// 构建 agent loop 用的消息上下文（含 system + memory + 历史 +
+  /// reasoning_content 传回）。
+  Future<List<Map<String, Object?>>> _buildMessagesContextForAgent() async {
+    // 读取 Sumi 自身记忆
+    final memoryContent = await readMemory();
+    final systemPrompt = _chatSystemPrompt.replaceAll(
+      '{memory}',
+      memoryContent.trim().isEmpty ? '（暂无记忆）' : memoryContent,
+    );
+
     final messages = <Map<String, Object?>>[
-      {'role': 'system', 'content': _chatSystemPrompt},
+      {'role': 'system', 'content': systemPrompt},
     ];
 
     // 最近消息（约 10 轮对话，考虑到 tool 消息占用更多空间）
@@ -531,13 +497,4 @@ mixin SumiStoreChat on ChangeNotifier {
     return messages;
   }
 
-  /// 工具名称 → 中文标签。
-  String _toolLabel(String name) => switch (name) {
-    'search_web' => '搜索网络',
-    'read_memory' => '读取记忆',
-    'write_memory' => '写入记忆',
-    'read_todos' => '查看事项',
-    'write_todo' => '创建事项',
-    _ => name,
-  };
 }

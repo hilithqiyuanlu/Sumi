@@ -243,7 +243,7 @@ class _ChatInputState extends State<ChatInput>
             padding:
                 const EdgeInsets.symmetric(vertical: s6, horizontal: s16),
             color: _voiceHint == _VoiceHint.cancel
-                ? Colors.grey.shade100
+                ? surfaceAlt
                 : mint.withValues(alpha: 0.15),
             child: Text(
               _voiceHint == _VoiceHint.cancel ? '松开取消' : '正在收听…松开发送',
@@ -297,12 +297,12 @@ class _ChatInputState extends State<ChatInput>
                           color: _isRecording
                               ? mint.withValues(alpha: 0.08)
                               : Colors.white,
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(radiusPill),
                           border: Border.all(
                             color: _isRecording
                                 ? mintDeep.withValues(
                                     alpha: borderOpacity)
-                                : line.withValues(alpha: 0.5),
+                                : line.withValues(alpha: 0.3),
                           ),
                         ),
                         child: TextField(
@@ -332,11 +332,11 @@ class _ChatInputState extends State<ChatInput>
               if (showSendButton) ...[
                 const SizedBox(width: s6),
                 Material(
-                  color: mintDeep,
-                  borderRadius: BorderRadius.circular(20),
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(radiusPill),
                   child: InkWell(
                     onTap: _send,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(radiusPill),
                     child: Container(
                       width: 40,
                       height: 40,
@@ -344,7 +344,7 @@ class _ChatInputState extends State<ChatInput>
                       child: const Icon(
                         Icons.send_rounded,
                         size: 20,
-                        color: Colors.white,
+                        color: paper,
                       ),
                     ),
                   ),

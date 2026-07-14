@@ -31,7 +31,7 @@ class TodoCard extends StatelessWidget {
 
   Color _backgroundColor() {
     if (project != null) return projectCardBackground(project!.color);
-    return Colors.white;
+    return Colors.white; // design spec: --color-card is white
   }
 
   @override
@@ -41,12 +41,12 @@ class TodoCard extends StatelessWidget {
     final bg = _backgroundColor();
 
     return Opacity(
-      opacity: done ? 0.55 : 1.0,
+      opacity: done ? 0.5 : 1.0,
       child: Container(
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(radiusCard),
-          border: Border.all(color: line.withValues(alpha: 0.4)),
+          border: Border.all(color: line.withValues(alpha: 0.3)),
           boxShadow: isDragging
               ? [
                   BoxShadow(
@@ -55,7 +55,7 @@ class TodoCard extends StatelessWidget {
                     offset: const Offset(0, 4),
                   ),
                 ]
-              : null,
+              : (project == null ? shadow1 : null),
         ),
         padding: const EdgeInsets.all(s12),
         child: Column(
@@ -79,13 +79,15 @@ class TodoCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // 标题（点击打开编辑面板）
+                // 标题（点击打开编辑面板，固定 2 行）
                 Expanded(
                   child: GestureDetector(
                     onTap: onTapBody,
                     behavior: HitTestBehavior.opaque,
                     child: Text(
                       todo.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,

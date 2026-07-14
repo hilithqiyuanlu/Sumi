@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../theme/app_theme.dart';
+import '../../utils/utils.dart';
+import '../shared/collapsible_section.dart';
 
 /// 聊天气泡组件 —— 支持用户（右侧 mint）和 AI（左侧白色）两种样式。
 class ChatBubble extends StatelessWidget {
@@ -48,7 +50,14 @@ class ChatBubble extends StatelessWidget {
           if (!isUser &&
               reasoningContent != null &&
               reasoningContent!.isNotEmpty)
-            _ThinkingSection(reasoning: reasoningContent!),
+            Padding(
+              padding: const EdgeInsets.only(bottom: s4),
+              child: CollapsibleSection(
+                title: '思考过程',
+                body: reasoningContent!,
+                backgroundColor: surfaceAlt,
+              ),
+            ),
           // 工具调用指示（仅 AI 且有 tool_calls 时显示，简洁样式）
           if (!isUser &&
               toolCallsJson != null &&
@@ -72,21 +81,21 @@ class ChatBubble extends StatelessWidget {
                 maxWidth: MediaQuery.of(context).size.width * 0.78,
               ),
               padding: const EdgeInsets.symmetric(
-                  horizontal: s14, vertical: s10),
+                  horizontal: s12, vertical: s10),
               decoration: BoxDecoration(
                 color: isUser ? mint : Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(radiusCard),
-                  topRight: const Radius.circular(radiusCard),
+                  topLeft: const Radius.circular(radius20),
+                  topRight: const Radius.circular(radius20),
                   bottomLeft:
-                      Radius.circular(isUser ? radiusCard : s4),
+                      Radius.circular(isUser ? radius20 : s4),
                   bottomRight:
-                      Radius.circular(isUser ? s4 : radiusCard),
+                      Radius.circular(isUser ? s4 : radius20),
                 ),
                 border: Border.all(
                   color: isUser
                       ? Colors.transparent
-                      : line.withValues(alpha: 0.4),
+                      : line.withValues(alpha: 0.3),
                 ),
               ),
               child: _buildContent(),
@@ -154,11 +163,11 @@ class ChatBubble extends StatelessWidget {
     code: TextStyle(
         fontSize: 13,
         color: textTertiary,
-        backgroundColor: Colors.grey.shade100,
+        backgroundColor: surfaceAlt,
         fontFamily: 'monospace'),
     codeblockDecoration: BoxDecoration(
-      color: Colors.grey.shade100,
-      borderRadius: BorderRadius.circular(s8),
+      color: surfaceAlt,
+      borderRadius: BorderRadius.circular(radius8),
     ),
     h1: const TextStyle(
         fontSize: 18, fontWeight: FontWeight.w700, color: ink),
@@ -227,76 +236,6 @@ class _CursorState extends State<_Cursor>
 // 思考过程折叠区域
 // ---------------------------------------------------------------------------
 
-class _ThinkingSection extends StatefulWidget {
-  final String reasoning;
-  const _ThinkingSection({required this.reasoning});
-
-  @override
-  State<_ThinkingSection> createState() => _ThinkingSectionState();
-}
-
-class _ThinkingSectionState extends State<_ThinkingSection> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: s4),
-      child: GestureDetector(
-        onTap: () => setState(() => _expanded = !_expanded),
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.78,
-          ),
-          padding:
-              const EdgeInsets.symmetric(horizontal: s10, vertical: s6),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(s8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_right_rounded,
-                    size: 16,
-                    color: textTertiary,
-                  ),
-                  const SizedBox(width: s4),
-                  Text(
-                    '思考过程',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: textTertiary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              if (_expanded) ...[
-                const SizedBox(height: s6),
-                Text(
-                  widget.reasoning,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: textTertiary,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 工具调用指示（简洁版）
@@ -316,7 +255,7 @@ class _ToolCallIndicator extends StatelessWidget {
           final func = item['function'] as Map<String, Object?>?;
           final name = func?['name'] as String?;
           if (name != null) {
-            names.add(_toolDisplayName(name));
+            names.add(toolDisplayName(name));
           }
         }
       }
@@ -352,13 +291,4 @@ class _ToolCallIndicator extends StatelessWidget {
       ),
     );
   }
-
-  String _toolDisplayName(String name) => switch (name) {
-    'search_web' => '搜索',
-    'read_memory' => '读取记忆',
-    'write_memory' => '写入记忆',
-    'read_todos' => '查看事项',
-    'write_todo' => '创建事项',
-    _ => name,
-  };
 }

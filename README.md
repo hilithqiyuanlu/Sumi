@@ -29,7 +29,7 @@
 | 持久化 | SQLite（`sqflite`） + Secure Storage |
 | AI 接口 | DeepSeek Chat API（流式 SSE / 非流式 / Function Calling） |
 | 语音输入 | iOS Speech Recognition |
-| 搜索预留 | Tavily Search API |
+| 搜索 | Tavily Search API（内联于 AiService） |
 
 ## 快速开始
 
@@ -66,20 +66,20 @@ lib/
 │   └── sumi_store_persist.dart       # 快照持久化
 ├── data/
 │   ├── local_database.dart           # SQLite 数据库
-│   ├── chat_database.dart            # 对话数据 CRUD
-│   └── snapshot_store_base.dart      # 快照存储抽象
+│   └── chat_database.dart            # 对话数据 CRUD
 ├── services/
-│   ├── ai_service.dart               # DeepSeek API（拆分/润色/规划/对话）
+│   ├── ai_service.dart               # DeepSeek API（拆分/润色/规划/对话/搜索）
 │   ├── tool_executor.dart            # Function Calling 工具执行
 │   ├── voice_input_service.dart      # iOS 语音识别
 │   └── secure_settings_store.dart    # Keychain 安全存储
-├── theme/app_theme.dart              # 浅色扁平主题
+├── theme/app_theme.dart              # Sumi 设计系统（Design Tokens）
 └── features/
     ├── todos/                        # 事项网格、卡片、输入栏、编辑面板
-    ├── chat/                         # 对话页面、气泡、输入、会话列表、Wrench 工具面板
+    ├── chat/                         # 对话页面、气泡、输入、会话列表、Wrench 面板
     ├── calendar/                     # 日期条、月历、月视图展开层
     ├── projects/                     # 项目卡、月卡 Pager、项目编辑器
-    └── settings/                     # API Key 配置、Thinking 开关、清除数据
+    ├── settings/                     # API Key 配置、Thinking 开关、清除数据
+    └── shared/                       # 共享组件（可折叠区域、拖拽把手）
 ```
 
 ## License

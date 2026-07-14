@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'ai_service.dart';
 
 /// 工具执行器 —— 执行 AI 返回的 tool_calls，返回文本结果。
@@ -72,11 +70,11 @@ class ToolExecutor {
     try {
       final content = await readMemory();
       if (content.trim().isEmpty) {
-        return 'MEMORY.md 为空，暂无记忆。';
+        return 'MEMORY.md 为空，暂无记忆。你可以通过对话了解用户，并在合适的时机用 write_memory 记录重要信息。';
       }
       // 截断以防超出上下文
       if (content.length > 3000) {
-        return '${content.substring(0, 3000)}\n\n（记忆较长，已截断至最近部分）';
+        return '${content.substring(0, 3000)}\n\n（记忆较长，已截断至前 3000 字符。如需查看完整记忆，可考虑在 MEMORY.md 中整理合并重复内容。）';
       }
       return content;
     } catch (e) {

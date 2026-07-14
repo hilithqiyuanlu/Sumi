@@ -6,6 +6,7 @@ import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/utils.dart';
+import '../shared/drag_handle.dart';
 
 /// 折叠态日期条 —— 当月日期 chip 横向滚动 + 下拉展开月视图。
 class DateStrip extends StatefulWidget {
@@ -117,14 +118,7 @@ class _DateStripState extends State<DateStrip> {
               child: Container(
                 height: 36,
                 alignment: Alignment.center,
-                child: Container(
-                  width: 32,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: textTertiary.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+                child: const DragHandle(),
               ),
             ),
           ],

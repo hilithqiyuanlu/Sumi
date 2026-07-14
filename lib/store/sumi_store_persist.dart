@@ -6,7 +6,7 @@ part of 'sumi_store.dart';
 
 mixin SumiStorePersist on ChangeNotifier {
   // 声明由 SumiStore 提供的字段（mixin 约束）
-  SumiSnapshotStore? get _database;
+  SumiLocalDatabase? get _database;
   List<TodoItem> get todoItems;
   List<Project> get projectList;
   List<MonthCard> get monthCardList;

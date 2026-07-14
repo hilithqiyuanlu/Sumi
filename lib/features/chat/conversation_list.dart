@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
+import '../shared/drag_handle.dart';
 
 /// 会话列表底部 Sheet。
 class ConversationList extends StatelessWidget {
@@ -38,14 +39,9 @@ class ConversationList extends StatelessWidget {
             return Column(
               children: [
                 // 拖拽把手
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: s12),
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: textTertiary.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: s12),
+                  child: DragHandle(),
                 ),
                 // 标题栏
                 Padding(
@@ -152,7 +148,7 @@ class ConversationList extends StatelessWidget {
               store.deleteConversation(id);
             },
             child:
-                Text('删除', style: TextStyle(color: Colors.red.shade400)),
+                Text('删除', style: TextStyle(color: danger)),
           ),
         ],
       ),

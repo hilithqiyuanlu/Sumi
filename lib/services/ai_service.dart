@@ -265,7 +265,7 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'read_memory',
-        'description': '读取用户的持久记忆（MEMORY.md）。用于了解用户的偏好、历史记录和学习进度。',
+        'description': '读取 Sumi 自己的持久记忆（MEMORY.md）。MEMORY.md 记录的是 Sumi 的自我认知、从对话中学到的经验、以及对用户的理解。除非内容明确标注"用户："前缀，否则所有内容描述的都是 Sumi 自己。',
         'parameters': {'type': 'object', 'properties': {}},
       },
     },
@@ -273,13 +273,13 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'write_memory',
-        'description': '写入/追加内容到用户的持久记忆（MEMORY.md）。记录重要信息、用户偏好、学习进度等。',
+        'description': '将重要信息写入 Sumi 自己的记忆（MEMORY.md）。用于记录学到的经验、用户偏好、重要决策等。注意：MEMORY.md 默认记录的是 Sumi 自己的事；如果要记录关于用户的信息，请用"用户："前缀标注，例如"用户：偏好中文交流"。',
         'parameters': {
           'type': 'object',
           'properties': {
             'content': {
               'type': 'string',
-              'description': '要写入的记忆内容',
+              'description': '要写入的记忆内容。简洁、独立、可检索的事实陈述。不要写对话流水账。',
             },
           },
           'required': ['content'],
@@ -450,44 +450,18 @@ class AiService {
   // ---------------------------------------------------------------------------
 
   Future<String?> polishTodo(String text) async {
-    try {
-      final response = await _client
-          .post(
-            Uri.parse(_baseUrl),
-            headers: {
-              'Authorization': 'Bearer $apiKey',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(_buildRequestParams(
-              model: _modelFlash,
-              messages: [
-                {
-                  'role': 'system',
-                  'content':
-                      '你是 Sumi，一个个人助手。你的任务是优化用户提供的 todo 标题。\n'
-                          '要求：凝练清晰、保留原意、2-18 字、只返回优化后的文本，不要加引号或额外文字。',
-                },
-                {'role': 'user', 'content': text},
-              ],
-              thinking: false,
-              maxTokens: 100,
-            )),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode != 200) return null;
-
-      final body = jsonDecode(response.body) as Map<String, Object?>;
-      final choices = body['choices'] as List<Object?>?;
-      if (choices == null || choices.isEmpty) return null;
-
-      final message = (choices.first as Map<String, Object?>?)?['message']
-          as Map<String, Object?>?;
-      final content = message?['content'] as String?;
-      return content?.trim();
-    } catch (_) {
-      return null;
-    }
+    final result = await _callJsonApi(
+      systemPrompt: '你是 Sumi，一个个人助手。你的任务是优化用户提供的 todo 标题。\n'
+          '要求：凝练清晰、保留原意、2-18 字。\n'
+          '以 JSON 格式回复：{"result": "优化后的文本"}',
+      userPrompt: text,
+      model: _modelFlash,
+      thinking: false,
+      maxTokens: 100,
+      timeoutSeconds: 10,
+    );
+    if (result == null) return null;
+    return (result['result'] as String?)?.trim();
   }
 
   // ---------------------------------------------------------------------------

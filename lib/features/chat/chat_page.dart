@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import '../shared/collapsible_section.dart';
 import 'chat_bubble.dart';
 import 'chat_input.dart';
 import 'conversation_list.dart';
@@ -71,26 +72,15 @@ class _ChatPageState extends State<ChatPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              store.currentConversationTitle.isNotEmpty
-                  ? store.currentConversationTitle
-                  : 'Sumi',
-              style: const TextStyle(fontSize: 17),
-            ),
-            if (appBarSubtitle != null)
-              Text(
+        title: appBarSubtitle != null
+            ? Text(
                 appBarSubtitle,
                 style: TextStyle(
                   fontSize: 12,
                   color: textTertiary,
                 ),
-              ),
-          ],
-        ),
-        centerTitle: true,
+              )
+            : null,
         leading: IconButton(
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => ConversationList.show(context, store),
@@ -140,9 +130,27 @@ class _ChatPageState extends State<ChatPage> {
 
                             // tool 消息：折叠展示
                             if (msg.role == 'tool') {
-                              return _CondensedToolResult(
-                                content: msg.content,
-                                toolCallId: msg.toolCallId,
+                              // 提取首行作为摘要
+                              final lines = msg.content.split('\n');
+                              final summary = lines.first.length > 50
+                                  ? '${lines.first.substring(0, 50)}…'
+                                  : lines.first;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: s16, vertical: s4),
+                                child: CollapsibleSection(
+                                  title: summary,
+                                  body: msg.content.length > summary.length
+                                      ? msg.content
+                                      : null,
+                                  backgroundColor: surfaceMuted,
+                                  border: Border.all(
+                                    color: line.withValues(alpha: 0.3),
+                                  ),
+                                  iconSize: 14,
+                                  titleFontSize: 11,
+                                  bodyFontSize: 12,
+                                ),
                               );
                             }
 
@@ -167,7 +175,7 @@ class _ChatPageState extends State<ChatPage> {
                                 width: 36,
                                 height: 36,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: paper,
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
@@ -235,96 +243,6 @@ class _EmptyState extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 工具执行结果（折叠展示）
-// ---------------------------------------------------------------------------
-
-class _CondensedToolResult extends StatefulWidget {
-  final String content;
-  final String? toolCallId;
-  const _CondensedToolResult({
-    required this.content,
-    this.toolCallId,
-  });
-
-  @override
-  State<_CondensedToolResult> createState() =>
-      _CondensedToolResultState();
-}
-
-class _CondensedToolResultState extends State<_CondensedToolResult> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    // 提取首行作为摘要
-    final lines = widget.content.split('\n');
-    final summary = lines.first.length > 50
-        ? '${lines.first.substring(0, 50)}…'
-        : lines.first;
-    final hasMore = widget.content.length > summary.length;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s4),
-      child: GestureDetector(
-        onTap: () => setState(() => _expanded = !_expanded),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: s10, vertical: s6),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(s8),
-            border: Border.all(
-              color: line.withValues(alpha: 0.3),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_right_rounded,
-                    size: 14,
-                    color: textTertiary,
-                  ),
-                  const SizedBox(width: s4),
-                  Expanded(
-                    child: Text(
-                      summary,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: textTertiary,
-                      ),
-                      maxLines: _expanded ? null : 1,
-                      overflow:
-                          _expanded ? null : TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              if (_expanded && hasMore) ...[
-                const SizedBox(height: s6),
-                Text(
-                  widget.content,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: textTertiary,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
       ),
     );
   }

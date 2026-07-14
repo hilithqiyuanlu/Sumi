@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
+import '../shared/drag_handle.dart';
 
 /// 弹出 AI 拆分确认面板。
 /// 返回 true 表示用户确认添加，false 表示取消。
@@ -29,16 +30,7 @@ Future<void> showSplitConfirmSheet(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 把手
-                  Center(
-                    child: Container(
-                      width: 32,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: textTertiary.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
+                  const DragHandle(),
                   const SizedBox(height: s16),
 
                   // 标题

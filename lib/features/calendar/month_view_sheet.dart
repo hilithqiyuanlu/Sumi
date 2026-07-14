@@ -86,7 +86,7 @@ class MonthViewSheet extends StatelessWidget {
                           width: double.infinity,
                           padding: const EdgeInsets.all(s24),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: paper,
                             borderRadius: BorderRadius.circular(radiusCard),
                             border: Border.all(color: line),
                           ),

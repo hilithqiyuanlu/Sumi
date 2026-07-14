@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
+import '../shared/drag_handle.dart';
 
 /// Sumi 工具面板（扳手菜单）—— MEMORY.md 编辑器 + 思考模式开关。
 class SumiToolsSheet extends StatefulWidget {
@@ -72,7 +73,7 @@ class _SumiToolsSheetState extends State<SumiToolsSheet> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('清空', style: TextStyle(color: Colors.red.shade400)),
+            child: Text('清空', style: TextStyle(color: danger)),
           ),
         ],
       ),
@@ -115,16 +116,9 @@ class _SumiToolsSheetState extends State<SumiToolsSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 拖拽把手
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: s16),
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: textTertiary.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: s16),
+                child: DragHandle(),
               ),
 
               // ---- Section: Sumi 记忆 ----
@@ -183,7 +177,7 @@ class _SumiToolsSheetState extends State<SumiToolsSheet> {
                     onPressed: _memoryLoaded ? _clearMemory : null,
                     child: Text(
                       '清空记忆',
-                      style: TextStyle(color: Colors.red.shade400),
+                      style: TextStyle(color: danger),
                     ),
                   ),
                 ],
@@ -202,22 +196,16 @@ class _SumiToolsSheetState extends State<SumiToolsSheet> {
                   color: ink,
                 ),
               ),
-              const SizedBox(height: s4),
-              Text(
-                '开启后 Sumi 会先思考再回复，回复质量更高但速度较慢。',
-                style: TextStyle(fontSize: 13, color: textTertiary),
-              ),
               const SizedBox(height: s8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('深度思考'),
-                subtitle: Text(
-                  store.thinkingEnabled ? '已开启' : '已关闭',
-                  style: TextStyle(fontSize: 12, color: textTertiary),
-                ),
                 value: store.thinkingEnabled,
                 activeTrackColor: mintDeep.withValues(alpha: 0.4),
-                onChanged: (v) => store.setThinkingEnabled(v),
+                onChanged: (v) {
+                  store.setThinkingEnabled(v);
+                  setState(() {});
+                },
               ),
 
               // 底部留白

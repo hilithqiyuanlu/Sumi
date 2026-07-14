@@ -76,9 +76,10 @@ class _UnlockedCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: paper,
         borderRadius: BorderRadius.circular(radiusCard),
-        border: Border.all(color: line.withValues(alpha: 0.5)),
+        border: Border.all(color: line.withValues(alpha: 0.3)),
+        boxShadow: const [...shadow1],
       ),
       padding: const EdgeInsets.all(s16),
       child: Column(
@@ -196,9 +197,9 @@ class _LockedMonthCard extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: paper,
           borderRadius: BorderRadius.circular(radiusCard),
-          border: Border.all(color: line.withValues(alpha: 0.3)),
+          border: Border.all(color: line.withValues(alpha: 0.2)),
         ),
         child: Center(
           child: Icon(Icons.lock_outline_rounded,

@@ -6,7 +6,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/chat_database.dart';
 import '../data/local_database.dart';
-import '../data/snapshot_store_base.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../services/secure_settings_store.dart';
@@ -23,7 +22,7 @@ part 'sumi_store_chat.dart';
 /// 使用 mixin 拆分 persistence / todos / projects / chat 逻辑。
 class SumiStore extends ChangeNotifier
     with SumiStorePersist, SumiStoreTodos, SumiStoreProjects, SumiStoreChat {
-  final SumiSnapshotStore? _database;
+  final SumiLocalDatabase? _database;
   final SecureSettingsStore _secureSettings;
   AiService? _aiService;
   ChatDatabase? _chatDatabase;
@@ -67,14 +66,14 @@ class SumiStore extends ChangeNotifier
   AppSettings appSettings = const AppSettings();
 
   SumiStore._({
-    required SumiSnapshotStore? database,
+    required SumiLocalDatabase? database,
     required SecureSettingsStore secureSettings,
   })  : _database = database,
         _secureSettings = secureSettings;
 
   /// 工厂：创建并加载持久化数据。
   static Future<SumiStore> create({
-    SumiSnapshotStore? database,
+    SumiLocalDatabase? database,
     SecureSettingsStore? secureSettings,
   }) async {
     final db = database ?? createSnapshotStore();
@@ -82,9 +81,7 @@ class SumiStore extends ChangeNotifier
     final store = SumiStore._(database: db, secureSettings: ss);
 
     // 初始化对话数据库
-    if (db is SumiLocalDatabase) {
-      store._chatDatabase = ChatDatabase(db);
-    }
+    store._chatDatabase = ChatDatabase(db);
 
     // 从安全存储读取 API Key
     final deepseekKey = await ss.readDeepseekApiKey();

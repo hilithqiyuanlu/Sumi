@@ -4,10 +4,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-import 'snapshot_store_base.dart';
-
 /// SQLite 实现 —— 单表单行存全量 JSON 快照 + 对话表。
-class SumiLocalDatabase implements SumiSnapshotStore {
+class SumiLocalDatabase {
   static const _dbName = 'sumi_v1.db';
   static const _rowId = 'main';
 
@@ -92,7 +90,6 @@ class SumiLocalDatabase implements SumiSnapshotStore {
     );
   }
 
-  @override
   Future<Map<String, Object?>?> readSnapshot() async {
     final db = await database;
     final rows = await db.query(
@@ -105,7 +102,6 @@ class SumiLocalDatabase implements SumiSnapshotStore {
     return jsonDecode(body) as Map<String, Object?>;
   }
 
-  @override
   Future<void> writeSnapshot(Map<String, Object?> snapshot) async {
     final db = await database;
     final body = jsonEncode(snapshot);
@@ -120,14 +116,12 @@ class SumiLocalDatabase implements SumiSnapshotStore {
     );
   }
 
-  @override
   Future<String> exportSnapshotText() async {
     final snapshot = await readSnapshot();
     if (snapshot == null) return '{}';
     return jsonEncode(snapshot);
   }
 
-  @override
   Future<void> importSnapshotText(String text) async {
     final snapshot = jsonDecode(text) as Map<String, Object?>;
     await writeSnapshot(snapshot);
@@ -135,4 +129,4 @@ class SumiLocalDatabase implements SumiSnapshotStore {
 }
 
 /// 工厂 —— 后续可做 web/io 条件导出。
-SumiSnapshotStore createSnapshotStore() => SumiLocalDatabase();
+SumiLocalDatabase createSnapshotStore() => SumiLocalDatabase();

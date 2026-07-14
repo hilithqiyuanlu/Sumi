@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
+import '../shared/drag_handle.dart';
 
 /// 底部弹出编辑面板 —— 文本编辑 + 润色/项目/定时/复制。
 Future<void> showTodoEditSheet(
@@ -33,6 +34,7 @@ class _TodoEditSheet extends StatefulWidget {
 
 class _TodoEditSheetState extends State<_TodoEditSheet> {
   late final TextEditingController _titleCtrl;
+  late final TextEditingController _bodyCtrl;
   bool _polishing = false;
   String? _polishedText;
   bool _showProjects = false;
@@ -47,11 +49,13 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   void initState() {
     super.initState();
     _titleCtrl = TextEditingController(text: _todo.title);
+    _bodyCtrl = TextEditingController(text: _todo.body ?? '');
   }
 
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _bodyCtrl.dispose();
     super.dispose();
   }
 
@@ -66,10 +70,19 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
     final result = await _store.polishTodoTitle(_todo.id);
 
     if (!mounted) return;
-    setState(() {
-      _polishing = false;
-      _polishedText = result;
-    });
+    setState(() => _polishing = false);
+
+    if (result == null || result.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('润色失败，请检查网络或 API 配置'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _polishedText = result;
   }
 
   void _applyPolish() {
@@ -104,16 +117,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 32,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: textTertiary.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
+                  const DragHandle(),
                   const SizedBox(height: s16),
                   ListTile(
                     leading: const Icon(Icons.timer_rounded, color: ink),
@@ -121,8 +125,8 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                     onTap: () => Navigator.pop(ctx, 'edit'),
                   ),
                   ListTile(
-                    leading: Icon(Icons.clear_rounded, color: Colors.red.shade400),
-                    title: Text('清除定时', style: TextStyle(color: Colors.red.shade400)),
+                    leading: Icon(Icons.clear_rounded, color: danger),
+                    title: Text('清除定时', style: TextStyle(color: danger)),
                     onTap: () => Navigator.pop(ctx, 'clear'),
                   ),
                   const SizedBox(height: s8),
@@ -177,22 +181,41 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
 
   Future<void> _save() async {
     final newTitle = _titleCtrl.text.trim();
-    if (newTitle.isEmpty || newTitle == _todo.title) {
+    final newBody = _bodyCtrl.text.trim();
+
+    // 标题为空或没有任何改动 → 直接关闭
+    if (newTitle.isEmpty) {
       Navigator.pop(context);
       return;
     }
 
-    // >18 字触发 AI 凝练
-    if (newTitle.length > 18) {
+    final titleChanged = newTitle != _todo.title;
+    final bodyChanged = newBody != (_todo.body ?? '');
+
+    if (!titleChanged && !bodyChanged) {
+      Navigator.pop(context);
+      return;
+    }
+
+    // 标题 >18 字触发 AI 凝练
+    if (titleChanged && newTitle.length > 18) {
       setState(() => _polishing = true);
       final condensed = await _store.polishText(newTitle);
       if (mounted) {
         setState(() => _polishing = false);
-        _store.updateTodoTitle(_todo.id, condensed ?? newTitle);
+        _store.updateTodo(
+          _todo.id,
+          title: condensed ?? newTitle,
+          body: bodyChanged ? newBody : null,
+        );
         Navigator.pop(context);
       }
     } else {
-      _store.updateTodoTitle(_todo.id, newTitle);
+      _store.updateTodo(
+        _todo.id,
+        title: titleChanged ? newTitle : null,
+        body: bodyChanged ? newBody : null,
+      );
       Navigator.pop(context);
     }
   }
@@ -227,16 +250,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 拖拽把手
-            Center(
-              child: Container(
-                width: 32,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: textTertiary.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const DragHandle(),
             const SizedBox(height: s16),
 
             // 标题输入
@@ -248,6 +262,34 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
               decoration: const InputDecoration(
                 hintText: '编辑事项标题',
               ),
+            ),
+            const SizedBox(height: s12),
+
+            // 备注（纯用户笔记，不参与 AI）
+            TextField(
+              controller: _bodyCtrl,
+              maxLines: 8,
+              minLines: 2,
+              textInputAction: TextInputAction.newline,
+              decoration: InputDecoration(
+                hintText: '备注',
+                filled: true,
+                fillColor: surfaceAlt,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radiusPanel),
+                  borderSide: BorderSide(color: line.withValues(alpha: 0.4)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radiusPanel),
+                  borderSide: BorderSide(color: line.withValues(alpha: 0.4)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radiusPanel),
+                  borderSide: const BorderSide(color: ink),
+                ),
+                contentPadding: const EdgeInsets.all(s12),
+              ),
+              style: const TextStyle(fontSize: 13, height: 1.4),
             ),
             const SizedBox(height: s12),
 
@@ -308,7 +350,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                   child: OutlinedButton(
                     onPressed: _delete,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade400,
+                      foregroundColor: danger,
                     ),
                     child: const Text('删除'),
                   ),
@@ -409,8 +451,9 @@ class _PolishPreview extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: s12),
       padding: const EdgeInsets.all(s12),
       decoration: BoxDecoration(
-        color: mintLight,
+        color: mint.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(radiusPanel),
+        boxShadow: const [...shadow1],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -489,9 +532,10 @@ class _ProjectPicker extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: s12),
       padding: const EdgeInsets.all(s12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: paper,
         borderRadius: BorderRadius.circular(radiusPanel),
-        border: Border.all(color: line),
+        border: Border.all(color: line.withValues(alpha: 0.3)),
+        boxShadow: const [...shadow1],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -571,7 +615,7 @@ class _ProjectOption extends StatelessWidget {
                 width: 14,
                 height: 14,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: paper,
                   shape: BoxShape.circle,
                   border: Border.all(color: line),
                 ),

@@ -158,7 +158,7 @@ class _DraggableTodoCell extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: s16),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade400,
+                  color: danger,
                   borderRadius: BorderRadius.circular(radiusCard),
                 ),
                 child: const Icon(Icons.delete_rounded, color: Colors.white),
