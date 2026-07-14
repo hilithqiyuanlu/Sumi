@@ -1,0 +1,66 @@
+/* ═══════════════════════════════════════════════════════════════
+   components.css — Design System Component Definitions
+   Auto-extracted from preview/component-*.html
+   DO NOT EDIT MANUALLY — regenerate via extract-components-css.mjs
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Calendar Nav ──────────────────────────────────────────── */
+/* @anatomy
+   <span class="label">Default Week</span> <div class="cal-nav"> <div class="cal-day"><span class="cal-date">11</span><span class="cal-weekday">六</span>
+*/
+.cal-nav { display: flex; gap: var(--space-2); align-items: center; }
+  .cal-day { display: flex; flex-direction: column; align-items: center; min-width: 44px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-pill); cursor: pointer; transition: background .15s; }
+  .cal-day:hover { background: var(--surface-container); }
+  .cal-day.is-selected { background: var(--color-primary); }
+  .cal-day.is-selected:hover { background: var(--primary-400); }
+  .cal-date { font-family: var(--font-sans); font-size: var(--font-size-body); font-weight: 400; line-height: 1; color: var(--color-on-surface); }
+  .cal-day.is-selected .cal-date { font-weight: 700; color: var(--color-on-primary); }
+  .cal-weekday { font-size: var(--font-size-caption); color: var(--color-muted-foreground); line-height: 1; margin-top: 2px; }
+  .cal-day.is-selected .cal-weekday { color: var(--color-on-primary); opacity: .8; }
+  .cal-dot-wrap { height: 6px; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+  .cal-dot { width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--task-dot); }
+  .cal-day.is-selected .cal-dot { background: var(--color-on-primary); }
+
+/* ── Chat Bubble ───────────────────────────────────────────── */
+/* @anatomy
+   <span class="label">Greeting</span> <div class="greeting">嗨 E，今天要和 Sumi 一起做点什么
+*/
+.greeting { width: 100%; text-align: center; color: var(--color-on-surface-variant); font-size: 16px; font-weight: 400; padding: var(--space-3) 0; }
+  .thread { width: 100%; display: flex; flex-direction: column; gap: var(--space-3); }
+  .msg-wrap { display: flex; }
+  .msg-wrap--user { justify-content: flex-end; }
+  .msg-wrap--ai { justify-content: flex-start; }
+  .bubble { max-width: 75%; padding: 10px 14px; font-size: var(--font-size-body); line-height: 1.5; word-break: break-word; }
+  .bubble--user { background: var(--chat-user-bg); color: var(--chat-user-text); border-radius: var(--radius-16) 4px var(--radius-16) 4px; }
+  .bubble--ai { background: var(--chat-ai-bg); color: var(--chat-ai-text); border-radius: 4px var(--radius-16) 4px var(--radius-16); }
+  .ts { font-size: var(--font-size-caption); color: var(--color-muted-foreground); margin-top: 2px; }
+  .ts-wrap { display: flex; justify-content: flex-start; }
+
+/* ── Chat Input ────────────────────────────────────────────── */
+/* @anatomy
+   <span class="label">Default</span> <div class="chat-input"> <input class="chat-input__field" type="text" placeholder="尽管问">
+*/
+.chat-input { display: flex; align-items: center; width: 100%; max-width: 420px; height: var(--size-button-lg); background: var(--surface-chip); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-pill); padding: 0 var(--space-4); box-sizing: border-box; transition: border-color .2s, box-shadow .2s; }
+  .chat-input:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(var(--color-primary), .18); }
+  .chat-input__field { flex: 1; border: none; outline: none; background: none; font-family: var(--font-sans); font-size: var(--font-size-body); color: var(--color-on-surface); }
+  .chat-input__field::placeholder { color: var(--color-muted-foreground); }
+
+/* ── Suggestion Chip ───────────────────────────────────────── */
+/* @anatomy
+   <span class="label">Suggestions</span> <button class="chip">建议以什么顺序开展我今天的待办</button> <button class="chip">推荐些深度学习的配套资源</button> <button class="chip">帮我制定本周的学习计划</button>
+*/
+.chip { display: inline-flex; align-items: center; padding: var(--space-2) var(--space-3); background: var(--suggestion-bg); color: var(--suggestion-text); font-size: var(--font-size-body); font-family: var(--font-sans); border: none; border-radius: var(--radius-pill); cursor: pointer; white-space: nowrap; transition: background .15s; }
+  .chip:hover { background: var(--primary-100); }
+
+/* ── Todo Chip ─────────────────────────────────────────────── */
+/* @anatomy
+   <span class="label">Pending</span> <span class="todo-chip todo-chip--pending"><span class="check-circle check-circle--empty"></span><span class="text">看深度学习入门</span></span>
+*/
+.todo-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px 6px 6px; border-radius: var(--radius-pill); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 280px; font-size: var(--font-size-body); }
+  .todo-chip--pending { background: var(--task-chip-bg); color: var(--color-on-surface); }
+  .todo-chip--done { background: var(--task-chip-done-bg); color: var(--color-muted-foreground); }
+  .todo-chip .text { overflow: hidden; text-overflow: ellipsis; }
+  .check-circle { width: 18px; height: 18px; min-width: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .check-circle--filled { background: var(--color-primary-container); }
+  .check-circle--empty { background: var(--color-outline-variant); }
+  .check-circle svg { width: 10px; height: 10px; }

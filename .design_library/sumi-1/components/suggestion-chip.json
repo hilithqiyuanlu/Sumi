@@ -1,0 +1,39 @@
+{
+  "name": "Suggestion Chip",
+  "slug": "suggestion-chip",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "Contextual prompt suggestion buttons displayed below the chat area, with light primary-tinted background. This component is inferred/planned and awaits actual implementation for verification.",
+  "variants": [
+    {
+      "id": "default",
+      "name": "Default",
+      "description": "Tappable suggestion with primary-tinted text on light tinted background"
+    }
+  ],
+  "states": [
+    { "name": "default", "description": "Resting state with light tinted background" },
+    { "name": "pressed", "description": "iOS-style tactile press feedback — brightness(0.95) or iOS highlight overlay on touch" },
+    { "name": "active", "description": "iOS-style active touch feedback state — system highlight effect during touch-down" }
+  ],
+  "renderHints": {
+    "radius": "var(--radius-full)",
+    "bg": "var(--suggestion-bg)",
+    "textColor": "var(--suggestion-text)",
+    "pressedBg": "var(--primary-100)",
+    "fontSize": "13-14px",
+    "fontSizeNote": "14px default; long text may use 13px for fit",
+    "padding": "8px 16px",
+    "layout": "flex-wrap",
+    "gap": "8px"
+  },
+  "uiCopySamples": {
+    "suggestions": [
+      "建议以什么顺序开展我今天的待办",
+      "推荐些深度学习的配套资源",
+      "帮我制定本周的学习计划"
+    ]
+  },
+  "unknowns": []
+}

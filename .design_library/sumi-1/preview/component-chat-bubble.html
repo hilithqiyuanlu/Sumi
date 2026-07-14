@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Bubble</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 12px; background: var(--color-surface); font-family: var(--font-sans); color: var(--color-on-surface); }
+  .row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; }
+  .label { font-size: 10px; color: var(--color-muted-foreground); min-width: 80px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 6px; flex-shrink: 0; }
+  .divider { border: none; border-top: 1px solid var(--color-border); margin: 4px 0 10px; }
+  /* @component-css-start */
+  .greeting { width: 100%; text-align: center; color: var(--color-on-surface-variant); font-size: 16px; font-weight: 400; padding: var(--space-3) 0; }
+  .thread { width: 100%; display: flex; flex-direction: column; gap: var(--space-3); }
+  .msg-wrap { display: flex; }
+  .msg-wrap--user { justify-content: flex-end; }
+  .msg-wrap--ai { justify-content: flex-start; }
+  .bubble { max-width: 75%; padding: 10px 14px; font-size: var(--font-size-body); line-height: 1.5; word-break: break-word; }
+  .bubble--user { background: var(--chat-user-bg); color: var(--chat-user-text); border-radius: var(--radius-16) 4px var(--radius-16) 4px; }
+  .bubble--ai { background: var(--chat-ai-bg); color: var(--chat-ai-text); border-radius: 4px var(--radius-16) 4px var(--radius-16); }
+  .ts { font-size: var(--font-size-caption); color: var(--color-muted-foreground); margin-top: 2px; }
+  .ts-wrap { display: flex; justify-content: flex-start; }
+  /* @component-css-end */
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="label">Greeting</span>
+    <div class="greeting">嗨 E，今天要和 Sumi 一起做点什么</div>
+  </div>
+  <hr class="divider">
+  <div class="row">
+    <span class="label">Conversation</span>
+    <div class="thread">
+      <div class="msg-wrap msg-wrap--user">
+        <div class="bubble bubble--user">建议以什么顺序开展我今天的待办</div>
+      </div>
+      <div class="msg-wrap msg-wrap--ai">
+        <div>
+          <div class="bubble bubble--ai">根据你的任务优先级，建议先从「看深度学习入门」开始，然后是「线性代数与统计学入门」打好基础，最后再看知识图谱导论课。西瓜书可以作为贯穿全程的参考读物。</div>
+          <div class="ts">07/14 19:21</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -26,8 +26,7 @@ class ChatInput extends StatefulWidget {
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput>
-    with SingleTickerProviderStateMixin {
+class _ChatInputState extends State<ChatInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   bool _hasText = false;
@@ -39,11 +38,11 @@ class _ChatInputState extends State<ChatInput>
   Timer? _autoSendTimer;
   bool _userEditedAfterVoice = false;
 
-  // 长按脉冲动画
-  late final AnimationController _pulseController;
-  bool _isPressed = false;
-  bool _swipeToCancel = false;
-  static const _cancelSwipeThreshold = -60.0;
+  // 长按语音手势检测
+  Timer? _longPressTimer;
+  Offset? _pointerDownPos;
+  static const _longPressDuration = Duration(milliseconds: 500);
+  static const _cancelSwipeThreshold = 60.0;
 
   VoiceInputService? get _voice => widget.voiceService;
 
@@ -51,10 +50,6 @@ class _ChatInputState extends State<ChatInput>
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
 
     // 监听实时部分识别
     _voice?.onPartialResult = (text) {
@@ -71,7 +66,7 @@ class _ChatInputState extends State<ChatInput>
     _controller.dispose();
     _focusNode.dispose();
     _autoSendTimer?.cancel();
-    _pulseController.dispose();
+    _longPressTimer?.cancel();
     super.dispose();
   }
 
@@ -99,44 +94,60 @@ class _ChatInputState extends State<ChatInput>
   }
 
   // ---------------------------------------------------------------------------
-  // 长按语音（替代独立 VoiceRecordButton）
+  // 长按语音 —— Listener + Timer（绕过 TextField 手势竞技场）
   // ---------------------------------------------------------------------------
 
-  void _onLongPressStart(LongPressStartDetails details) {
-    if (!widget.enabled || _isRecording || _voice == null) return;
-    HapticFeedback.mediumImpact();
-    _isPressed = true;
-    _swipeToCancel = false;
-    _pulseController.repeat(reverse: true);
-    _startRecording();
-    setState(() {});
+  void _onPointerDown(PointerDownEvent event) {
+    if (!widget.enabled || _isRecording) return;
+    _pointerDownPos = event.position;
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer(_longPressDuration, () {
+      _longPressTimer = null;
+      if (!mounted || _isRecording) return;
+      HapticFeedback.mediumImpact();
+      _startRecording();
+      setState(() {});
+    });
   }
 
-  void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
-    if (!_isPressed) return;
-    final wasCancel = _swipeToCancel;
-    _swipeToCancel =
-        details.localOffsetFromOrigin.dy < _cancelSwipeThreshold;
-    if (_swipeToCancel != wasCancel) {
-      HapticFeedback.selectionClick();
-      setState(() => _voiceHint =
-          _swipeToCancel ? _VoiceHint.cancel : _VoiceHint.listening);
+  void _onPointerMove(PointerMoveEvent event) {
+    if (_pointerDownPos == null) return;
+
+    if (_longPressTimer != null) {
+      // 长按未触发 → 移动过远则取消
+      final delta = event.position - _pointerDownPos!;
+      if (delta.distance > _cancelSwipeThreshold) {
+        _longPressTimer?.cancel();
+        _longPressTimer = null;
+      }
+    } else if (_isRecording) {
+      // 正在录音 → 上滑取消
+      final dy = event.position.dy - _pointerDownPos!.dy;
+      final wasCancel = _voiceHint == _VoiceHint.cancel;
+      final isCancel = dy < -_cancelSwipeThreshold;
+      if (isCancel != wasCancel) {
+        HapticFeedback.selectionClick();
+        setState(() => _voiceHint =
+            isCancel ? _VoiceHint.cancel : _VoiceHint.listening);
+      }
     }
   }
 
-  void _onLongPressEnd(LongPressEndDetails details) {
-    if (!_isPressed) return;
-    _isPressed = false;
-    _pulseController.stop();
-    _pulseController.reset();
-    final shouldCancel = _swipeToCancel;
-    _swipeToCancel = false;
-    setState(() {});
-
-    if (shouldCancel) {
-      _cancelRecording();
-    } else {
-      _stopRecording();
+  void _onPointerUp(PointerUpEvent event) {
+    if (_longPressTimer != null) {
+      // 短按 → 取消计时器，不做任何事
+      _longPressTimer?.cancel();
+      _longPressTimer = null;
+      _pointerDownPos = null;
+      return;
+    }
+    _pointerDownPos = null;
+    if (_isRecording) {
+      if (_voiceHint == _VoiceHint.cancel) {
+        _cancelRecording();
+      } else {
+        _stopRecording();
+      }
     }
   }
 
@@ -275,56 +286,48 @@ class _ChatInputState extends State<ChatInput>
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: GestureDetector(
-                  onLongPressStart:
-                      hasVoice ? _onLongPressStart : null,
-                  onLongPressMoveUpdate:
-                      hasVoice ? _onLongPressMoveUpdate : null,
-                  onLongPressEnd:
-                      hasVoice ? _onLongPressEnd : null,
-                  child: AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      final pulseValue = _pulseController.isAnimating
-                          ? _pulseController.value
-                          : 0.0;
-                      final borderOpacity =
-                          _isRecording ? 0.3 + pulseValue * 0.3 : 0.5;
-                      return Container(
-                        constraints:
-                            const BoxConstraints(maxHeight: 120),
-                        decoration: BoxDecoration(
+                child: Listener(
+                  onPointerDown:
+                      hasVoice ? _onPointerDown : null,
+                  onPointerMove:
+                      hasVoice ? _onPointerMove : null,
+                  onPointerUp:
+                      hasVoice ? _onPointerUp : null,
+                  child: AbsorbPointer(
+                    absorbing: _isRecording,
+                    child: Container(
+                      constraints:
+                          const BoxConstraints(maxHeight: 120),
+                      decoration: BoxDecoration(
+                        color: _isRecording
+                            ? mint.withValues(alpha: 0.08)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(radiusPill),
+                        border: Border.all(
                           color: _isRecording
-                              ? mint.withValues(alpha: 0.08)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(radiusPill),
-                          border: Border.all(
-                            color: _isRecording
-                                ? mintDeep.withValues(
-                                    alpha: borderOpacity)
-                                : line.withValues(alpha: 0.3),
+                              ? mintDeep.withValues(alpha: 0.5)
+                              : line.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        enabled: widget.enabled,
+                        maxLines: 4,
+                        minLines: 1,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: _isRecording ? '正在收听…' : '尽管说',
+                          border: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(
+                            horizontal: s16,
+                            vertical: s10,
                           ),
                         ),
-                        child: TextField(
-                          controller: _controller,
-                          focusNode: _focusNode,
-                          enabled: widget.enabled,
-                          maxLines: 4,
-                          minLines: 1,
-                          textInputAction: TextInputAction.newline,
-                          decoration: InputDecoration(
-                            hintText: _isRecording ? '正在收听…' : '尽管说',
-                            border: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.symmetric(
-                              horizontal: s16,
-                              vertical: s10,
-                            ),
-                          ),
-                          onSubmitted: (_) => _send(),
-                        ),
-                      );
-                    },
+                        onSubmitted: (_) => _send(),
+                      ),
+                    ),
                   ),
                 ),
               ),

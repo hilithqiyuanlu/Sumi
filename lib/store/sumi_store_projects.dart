@@ -17,7 +17,7 @@ mixin SumiStoreProjects on ChangeNotifier {
   // 创建项目（改造：创建后触发 AI 规划）
   // ---------------------------------------------------------------------------
 
-  /// 新建项目。
+  /// 新建项目（06 轮：不再自动触发规划，由 UI 层通过评估流程驱动）。
   void addProject({
     required String name,
     required ProjectColor color,
@@ -51,11 +51,37 @@ mixin SumiStoreProjects on ChangeNotifier {
       currentProjectId = projectList.last.id;
     }
     afterMutation();
+    // 06 轮：不再自动触发 AI 规划，由 UI 层通过评估→规划流程驱动
+  }
 
-    // 异步触发 AI 规划（仅当有 goal 时）
-    if (goal.isNotEmpty) {
-      _triggerPlanning(projId);
+  /// 新建项目草稿（06 轮新增）—— 不创建月卡，不触发规划。
+  /// 月卡由 [commitPlan] 在评估+规划完成后一次性写入。
+  String addProjectDraft({
+    required String name,
+    required ProjectColor color,
+    String goal = '',
+    String level = '',
+    int cycleMonths = 3,
+    int timeConstraint = 0,
+  }) {
+    final projId = newSumiId('proj');
+    projectList.add(Project(
+      id: projId,
+      name: name,
+      color: color,
+      goal: goal,
+      level: level,
+      cycleMonths: cycleMonths,
+      timeConstraint: timeConstraint,
+      currentMonthIndex: 0,
+      createdAt: DateTime.now(),
+    ));
+    // 不创建月卡 —— 等 commitPlan 一次性写入
+    if (currentProjectId == null) {
+      currentProjectId = projId;
     }
+    afterMutation();
+    return projId;
   }
 
   /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
@@ -99,18 +125,7 @@ mixin SumiStoreProjects on ChangeNotifier {
       }
     }
     afterMutation();
-
-    // 编辑保存后自动重规划（goal / level / 周期 / 投入时间任一变更 + 有 goal）
-    final needsReplan = (goal != null && goal != old.goal) ||
-        (level != null && level != old.level) ||
-        (cycleMonths != null && cycleMonths != old.cycleMonths) ||
-        (timeConstraint != null && timeConstraint != old.timeConstraint);
-    if (needsReplan) {
-      final effectiveGoal = goal ?? old.goal;
-      if (effectiveGoal.isNotEmpty) {
-        retryPlanning(id);
-      }
-    }
+    // 06 轮：不再自动触发重规划，由 UI 层通过评估→规划流程驱动
   }
 
   /// 删除项目 → 级联删除月卡 + 系统 todo。
@@ -172,12 +187,33 @@ mixin SumiStoreProjects on ChangeNotifier {
 
     final startDate = dateKey(DateTime.now());
 
+    // 联网搜索补充上下文（Tavily）
+    String? searchContext;
+    try {
+      final searchResults = await svc.searchWeb(project.goal);
+      if (searchResults.isNotEmpty &&
+          !searchResults.first.containsKey('error') &&
+          !searchResults.first.containsKey('info')) {
+        final buf = StringBuffer();
+        for (final r in searchResults) {
+          buf.writeln('- **${r['title']}**');
+          buf.writeln('  ${r['content']}');
+          buf.writeln('  来源：${r['url']}');
+          buf.writeln();
+        }
+        searchContext = buf.toString();
+      }
+    } catch (_) {
+      // Tavily 不可用时静默回退，不影响规划流程
+    }
+
     final result = await svc.generateProjectPlan(
       goal: project.goal,
       level: project.level,
       cycleMonths: project.cycleMonths,
       timeConstraint: project.timeConstraint,
       startDate: startDate,
+      searchContext: searchContext,
     );
 
     if (result == null) {
@@ -325,6 +361,37 @@ mixin SumiStoreProjects on ChangeNotifier {
         projectId: project.id,
       );
     }
+  }
+
+  /// 规划完成后一次性提交（06 轮新增）。
+  /// 写入月卡 + 首日 todo，完成后触发 UI 刷新。
+  void commitPlan(String projectId, PlanResult plan) {
+    // 清除该项目的旧月卡（如果有）
+    monthCardList.removeWhere((m) => m.projectId == projectId);
+
+    // 写入新月卡
+    for (final monthPlan in plan.monthPlans) {
+      monthCardList.add(MonthCard(
+        id: newSumiId('mc'),
+        projectId: projectId,
+        monthIndex: monthPlan.monthIndex,
+        title: monthPlan.title,
+        summary: monthPlan.summary,
+        aiGenerated: true,
+      ));
+    }
+
+    // 写入首日 todo
+    for (final seed in plan.todayTodos) {
+      _addSystemTodoForDate(
+        title: seed.title,
+        body: seed.body,
+        date: seed.date,
+        projectId: projectId,
+      );
+    }
+
+    afterMutation();
   }
 
   /// 手动重试规划。

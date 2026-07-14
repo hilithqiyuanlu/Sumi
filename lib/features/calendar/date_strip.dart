@@ -20,6 +20,7 @@ class DateStrip extends StatefulWidget {
 class _DateStripState extends State<DateStrip> {
   final _scrollController = ScrollController();
   bool _programmaticScroll = false;
+  int? _lastCenterDay; // 上一次滚动中心对应的日，用于触发触觉反馈
 
   @override
   void didChangeDependencies() {
@@ -75,8 +76,11 @@ class _DateStripState extends State<DateStrip> {
               height: 72,
               child: NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
-                  if (notification is ScrollEndNotification &&
-                      !_programmaticScroll) {
+                  if (_programmaticScroll) return false;
+                  if (notification is ScrollUpdateNotification) {
+                    _checkCenterChange(store, daysInMonth, selected);
+                  } else if (notification is ScrollEndNotification) {
+                    _lastCenterDay = null;
                     _selectCenterDate(store, daysInMonth);
                   }
                   return false;
@@ -126,6 +130,24 @@ class _DateStripState extends State<DateStrip> {
           ],
         ),
       );
+  }
+
+  /// 滚动中检测中心日期变化，触发线性马达轻震（模拟 iOS 拨轮手感）。
+  void _checkCenterChange(SumiStore store, int daysInMonth, DateTime selected) {
+    if (!_scrollController.hasClients) return;
+    final offset = _scrollController.offset;
+    final viewport = _scrollController.position.viewportDimension;
+    final center = offset + viewport / 2;
+    const itemExtent = 62.0;
+    final dayIndex = (center / itemExtent).floor().clamp(0, daysInMonth - 1);
+    if (dayIndex != _lastCenterDay) {
+      _lastCenterDay = dayIndex;
+      // 仅当目标日期和当前选中不同时才震（经过已选中日不震）
+      final centerDate = DateTime(selected.year, selected.month, dayIndex + 1);
+      if (!isSameDate(centerDate, selected)) {
+        HapticFeedback.lightImpact();
+      }
+    }
   }
 
   void _selectCenterDate(SumiStore store, int daysInMonth) {

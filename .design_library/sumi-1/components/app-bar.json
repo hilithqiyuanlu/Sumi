@@ -1,0 +1,45 @@
+{
+  "name": "App Bar",
+  "slug": "app-bar",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "category": "navigation",
+  "description": "Scaffold 顶部导航栏。leading 为 menu 图标，trailing 为 tune 图标。title 区域动态显示 AI 状态",
+  "variants": [
+    {
+      "id": "chat-bar",
+      "name": "Chat Bar",
+      "description": "左侧 menu + 右侧 tune，标题区显示 AI 状态"
+    }
+  ],
+  "states": [
+    {
+      "name": "idle",
+      "description": "无标题，仅显示左右图标"
+    },
+    {
+      "name": "thinking",
+      "description": "标题区显示「思考中...」"
+    },
+    {
+      "name": "tool-calling",
+      "description": "标题区显示工具名称+省略号"
+    }
+  ],
+  "renderHints": {
+    "height": "48px",
+    "bgColor": "var(--surface)",
+    "iconColor": "var(--on-surface-variant)",
+    "statusFontSize": "var(--font-size-body-md)",
+    "statusColor": "var(--on-surface-variant)",
+    "iconSize": "var(--size-icon-md)"
+  },
+  "uiCopySamples": {
+    "thinkingStatus": "思考中...",
+    "toolCallingStatus": "正在调用日历...",
+    "leadingIcon": "menu",
+    "trailingIcon": "tune"
+  },
+  "unknowns": []
+}

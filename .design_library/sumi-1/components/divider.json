@@ -1,0 +1,26 @@
+{
+  "name": "Divider",
+  "slug": "divider",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "水平分割线，用于分隔内容区域",
+  "variants": [
+    {
+      "name": "default",
+      "description": "全宽"
+    },
+    {
+      "name": "inset",
+      "description": "左右缩进"
+    }
+  ],
+  "states": [],
+  "renderHints": {
+    "color": "var(--outline-variant)",
+    "height": "1px",
+    "insetMargin": "var(--space-7)"
+  },
+  "uiCopySamples": {},
+  "unknowns": []
+}

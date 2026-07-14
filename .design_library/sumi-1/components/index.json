@@ -1,0 +1,28 @@
+{
+  "components": [
+    { "slug": "tab-bar", "name": "Tab Bar", "category": "navigation", "preview": "component-tab-bar.html" },
+    { "slug": "app-bar", "name": "App Bar", "category": "navigation", "preview": "component-app-bar.html" },
+    { "slug": "calendar-nav", "name": "Calendar Navigation", "category": "navigation", "preview": "component-calendar-nav.html" },
+    { "slug": "scroll-to-bottom", "name": "Scroll to Bottom", "category": "navigation", "preview": "component-scroll-to-bottom.html" },
+    { "slug": "button", "name": "Button", "category": "input", "preview": "component-button.html" },
+    { "slug": "input", "name": "Input", "category": "input", "preview": "component-input.html" },
+    { "slug": "toggle", "name": "Toggle", "category": "input", "preview": "component-toggle.html" },
+    { "slug": "suggestion-chip", "name": "Suggestion Chip", "category": "input", "preview": "component-suggestion-chip.html" },
+    { "slug": "action-chip", "name": "Action Chip", "category": "input", "preview": "component-action-chip.html" },
+    { "slug": "chat-input", "name": "Chat Input", "category": "input", "preview": "component-chat-input.html" },
+    { "slug": "send-button", "name": "Send Button", "category": "input", "preview": "component-send-button.html" },
+    { "slug": "todo-card", "name": "Todo Card", "category": "data-display", "preview": "component-todo-card.html" },
+    { "slug": "todo-chip", "name": "Todo Chip", "category": "data-display", "preview": "component-todo-chip.html" },
+    { "slug": "chat-bubble", "name": "Chat Bubble", "category": "communication", "preview": "component-chat-bubble.html" },
+    { "slug": "avatar", "name": "Avatar", "category": "data-display", "preview": "component-avatar.html" },
+    { "slug": "badge", "name": "Badge", "category": "data-display", "preview": "component-badge.html" },
+    { "slug": "empty-state", "name": "Empty State", "category": "data-display", "preview": "component-empty-state.html" },
+    { "slug": "collapsible-section", "name": "Collapsible Section", "category": "data-display", "preview": "component-collapsible-section.html" },
+    { "slug": "bottom-sheet", "name": "Bottom Sheet", "category": "overlay", "preview": "component-bottom-sheet.html" },
+    { "slug": "dialog", "name": "Dialog", "category": "overlay", "preview": "component-dialog.html" },
+    { "slug": "toast", "name": "Toast", "category": "feedback", "preview": "component-toast.html" },
+    { "slug": "divider", "name": "Divider", "category": "feedback", "preview": "component-divider.html" },
+    { "slug": "drag-handle", "name": "Drag Handle", "category": "feedback", "preview": "component-drag-handle.html" },
+    { "slug": "voice-hint-bar", "name": "Voice Hint Bar", "category": "feedback", "preview": "component-voice-hint-bar.html" }
+  ]
+}

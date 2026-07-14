@@ -43,9 +43,7 @@ class MonthCardPager extends StatelessWidget {
               child: _UnlockedCard(
                 card: card,
                 monthIndex: index,
-                accentColor: index == project.currentMonthIndex
-                    ? lemon
-                    : mint,
+                accentColor: _monthAccent(index, project.currentMonthIndex),
               ),
             );
           }
@@ -54,6 +52,14 @@ class MonthCardPager extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 返回月卡标签的强调色，当月突出，其他月份轮换。
+Color _monthAccent(int index, int currentIndex) {
+  if (index == currentIndex) return primary500; // 当月用主色（实心 indigo）
+  // 其他月份轮换使用项目色
+  final palette = [lemon, sky, peach, sage, lilac, cherry];
+  return palette[index % palette.length];
 }
 
 /// 已解锁月卡。

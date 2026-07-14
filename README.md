@@ -18,6 +18,7 @@
 - **🛠 Wrench 工具面板** — 对话页侧边面板，整合语音输入、工具调用等快捷操作
 - **📅 日历导航** — 折叠态日期条 + 展开月视图，垂直拖拽手势切换
 - **📂 项目系统** — 最多 3 个学习项目，AI 生成月计划，月卡解锁机制追踪进度
+- **🧠 智能评估与规划** — 输入学习目标，AI 搜索 + 多维度评估可行性，自动生成分阶段学习计划
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Secure Storage，无需服务器
 
 ## 技术栈
@@ -71,13 +72,19 @@ lib/
 │   ├── ai_service.dart               # DeepSeek API（拆分/润色/规划/对话/搜索）
 │   ├── tool_executor.dart            # Function Calling 工具执行
 │   ├── voice_input_service.dart      # iOS 语音识别
+│   ├── goal_assessor.dart            # 目标评估（搜索 + AI 多维度分析）
+│   ├── plan_generator.dart           # 学习计划生成器
 │   └── secure_settings_store.dart    # Keychain 安全存储
 ├── theme/app_theme.dart              # Sumi 设计系统（Design Tokens）
+├── widgets/
+│   ├── bubble_barrage.dart           # 弹幕加载动画
+│   ├── score_bar.dart                # 评估分数条
+│   └── verdict_badge.dart            # 评估结论徽章
 └── features/
     ├── todos/                        # 事项网格、卡片、输入栏、编辑面板
     ├── chat/                         # 对话页面、气泡、输入、会话列表、Wrench 面板
     ├── calendar/                     # 日期条、月历、月视图展开层
-    ├── projects/                     # 项目卡、月卡 Pager、项目编辑器
+    ├── projects/                     # 项目卡、月卡、编辑器、评估与规划页
     ├── settings/                     # API Key 配置、Thinking 开关、清除数据
     └── shared/                       # 共享组件（可折叠区域、拖拽把手）
 ```

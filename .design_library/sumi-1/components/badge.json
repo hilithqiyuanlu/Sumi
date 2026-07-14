@@ -1,0 +1,40 @@
+{
+  "name": "Badge",
+  "slug": "badge",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "显示未读数量或状态的小角标，附加在图标或头像右上角",
+  "variants": [
+    {
+      "name": "dot",
+      "description": "纯圆点，无数字"
+    },
+    {
+      "name": "count",
+      "description": "显示数字"
+    },
+    {
+      "name": "label",
+      "description": "短文字标签"
+    }
+  ],
+  "states": [
+    { "name": "default", "description": "默认显示" },
+    { "name": "hidden", "description": "数量为 0 时隐藏" }
+  ],
+  "renderHints": {
+    "dotSize": "8px",
+    "countMinSize": "16px",
+    "bg": "var(--error-500)",
+    "textColor": "#ffffff",
+    "fontSize": "var(--font-size-body-xs)",
+    "fontWeight": 600,
+    "offset": "-4px -4px"
+  },
+  "uiCopySamples": {
+    "counts": [3, 12, 99],
+    "labels": ["新", "Beta"]
+  },
+  "unknowns": []
+}

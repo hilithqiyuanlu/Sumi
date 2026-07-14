@@ -1,0 +1,35 @@
+{
+  "name": "Toast",
+  "slug": "toast",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "底部悬浮的短暂提示消息",
+  "variants": [
+    {
+      "name": "default",
+      "description": "纯文字"
+    },
+    {
+      "name": "with-action",
+      "description": "带操作按钮"
+    }
+  ],
+  "states": [
+    { "name": "visible", "description": "可见状态" },
+    { "name": "dismissing", "description": "slideDown + fadeOut" }
+  ],
+  "renderHints": {
+    "radius": "var(--radius-12)",
+    "bg": "var(--neutral-800)",
+    "textColor": "#ffffff",
+    "fontSize": "var(--font-size-body-md)",
+    "padding": "var(--space-4) var(--space-6)",
+    "margin": "var(--space-7)"
+  },
+  "uiCopySamples": {
+    "messages": ["已复制", "保存成功", "网络错误，请重试"],
+    "actions": ["撤销"]
+  },
+  "unknowns": []
+}

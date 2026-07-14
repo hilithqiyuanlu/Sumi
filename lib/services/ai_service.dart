@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/models.dart';
+
 // ---------------------------------------------------------------------------
 // 结果类型
 // ---------------------------------------------------------------------------
@@ -204,21 +206,35 @@ class AiService {
   static const _planningSystemPrompt =
       '你是 Sumi，一个专业的自学规划师。\n'
           '\n'
-          '用户正在创建一个自学项目，你需要根据项目信息为其生成完整的学习计划。\n'
+          '用户正在创建一个自学项目，你需要根据项目信息和评估报告为其生成完整的学习计划。\n'
+          '\n'
+          '## 核心约束\n'
+          '\n'
+          '### 认知科学原则\n'
+          '1. **心流模型**：每月难度递进 10-20%，挑战略高于当前能力，保持用户在心流通道\n'
+          '2. **最近发展区 (ZPD)**：每月内容必须落在用户可独立做到与有指导可做到的区间内\n'
+          '3. **刻意练习**：每月必须有明确的核心技能目标 + 检验标准 + 即时反馈机会\n'
+          '4. **时间数学**：∑每月预估小时 ≤ 周期月数 × 每周小时 × 4.3\n'
+          '\n'
+          '### 领域对齐\n'
+          '- 月计划内容必须与搜索结果中的真实学习路径一致\n'
+          '- 引用搜索到的具体资源和方法，不要凭空编造\n'
+          '- 如果搜索结果中有推荐的时间线，优先参考\n'
           '\n'
           '## 要求\n'
           '\n'
           '### 月计划\n'
           '- 为每个月生成一个月计划卡\n'
-          '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-100 字）\n'
+          '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-120 字）\n'
           '- 摘要要高维度、战略性，不要过于具体（具体步骤留给每日 todo）\n'
-          '- 内容量匹配当月实际天数：如果起始月份剩余天数少（如只剩 6 天），计划应紧凑\n'
+          '- 内容量匹配当月实际天数：如果起始月份剩余天数少，计划应紧凑\n'
           '- 各月之间应有递进关系（基础 → 进阶 → 综合）\n'
+          '- 每张卡应隐含该月的核心技能目标和检验标准\n'
           '\n'
           '### 每日 Todo（仅生成第一天的）\n'
           '- 基于第一个月计划拆解为具体的可执行 todo\n'
           '- 标题 2-20 字，可附带更详细的 body\n'
-          '- 数量：1 条（默认）\n'
+          '- 数量：1 条（默认），最多 2 条（仅当首日内容确实需要拆分时）\n'
           '- 考虑每周投入时间约束，不要超出用户能力\n'
           '\n'
           '## 输出格式\n'
@@ -234,11 +250,129 @@ class AiService {
           '  ]\n'
           '}';
 
+  /// 增强版规划 prompt（06 轮新增，含评估报告 + 领域知识）。
+  static const _enhancedPlanningSystemPrompt =
+      '你是 Sumi，一个专业的自学规划师。\n'
+          '\n'
+          '用户正在创建一个自学项目。你已经有了评估报告和领域调研数据，请基于这些信息生成完整的学习计划。\n'
+          '\n'
+          '## 核心约束\n'
+          '\n'
+          '### 认知科学原则\n'
+          '1. **心流模型 (Flow)**：每月难度递进 10-20%，挑战略高于当前能力\n'
+          '2. **最近发展区 (ZPD)**：每月内容必须落在用户可独立做到与有指导可做到的区间内\n'
+          '3. **刻意练习**：每月必须有明确的核心技能目标 + 检验标准\n'
+          '4. **时间数学**：∑每月预估小时 ≤ 周期月数 × 每周小时 × 4.3\n'
+          '5. **评估反馈**：如果评估报告指出了问题（如周期偏短），在计划中给出缓解策略\n'
+          '\n'
+          '### 领域对齐\n'
+          '- 月计划内容必须与领域知识中的真实学习路径一致\n'
+          '- 引用搜索到的具体资源、方法和时间线\n'
+          '- 不要凭空编造学习路径\n'
+          '\n'
+          '## 要求\n'
+          '\n'
+          '### 月计划\n'
+          '- 为每个月生成一个月计划卡\n'
+          '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-120 字）\n'
+          '- 摘要要高维度、战略性\n'
+          '- 内容量匹配当月实际天数\n'
+          '- 各月之间递进关系清晰（基础 → 进阶 → 综合）\n'
+          '- 每张卡隐含核心技能目标和检验标准\n'
+          '\n'
+          '### 每日 Todo（仅第一天）\n'
+          '- 基于第一个月计划拆解为可执行 todo\n'
+          '- 标题 2-20 字，可附带 body\n'
+          '- 数量：1-2 条\n'
+          '- 考虑时间约束，不超出用户能力\n'
+          '\n'
+          '## 输出格式\n'
+          '严格 JSON，不要带任何额外文字：\n'
+          '{\n'
+          '  "monthPlans": [\n'
+          '    {"monthIndex": 0, "title": "月主题", "summary": "月计划摘要..."},\n'
+          '    ...\n'
+          '  ],\n'
+          '  "todayTodos": [\n'
+          '    {"title": "todo 标题", "body": "详细说明（可选）", "date": "YYYY-MM-DD"}\n'
+          '  ]\n'
+          '}';
+
   static const _dailyTodoSystemPrompt =
       '你是 Sumi。根据当前月计划，为指定日期生成 1 条系统 todo。\n'
           '\n'
           '要求：todo 标题 2-20 字，可附带 body。\n'
           '输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
+
+  static const _assessmentSystemPrompt =
+      '你是 Sumi，一个专业的自学规划评估师。\n'
+          '\n'
+          '你的任务是对用户的学习目标进行多维度评估，给出 A/B/C/D 综合评定。\n'
+          '评估必须基于提供的搜索结果，不要凭空判断。\n'
+          '\n'
+          '## 评估维度（每个 0.0-1.0 评分）\n'
+          '\n'
+          '1. clarity（清晰度）：目标是否具体、可衡量？\n'
+          '   0.0-0.3: 极度模糊（"学好XX"）\n'
+          '   0.4-0.6: 有方向但不具体（"提升英语水平"）\n'
+          '   0.7-1.0: 具体可衡量（"6个月IELTS从5.5到6.5"）\n'
+          '\n'
+          '2. feasibility（可行性）：物理/逻辑上是否可能？\n'
+          '   D 级红线：物理不可能、无学习价值、极端困难、高度不确定\n'
+          '   给出具体理由\n'
+          '\n'
+          '3. challengeFit（挑战匹配度）：目标难度 vs 当前能力\n'
+          '   参考心流理论：挑战略高于能力时最优（0.7-0.9）\n'
+          '   差距过大 → 低分（焦虑区），太简单 → 中低分（厌倦区）\n'
+          '\n'
+          '4. decomposability（可分解性）：能否拆为递进子目标？\n'
+          '   有清晰知识体系的学科 → 高分\n'
+          '   "提升品味"类模糊目标 → 低分\n'
+          '\n'
+          '5. timeRealism（时间合理性）：周期 × 投入时间是否足够？\n'
+          '   用搜索结果中的行业共识作为基准\n'
+          '   可用小时 < 行业共识最低时间的 20% → D 级 extreme\n'
+          '\n'
+          '6. motivationPotential（动机可持续性）：\n'
+          '   目标是否与用户的身份/长期发展关联？\n'
+          '   无明确线索时给 0.5\n'
+          '\n'
+          '7. resourceAccess（资源可达性）：\n'
+          '   是否需要特殊设备/导师/环境？\n'
+          '   只需要一台电脑和网络 → 高分\n'
+          '\n'
+          '8. measurability（进展可测性）：\n'
+          '   有客观标准判断进度吗？\n'
+          '   有证书/作品/量化指标 → 高分\n'
+          '\n'
+          '## D 级判定（不可通过，verdict: "d"）\n'
+          '\n'
+          '以下任一命中 → d，给出具体 subType：\n'
+          '  impossible: 物理上不可能（"造永动机"）\n'
+          '  meaningless: 无学习价值/过于简单（"学好呼吸"）\n'
+          '  extreme: 能力极弱 + 目标极高 + 时间极短（小学数学 → 1个月物理竞赛省一）\n'
+          '  too_uncertain: 目标不可预测/不可控（"拿诺贝尔奖"）\n'
+          '\n'
+          '## C 级判定\n'
+          '至少 3 个维度 < 0.4，或 timeRealism < 0.3\n'
+          '\n'
+          '## 输出格式\n'
+          '严格 JSON：\n'
+          '{\n'
+          '  "clarity": 0.8,\n'
+          '  "feasibility": 0.7,\n'
+          '  "challengeFit": 0.6,\n'
+          '  "decomposability": 0.8,\n'
+          '  "timeRealism": 0.5,\n'
+          '  "motivationPotential": 0.5,\n'
+          '  "resourceAccess": 0.9,\n'
+          '  "measurability": 0.7,\n'
+          '  "verdict": "a",\n'
+          '  "concerns": ["具体问题1"],\n'
+          '  "suggestions": ["可操作的调整建议"],\n'
+          '  "estimatedHours": "约 200-300 小时",\n'
+          '  "domainSummary": "该领域的概述"\n'
+          '}';
 
   // ---------------------------------------------------------------------------
   // 工具定义（05 轮新增）
@@ -356,7 +490,7 @@ class AiService {
     bool stream = false,
     List<Map<String, Object?>>? tools,
     String? responseFormat, // 'json_object' 或 null
-    int maxTokens = 1000,
+    int maxTokens = 2000,
   }) {
     final body = <String, Object?>{
       'model': model,
@@ -386,7 +520,7 @@ class AiService {
     required String userPrompt,
     required String model,
     bool thinking = false,
-    int maxTokens = 2000,
+    int maxTokens = 4000,
     int timeoutSeconds = 60,
   }) async {
     try {
@@ -530,7 +664,11 @@ class AiService {
     required int cycleMonths,
     required int timeConstraint,
     required String startDate,
+    String? searchContext,
   }) async {
+    final searchSection = searchContext != null && searchContext.isNotEmpty
+        ? '\n## 联网搜索结果（Tavily）\n以下是最新网络信息，请参考其内容来制定更准确的学习计划：\n$searchContext\n'
+        : '';
     final userPrompt = '''
 ## 输入信息
 - 项目目标：$goal
@@ -538,16 +676,56 @@ class AiService {
 - 规划周期：$cycleMonths 个月
 - 每周投入时间：$timeConstraint 小时
 - 起始日期：$startDate
-
+$searchSection
 请生成 $cycleMonths 个月的月计划卡和第一天的 todo。''';
 
+    // 注意：thinking 与 response_format: json_object 冲突，不可同时使用
     final result = await _callJsonApi(
       systemPrompt: _planningSystemPrompt,
       userPrompt: userPrompt,
       model: _modelPro,
-      thinking: true,
-      maxTokens: 3000,
+      thinking: false,
+      maxTokens: 32000,
       timeoutSeconds: 60,
+    );
+    if (result == null) return null;
+    return PlanResult.fromJson(result);
+  }
+
+  /// 增强版项目规划（06 轮新增）—— 结合评估报告 + 领域知识。
+  Future<PlanResult?> generatePlanEnhanced({
+    required String goal,
+    required String level,
+    required int cycleMonths,
+    required int timeConstraint,
+    required String startDate,
+    required String assessmentReport,
+    required String domainKnowledge,
+  }) async {
+    final userPrompt = '''
+## 项目信息
+- 目标：$goal
+- 当前水平：$level
+- 规划周期：$cycleMonths 个月
+- 每周投入：$timeConstraint 小时
+- 起始日期：$startDate
+
+## 评估报告
+$assessmentReport
+
+## 领域知识（网络搜索结果）
+$domainKnowledge
+
+请基于以上全部信息，生成 $cycleMonths 个月的月计划卡和第一天的 todo。''';
+
+    // 注意：thinking 与 response_format: json_object 冲突，不可同时使用
+    final result = await _callJsonApi(
+      systemPrompt: _enhancedPlanningSystemPrompt,
+      userPrompt: userPrompt,
+      model: _modelPro,
+      thinking: false,
+      maxTokens: 32000,
+      timeoutSeconds: 90,
     );
     if (result == null) return null;
     return PlanResult.fromJson(result);
@@ -574,11 +752,48 @@ class AiService {
       userPrompt: userPrompt,
       model: _modelFlash,
       thinking: false,
-      maxTokens: 500,
+      maxTokens: 1000,
       timeoutSeconds: 30,
     );
     if (result == null) return null;
     return DailyTodoResult.fromJson(result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 目标评估（06 轮新增）
+  // ---------------------------------------------------------------------------
+
+  /// 对用户学习目标进行多维度评估，返回 [GoalAssessment]。
+  /// [domainContext] 为搜索获取的领域知识文本，作为评估的"地面实况"。
+  Future<GoalAssessment?> assessGoal({
+    required String goal,
+    required String level,
+    required int cycleMonths,
+    required int timeConstraint,
+    required String domainContext,
+  }) async {
+    final userPrompt = '''
+## 用户输入
+- 目标：$goal
+- 当前水平：$level
+- 规划周期：$cycleMonths 个月
+- 每周投入：$timeConstraint 小时
+
+## 搜索结果（领域知识参考）
+$domainContext
+
+请基于以上信息进行多维度评估，给出 A/B/C/D 综合评定。''';
+
+    final result = await _callJsonApi(
+      systemPrompt: _assessmentSystemPrompt,
+      userPrompt: userPrompt,
+      model: _modelFlash,
+      thinking: false,
+      maxTokens: 8000,
+      timeoutSeconds: 60,
+    );
+    if (result == null) return null;
+    return GoalAssessment.fromJson(result);
   }
 
   // ---------------------------------------------------------------------------
@@ -652,7 +867,7 @@ class AiService {
         thinking: thinkingEnabled,
         stream: true,
         tools: _chatTools,
-        maxTokens: 16000,
+        maxTokens: 32000,
       ));
 
       final streamedResponse =

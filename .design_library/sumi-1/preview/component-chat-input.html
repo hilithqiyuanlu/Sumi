@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Input</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 12px; background: var(--color-surface); font-family: var(--font-sans); color: var(--color-on-surface); }
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .label { font-size: 10px; color: var(--color-muted-foreground); min-width: 80px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  .divider { border: none; border-top: 1px solid var(--color-border); margin: 4px 0 10px; }
+  /* @component-css-start */
+  .chat-input { display: flex; align-items: center; width: 100%; max-width: 420px; height: var(--size-button-lg); background: var(--surface-chip); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-pill); padding: 0 var(--space-4); box-sizing: border-box; transition: border-color .2s, box-shadow .2s; }
+  .chat-input:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(var(--color-primary), .18); }
+  .chat-input__field { flex: 1; border: none; outline: none; background: none; font-family: var(--font-sans); font-size: var(--font-size-body); color: var(--color-on-surface); }
+  .chat-input__field::placeholder { color: var(--color-muted-foreground); }
+  /* @component-css-end */
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="label">Default</span>
+    <div class="chat-input">
+      <input class="chat-input__field" type="text" placeholder="尽管问">
+    </div>
+  </div>
+  <hr class="divider">
+  <div class="row">
+    <span class="label">With Text</span>
+    <div class="chat-input">
+      <input class="chat-input__field" type="text" value="建议以什么顺序开展我今天的待办">
+    </div>
+  </div>
+</body>
+</html>

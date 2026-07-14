@@ -1,0 +1,35 @@
+{
+  "name": "Collapsible Section",
+  "slug": "collapsible-section",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "可展开/折叠内容区域，用于 AI 思考过程、工具结果",
+  "variants": [
+    {
+      "name": "default",
+      "description": "surface-container 背景"
+    },
+    {
+      "name": "bordered",
+      "description": "额外 outline-variant 边框"
+    }
+  ],
+  "states": [
+    { "name": "collapsed", "description": "单行 + chevron_right" },
+    { "name": "expanded", "description": "完整内容 + chevron_down" }
+  ],
+  "renderHints": {
+    "bg": "var(--surface-container)",
+    "radius": "var(--radius-8)",
+    "titleFontSize": "var(--font-size-body-sm)",
+    "titleColor": "var(--on-surface-variant)",
+    "contentFontSize": "var(--font-size-body-md)",
+    "contentColor": "var(--on-surface)",
+    "padding": "var(--space-5)"
+  },
+  "uiCopySamples": {
+    "titles": ["思考过程", "工具调用详情", "参考来源"]
+  },
+  "unknowns": []
+}

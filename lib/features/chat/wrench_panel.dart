@@ -197,15 +197,16 @@ class _SumiToolsSheetState extends State<SumiToolsSheet> {
                 ),
               ),
               const SizedBox(height: s8),
-              SwitchListTile(
+              ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('深度思考'),
-                value: store.thinkingEnabled,
-                activeTrackColor: mintDeep.withValues(alpha: 0.4),
-                onChanged: (v) {
-                  store.setThinkingEnabled(v);
-                  setState(() {});
-                },
+                trailing: Switch(
+                  value: store.thinkingEnabled,
+                  onChanged: (v) {
+                    store.setThinkingEnabled(v);
+                    setState(() {});
+                  },
+                ),
               ),
 
               // 底部留白

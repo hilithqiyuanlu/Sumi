@@ -1,0 +1,715 @@
+/* @group-priority: primary, accent-coral, accent-teal, accent-violet */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;450&display=swap');
+
+/* ═══════════════════════════════════════════════════════════════
+   Sumi Design System v2 — Color Palette, Typography & Tokens
+   Core tokens aligned with TRAE Work design system
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ===== Layer 1 — Brand Color Scales ===== */
+
+  /* Primary — TRAE Work brand scale */
+  --primary-50: #f2f7ff;
+  --primary-100: #e5eaff;
+  --primary-200: #cfd8ff;
+  --primary-300: #aab7ff;
+  --primary-400: #8894ff;
+  --primary-500: #6a6fff;
+  --primary-600: #4b3fe3; /* @primary — brand core */
+  --primary-700: #3f31c6;
+  --primary-800: #2c2290;
+  --primary-900: #1a1759;
+
+  /* Accent Coral — muted for low-saturation usage */
+  --accent-coral-50: #fdf1ee;
+  --accent-coral-100: #f9ded8;
+  --accent-coral-200: #f0cabb;
+  --accent-coral-300: #e2b5a8;
+  --accent-coral-400: #cc9a8e;
+  --accent-coral-500: #b8897e; /* @primary — desaturated */
+  --accent-coral-600: #a47a6f;
+  --accent-coral-700: #8d6660;
+  --accent-coral-800: #775553;
+  --accent-coral-900: #614846;
+
+  /* Accent Amber — muted for low-saturation usage */
+  --accent-amber-50: #fef8e8;
+  --accent-amber-100: #fdefcd;
+  --accent-amber-200: #f5ddb2;
+  --accent-amber-300: #e8c98f;
+  --accent-amber-400: #d4b47a;
+  --accent-amber-500: #c0a068; /* @primary — desaturated */
+  --accent-amber-600: #a98b5a;
+  --accent-amber-700: #8f744a;
+  --accent-amber-800: #765e3e;
+  --accent-amber-900: #5d4a33;
+
+  /* Neutral — TRAE Work brand-grey scale */
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d4d4d4;
+  --neutral-400: #a1a1a1;
+  --neutral-500: #737373;
+  --neutral-600: #525252;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+  --neutral-900: #171717;
+  --neutral-950: #0a0a0a;
+
+  /* ===== Status Colors — TRAE Work ===== */
+
+  /* Success */
+  --success-50: #eef9f3;
+  --success-100: #d4f0e0;
+  --success-default: #15a877;
+  --success-500: #15a877;
+  --success-600: #359d5d;
+  --success-surface-l1: rgba(21,168,119,0.12);
+  --success-surface-l2: rgba(21,168,119,0.18);
+  --success-surface-l3: rgba(21,168,119,0.36);
+
+  /* Warning / Alert */
+  --warning-50: #fef8e8;
+  --warning-100: #fdefcd;
+  --warning-default: #e27900;
+  --warning-500: #e27900;
+  --warning-600: #dba228;
+  --warning-surface-l1: rgba(226,121,0,0.12);
+  --warning-surface-l2: rgba(226,121,0,0.18);
+  --warning-surface-l3: rgba(226,121,0,0.36);
+
+  /* Alert (lighter warning variant) */
+  --alert-default: #fea900;
+  --alert-500: #fea900;
+  --alert-surface-l1: rgba(254,169,0,0.12);
+  --alert-surface-l2: rgba(254,169,0,0.18);
+  --alert-surface-l3: rgba(254,169,0,0.36);
+
+  /* Error */
+  --error-50: #fcf3f2;
+  --error-100: #f8e0dc;
+  --error-default: #e8463a;
+  --error-500: #e8463a;
+  --error-600: #c94a3d;
+  --error-surface-l1: rgba(232,70,58,0.12);
+  --error-surface-l2: rgba(232,70,58,0.16);
+  --error-surface-l3: rgba(232,70,58,0.36);
+
+  /* Info / Primary-status */
+  --info-50: #eef4fc;
+  --info-100: #d6e6f8;
+  --info-200: #c4d7f3;
+  --info-default: #2f74ff;
+  --info-500: #2f74ff;
+  --info-800: #2b5694;
+  --info-surface-l1: rgba(47,116,255,0.12);
+  --info-surface-l2: rgba(47,116,255,0.18);
+  --info-surface-l3: rgba(47,116,255,0.36);
+
+  /* ===== Accent Extension Palette — sumi project colors (preserved) ===== */
+
+  /* Accent Teal — muted for low-saturation usage */
+  --accent-teal-50: #eafaf3;
+  --accent-teal-100: #ccf3e2;
+  --accent-teal-200: #9de0c5;
+  --accent-teal-300: #76c9a9;
+  --accent-teal-400: #5fb096;
+  --accent-teal-500: #4d9882; /* @primary — desaturated */
+  --accent-teal-600: #3f7f6c;
+
+  /* Accent Cyan — muted for low-saturation usage */
+  --accent-cyan-50: #eaf7fe;
+  --accent-cyan-100: #ccebfc;
+  --accent-cyan-200: #a4d6f4;
+  --accent-cyan-300: #7ec1ea;
+  --accent-cyan-400: #64aede;
+  --accent-cyan-500: #5098d0; /* @primary — desaturated */
+  --accent-cyan-600: #4280b8;
+
+  /* Accent Violet — muted for low-saturation usage */
+  --accent-violet-50: #f3f0ff;
+  --accent-violet-100: #e3daff;
+  --accent-violet-200: #cec2f5;
+  --accent-violet-300: #b5a5e8;
+  --accent-violet-400: #9d8fda;
+  --accent-violet-500: #887acc; /* @primary — desaturated */
+  --accent-violet-600: #7368bc;
+
+  /* Accent Lime — muted for low-saturation usage */
+  --accent-lime-50: #f3fbe6;
+  --accent-lime-100: #e4f5c8;
+  --accent-lime-200: #cde494;
+  --accent-lime-300: #b0cc7a;
+  --accent-lime-400: #95b566;
+  --accent-lime-500: #7d9e56; /* @primary — desaturated */
+  --accent-lime-600: #678548;
+
+  /* Accent Magenta — muted for low-saturation usage */
+  --accent-magenta-50: #fdf0f6;
+  --accent-magenta-100: #f8d9ea;
+  --accent-magenta-200: #edb8d0;
+  --accent-magenta-300: #d996b6;
+  --accent-magenta-400: #c07d9f;
+  --accent-magenta-500: #a86a8d; /* @primary — desaturated */
+  --accent-magenta-600: #8e587a;
+
+  /* Accent Slate — TRAE Work extension */
+  --accent-slate-50: #f2f4f7;
+  --accent-slate-100: #e3e6eb;
+  --accent-slate-200: #c7cdd5;
+  --accent-slate-300: #a1aab5;
+  --accent-slate-400: #7c8794;
+  --accent-slate-500: #5d6774;
+  --accent-slate-600: #4a5260;
+
+  /* ===== Surface Hierarchy (M3 style) ===== */
+  --surface: #ffffff;
+  --surface-dim: var(--neutral-100);
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #fafafa;
+  --surface-chip: #f5f5f5;
+  --surface-container: var(--neutral-100);
+  --surface-container-high: var(--neutral-200);
+  --surface-container-highest: var(--neutral-300);
+  --on-surface: var(--neutral-900);
+  --on-surface-variant: var(--neutral-500);
+  --outline: var(--neutral-400);
+  --outline-variant: var(--neutral-200);
+
+  /* ===== Overlay — TRAE Work ===== */
+  --overlay-L1: rgba(115,115,115,0.08);
+  --overlay-L2: rgba(115,115,115,0.12);
+  --overlay-L3: rgba(115,115,115,0.16);
+  --overlay-L4: rgba(115,115,115,0.20);
+
+  /* ===== Interactive States ===== */
+  --interactive-hover: rgba(75,63,227,0.08);
+  --interactive-focus: rgba(75,63,227,0.12);
+  --interactive-press: rgba(75,63,227,0.16);
+
+  /* ===== Border — TRAE Work ===== */
+  --border-l1: rgba(115,115,115,0.12);
+  --border-l2: rgba(115,115,115,0.18);
+  --border-l3: rgba(115,115,115,0.36);
+  --border-brand: #4b3fe3;
+
+  /* ===== Icon — TRAE Work ===== */
+  --icon-default: #262626;
+  --icon-secondary: #404040;
+  --icon-tertiary: #737373;
+  --icon-disabled: #a1a1a1;
+  --icon-onbrand: #ffffff;
+  --icon-brand: #4b3fe3;
+
+  /* ===== Code Syntax Highlighting — preserved from sumi ===== */
+  --code-text: #262626;
+  --code-doc: #737373;
+  --code-link: #4b3fe3;
+  --code-number: #9570ff;
+  --code-action: #00b983;
+  --code-instruction: #d0695a;
+  --code-function: #4b3fe3;
+  --code-constant: #9570ff;
+  --code-parameter: #efae3e;
+  --code-attribute: #00b6f5;
+  --code-tag: #d0695a;
+
+  /* Tags — low-saturation accent derivatives */
+  --tag-indigo: var(--primary-200);
+  --tag-violet: var(--accent-violet-200);
+  --tag-pink: var(--accent-magenta-200);
+  --tag-blue: var(--accent-cyan-200);
+  --tag-sky: var(--accent-teal-200);
+  --tag-teal: var(--accent-teal-200);
+
+  /* ===== Layer 2 — Short Aliases ===== */
+
+  /* Primary */
+  --primary: var(--primary-600); /* #4b3fe3 — brand core */
+  --primary-container: var(--primary-100);
+  --on-primary: #ffffff;
+  --on-primary-container: var(--primary-900);
+
+  /* Accent (legacy backward compat — maps to coral) */
+  --accent: var(--accent-coral-500);
+  --accent-50: var(--accent-coral-50);
+  --accent-100: var(--accent-coral-100);
+  --accent-200: var(--accent-coral-200);
+  --accent-300: var(--accent-coral-300);
+  --accent-400: var(--accent-coral-400);
+  --accent-500: var(--accent-coral-500);
+  --accent-600: var(--accent-coral-600);
+  --accent-700: var(--accent-coral-700);
+  --accent-800: var(--accent-coral-800);
+  --accent-900: var(--accent-coral-900);
+
+  /* Secondary (legacy backward compat — based on coral) */
+  --secondary: var(--accent-coral-100);
+  --secondary-container: var(--accent-coral-50);
+  --on-secondary: var(--accent-coral-900);
+  --on-secondary-container: var(--accent-coral-800);
+
+  /* Tertiary (legacy backward compat — maps to amber) */
+  --tertiary: var(--accent-amber-500);
+  --tertiary-container: var(--accent-amber-100);
+  --on-tertiary: #ffffff;
+  --on-tertiary-container: var(--accent-amber-900);
+  --tertiary-50: var(--accent-amber-50);
+  --tertiary-100: var(--accent-amber-100);
+  --tertiary-200: var(--accent-amber-200);
+  --tertiary-300: var(--accent-amber-300);
+  --tertiary-400: var(--accent-amber-400);
+  --tertiary-500: var(--accent-amber-500);
+  --tertiary-600: var(--accent-amber-600);
+  --tertiary-700: var(--accent-amber-700);
+  --tertiary-800: var(--accent-amber-800);
+  --tertiary-900: var(--accent-amber-900);
+
+  /* Background & Foreground */
+  --bg: #ffffff;
+  --fg: var(--neutral-900);
+  --muted: var(--neutral-500);
+  --rule: var(--border-l1); /* TRAE Work border */
+  --link: var(--primary-600);
+  --ring: var(--primary-400);
+
+  /* Surface hierarchy aliases */
+  --surface: #ffffff;
+  --on-surface: var(--neutral-900);
+  --on-surface-variant: var(--neutral-500);
+  --outline: var(--neutral-400);
+  --outline-variant: var(--neutral-200);
+
+  /* Error aliases */
+  --error: var(--error-default);
+  --error-container: var(--error-surface-l1);
+  --on-error: #ffffff;
+  --on-error-container: var(--neutral-900);
+
+  /* Success alias */
+  --success: var(--success-default);
+
+  /* ===== Layer 3 — Portable Aliases ===== */
+
+  /* --color-* variables */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-surface: var(--surface);
+  --color-card: var(--surface);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-muted-foreground: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary: var(--on-primary);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-border: var(--rule);
+  --color-error: var(--error);
+  --color-success: var(--success);
+  --color-info: #2f74ff;
+  --color-warning: #e27900;
+  --color-primary-hover: var(--primary-500); /* #6a6fff */
+  --color-primary-soft: rgba(170,183,255,0.36); /* brand-popup */
+
+  /* Radius portable aliases */
+  --radius-sm: var(--radius-8);
+  --radius-md: var(--radius-12);
+  --radius-lg: var(--radius-20);
+  --radius-xl: var(--radius-24);
+  --radius-full: 9999px;
+  --radius-card: var(--radius-16);
+  --radius-card-header: var(--radius-20);
+
+  /* Font family base */
+  --font-sans: var(--font-body);
+  --font-family-base: var(--font-body);
+
+  /* Suggestion / Chat / Task aliases (updated to TRAE Work primary values) */
+  --suggestion-bg: var(--primary-100);
+  --suggestion-text: var(--primary-600);
+  --chat-user-bg: var(--primary-100);
+  --chat-user-text: var(--primary-900);
+  --chat-ai-bg: var(--surface-container);
+  --chat-ai-text: var(--on-surface);
+  --task-dot: var(--primary-400);
+  --task-chip-bg: var(--surface-chip);
+  --task-chip-done-bg: var(--surface-container);
+
+  /* ===== Typography Variables ===== */
+
+  /* Font families */
+  --font-display: 'SF Pro', 'PingFang SC', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'SF Pro', 'PingFang SC', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'SF Pro Text', 'PingFang SC', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-metric: 'Inter', 'SF Pro Text', 'PingFang SC', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Heading series — font-size / font-weight / line-height / letter-spacing */
+  --font-size-display: 52px;
+  --font-weight-display: 600;
+  --line-height-display: 60px;
+
+  --font-size-display-sm: 40px;
+  --font-weight-display-sm: 600;
+  --line-height-display-sm: 48px;
+
+  --font-size-h1: 32px;
+  --font-weight-h1: 600;
+  --line-height-h1: 40px;
+
+  --font-size-h2: 28px;
+  --font-weight-h2: 600;
+  --line-height-h2: 36px;
+
+  --font-size-h3: 24px;
+  --font-weight-h3: 600;
+  --line-height-h3: 32px;
+
+  --font-size-h4: 20px;
+  --font-weight-h4: 600;
+  --line-height-h4: 28px;
+
+  --font-size-h-lg: 22px;
+  --font-weight-h-lg: 600;
+  --line-height-h-lg: 30px;
+
+  --font-size-h-md: 20px;
+  --font-weight-h-md: 600;
+  --line-height-h-md: 28px;
+
+  --font-size-h-sm: 16px;
+  --font-weight-h-sm: 600;
+  --line-height-h-sm: 24px;
+
+  --font-size-h-xs: 13px;
+  --font-weight-h-xs: 600;
+  --line-height-h-xs: 20px;
+
+  --font-size-h-2xs: 12px;
+  --font-weight-h-2xs: 600;
+  --line-height-h-2xs: 18px;
+
+  --font-size-h-3xs: 11px;
+  --font-weight-h-3xs: 600;
+  --line-height-h-3xs: 16px;
+
+  /* Body series */
+  --font-size-body-lg: 18px;
+  --font-weight-body-lg: 400;
+  --line-height-body-lg: 28px;
+
+  --font-size-body-base: 14px;
+  --font-weight-body-base: 400;
+  --line-height-body-base: 20px;
+
+  --font-size-body-base-strong: 14px;
+  --font-weight-body-base-strong: 500;
+  --line-height-body-base-strong: 20px;
+
+  --font-size-body-md: 12px;
+  --font-weight-body-md: 400;
+  --line-height-body-md: 18px;
+
+  --font-size-body-md-strong: 12px;
+  --font-weight-body-md-strong: 500;
+  --line-height-body-md-strong: 18px;
+
+  --font-size-body-sm: 11px;
+  --font-weight-body-sm: 400;
+  --line-height-body-sm: 16px;
+
+  --font-size-body-sm-strong: 11px;
+  --font-weight-body-sm-strong: 500;
+  --line-height-body-sm-strong: 16px;
+
+  --font-size-body-xs: 10px;
+  --font-weight-body-xs: 400;
+  --line-height-body-xs: 14px;
+
+  --font-size-body-xs-strong: 10px;
+  --font-weight-body-xs-strong: 500;
+  --line-height-body-xs-strong: 14px;
+
+  /* Code series */
+  --font-size-code-editor: 13px;
+  --font-weight-code-editor: 450;
+  --line-height-code-editor: 20px;
+
+  --font-size-code-terminal: 12px;
+  --font-weight-code-terminal: 450;
+  --line-height-code-terminal: 18px;
+
+  /* ===== Spacing (continuous index) ===== */
+  --space-0: 0px;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --space-9: 24px;
+  --space-10: 32px;
+  --space-11: 40px;
+  --space-12: 48px;
+  --space-13: 64px;
+
+  /* ===== Sizing — TRAE Work ===== */
+  --size-icon-xs: 12px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+  --size-icon-lg: 24px;
+  --size-button-sm: 32px;
+  --size-button-md: 40px;
+  --size-button-lg: 48px;
+  --size-input-height: 36px;
+  --border-width: 1px;
+
+  /* ===== Border Radius — TRAE Work ===== */
+  --radius-0: 0px;
+  --radius-2: 2px;
+  --radius-4: 4px;
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-10: 10px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+  --radius-32: 32px;
+  --radius-full: 9999px;
+
+  /* ===== Shadows — enhanced (TRAE Work) ===== */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.06); /* Card */
+  --shadow-2: 0 4px 8px rgba(0,0,0,0.08); /* Card Hover — enhanced */
+  --shadow-3: 0 8px 16px rgba(0,0,0,0.10); /* Float */
+  --shadow-4: 0 12px 24px rgba(0,0,0,0.12); /* Modal */
+  --shadow-5: 0 16px 48px rgba(0,0,0,0.16); /* Overlay — enhanced */
+
+  /* ===== Motion ===== */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-decelerate: cubic-bezier(0, 0, 0, 1);
+  --easing-accelerate: cubic-bezier(0.3, 0, 1, 1);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Typography Classes — .sumi- prefix, rem values
+   ═══════════════════════════════════════════════════════════════ */
+
+/* --- Heading Classes --- */
+.sumi-display {
+  font-family: var(--font-display);
+  font-size: 3.25rem; /* 52px */
+  font-weight: var(--font-weight-display);
+  line-height: 3.75rem; /* 60px */
+  letter-spacing: -0.03em;
+}
+
+.sumi-display-sm {
+  font-family: var(--font-display);
+  font-size: 2.5rem; /* 40px */
+  font-weight: var(--font-weight-display-sm);
+  line-height: 3rem; /* 48px */
+  letter-spacing: -0.02em;
+}
+
+.sumi-h1 {
+  font-family: var(--font-heading);
+  font-size: 2rem; /* 32px */
+  font-weight: var(--font-weight-h1);
+  line-height: 2.5rem; /* 40px */
+  letter-spacing: 0;
+}
+
+.sumi-h2 {
+  font-family: var(--font-heading);
+  font-size: 1.75rem; /* 28px */
+  font-weight: var(--font-weight-h2);
+  line-height: 2.25rem; /* 36px */
+  letter-spacing: 0;
+}
+
+.sumi-h3 {
+  font-family: var(--font-heading);
+  font-size: 1.5rem; /* 24px */
+  font-weight: var(--font-weight-h3);
+  line-height: 2rem; /* 32px */
+  letter-spacing: 0;
+}
+
+.sumi-h4 {
+  font-family: var(--font-heading);
+  font-size: 1.25rem; /* 20px */
+  font-weight: var(--font-weight-h4);
+  line-height: 1.75rem; /* 28px */
+  letter-spacing: 0;
+}
+
+.sumi-h-lg {
+  font-family: var(--font-heading);
+  font-size: 1.375rem; /* 22px */
+  font-weight: var(--font-weight-h-lg);
+  line-height: 1.875rem; /* 30px */
+  letter-spacing: 0;
+}
+
+.sumi-h-md {
+  font-family: var(--font-heading);
+  font-size: 1.25rem; /* 20px */
+  font-weight: var(--font-weight-h-md);
+  line-height: 1.75rem; /* 28px */
+  letter-spacing: 0;
+}
+
+.sumi-h-sm {
+  font-family: var(--font-heading);
+  font-size: 1rem; /* 16px */
+  font-weight: var(--font-weight-h-sm);
+  line-height: 1.5rem; /* 24px */
+  letter-spacing: 0;
+}
+
+.sumi-h-xs {
+  font-family: var(--font-heading);
+  font-size: 0.8125rem; /* 13px */
+  font-weight: var(--font-weight-h-xs);
+  line-height: 1.25rem; /* 20px */
+  letter-spacing: 0;
+}
+
+.sumi-h-2xs {
+  font-family: var(--font-heading);
+  font-size: 0.75rem; /* 12px */
+  font-weight: var(--font-weight-h-2xs);
+  line-height: 1.125rem; /* 18px */
+  letter-spacing: 0;
+}
+
+.sumi-h-3xs {
+  font-family: var(--font-heading);
+  font-size: 0.6875rem; /* 11px */
+  font-weight: var(--font-weight-h-3xs);
+  line-height: 1rem; /* 16px */
+  letter-spacing: 0;
+}
+
+/* --- Body Classes --- */
+.sumi-body-lg {
+  font-family: var(--font-body);
+  font-size: 1.125rem; /* 18px */
+  font-weight: var(--font-weight-body-lg);
+  line-height: 1.75rem; /* 28px */
+  letter-spacing: -0.02em;
+}
+
+.sumi-body {
+  font-family: var(--font-body);
+  font-size: 0.875rem; /* 14px */
+  font-weight: var(--font-weight-body-base);
+  line-height: 1.25rem; /* 20px */
+  letter-spacing: -0.02em;
+}
+
+.sumi-body-strong {
+  font-family: var(--font-body);
+  font-size: 0.875rem; /* 14px */
+  font-weight: var(--font-weight-body-base-strong);
+  line-height: 1.25rem; /* 20px */
+  letter-spacing: -0.02em;
+}
+
+.sumi-body-md {
+  font-family: var(--font-body);
+  font-size: 0.75rem; /* 12px */
+  font-weight: var(--font-weight-body-md);
+  line-height: 1.125rem; /* 18px */
+  letter-spacing: 0;
+}
+
+.sumi-body-md-strong {
+  font-family: var(--font-body);
+  font-size: 0.75rem; /* 12px */
+  font-weight: var(--font-weight-body-md-strong);
+  line-height: 1.125rem; /* 18px */
+  letter-spacing: 0;
+}
+
+.sumi-body-sm {
+  font-family: var(--font-body);
+  font-size: 0.6875rem; /* 11px */
+  font-weight: var(--font-weight-body-sm);
+  line-height: 1rem; /* 16px */
+  letter-spacing: 0;
+}
+
+.sumi-body-sm-strong {
+  font-family: var(--font-body);
+  font-size: 0.6875rem; /* 11px */
+  font-weight: var(--font-weight-body-sm-strong);
+  line-height: 1rem; /* 16px */
+  letter-spacing: 0;
+}
+
+.sumi-body-xs {
+  font-family: var(--font-body);
+  font-size: 0.625rem; /* 10px */
+  font-weight: var(--font-weight-body-xs);
+  line-height: 0.875rem; /* 14px */
+  letter-spacing: 0;
+}
+
+.sumi-body-xs-strong {
+  font-family: var(--font-body);
+  font-size: 0.625rem; /* 10px */
+  font-weight: var(--font-weight-body-xs-strong);
+  line-height: 0.875rem; /* 14px */
+  letter-spacing: 0;
+}
+
+/* --- Caption (legacy compat) --- */
+.sumi-caption {
+  font-family: var(--font-body);
+  font-size: 0.75rem; /* 12px */
+  font-weight: 400;
+  line-height: 1.125rem; /* 18px */
+  letter-spacing: 0;
+}
+
+/* --- Lead (legacy compat) --- */
+.sumi-lead {
+  font-family: var(--font-body);
+  font-size: 1rem; /* 16px */
+  font-weight: 400;
+  line-height: 1.5rem; /* 24px */
+  letter-spacing: 0;
+}
+
+/* --- Mono / Code Classes --- */
+.sumi-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem; /* 13px */
+  font-weight: 400;
+  line-height: 1.25rem; /* 20px */
+}
+
+.sumi-code-editor {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem; /* 13px */
+  font-weight: var(--font-weight-code-editor);
+  line-height: 1.25rem; /* 20px */
+}
+
+.sumi-code-terminal {
+  font-family: var(--font-mono);
+  font-size: 0.75rem; /* 12px */
+  font-weight: var(--font-weight-code-terminal);
+  line-height: 1.125rem; /* 18px */
+}

@@ -1,0 +1,28 @@
+{
+  "name": "Scroll to Bottom",
+  "slug": "scroll-to-bottom",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "聊天列表滚动后出现的悬浮圆形按钮",
+  "variants": [
+    {
+      "name": "default",
+      "description": "默认样式"
+    }
+  ],
+  "states": [
+    { "name": "visible", "description": "可见状态" },
+    { "name": "hidden", "description": "隐藏状态" }
+  ],
+  "renderHints": {
+    "size": "36px",
+    "radius": "var(--radius-full)",
+    "bg": "var(--surface)",
+    "shadow": "var(--shadow-1)",
+    "iconColor": "var(--primary-500)",
+    "iconSize": "22px"
+  },
+  "uiCopySamples": {},
+  "unknowns": []
+}

@@ -4,7 +4,7 @@ import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
-import 'project_editor.dart';
+import 'project_editor_page.dart';
 
 /// 共享删除确认对话框（project_card 和 project_tabs 共用）。
 void confirmDeleteProject(BuildContext context, SumiStore store, Project p) {
@@ -117,10 +117,11 @@ class _ProjectCardState extends State<ProjectCard> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton.icon(
-                          onPressed: () => showProjectEditor(
-                            context,
-                            store,
-                            project: p,
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              fullscreenDialog: true,
+                              builder: (_) => ProjectEditorPage(project: p),
+                            ),
                           ),
                           icon:
                               const Icon(Icons.edit, size: iconSmall),

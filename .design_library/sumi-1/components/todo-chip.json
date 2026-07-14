@@ -1,0 +1,78 @@
+{
+  "name": "Todo Chip",
+  "slug": "todo-chip",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "Pill-shaped task tags 用于主界面轻量展示待办摘要；完整 Todo 展示使用独立的 todo-card 组件。Pending 态显示浅色实心圆圈（outline-variant 背景，无边框，点击可标记完成），Completed 态带实心 checkmark + 划线 + muted 文字",
+  "variants": [
+    {
+      "id": "pending",
+      "name": "Pending",
+      "description": "未完成任务 chip：浅色背景 + 深色文字 + 左侧浅色实心圆圈（outline-variant 填充，无边框，点击可标记完成），交互：点击圆圈 → 变为 completed"
+    },
+    {
+      "id": "completed",
+      "name": "Completed",
+      "description": "已完成任务 chip：带蓝色实心 checkmark circle + 文字划线(line-through) + muted 文字色 + 0.5 透明度"
+    },
+    {
+      "id": "project-colored",
+      "name": "Project Colored",
+      "description": "项目色背景 chip：背景使用对应项目色的 25% 透明度版本，文字保持深色，用于区分不同项目来源"
+    }
+  ],
+  "states": [
+    { "name": "default", "description": "正常静止态" },
+    { "name": "completed", "description": "已完成态：显示 checkmark，背景弱化，文字 muted" },
+    { "name": "pressed", "description": "按下态：brightness(0.97) 轻微变暗反馈" },
+    { "name": "dragging", "description": "拖拽中：原位显示 0.3 透明度占位，拖拽副本附带 shadow-4" },
+    { "name": "dismissible", "description": "左滑删除态：chip 背景切换为 danger 色，提示即将删除" }
+  ],
+  "renderHints": {
+    "layout": "flex-wrap",
+    "radius": "var(--radius-full)",
+    "pendingBg": "var(--task-chip-bg)",
+    "completedBg": "var(--task-chip-done-bg)",
+    "projectBg": "rgba(var(--project-color), 0.25)",
+    "textColor": "var(--color-on-surface)",
+    "completedTextColor": "var(--color-muted-foreground)",
+    "completedTextDecoration": "line-through",
+    "completedTextOpacity": "0.5",
+    "pendingCheckmark": "circle-outlined",
+    "pendingCheckmarkColor": "var(--color-on-surface-variant)",
+    "pendingCheckmarkBg": "var(--color-outline-variant)",
+    "pendingCheckmarkBorder": "none",
+    "pendingCheckmarkSize": "18px",
+    "checkColor": "var(--color-primary)",
+    "checkBg": "var(--color-primary-container)",
+    "dangerBg": "var(--color-error)",
+    "fontSize": "var(--font-size-body)",
+    "checkSize": "18px",
+    "padding": "6px 12px 6px 6px",
+    "pendingPadding": "6px 12px",
+    "gap": "6px",
+    "pressedFilter": "brightness(0.97)",
+    "draggingOpacity": "0.3",
+    "draggingShadow": "var(--shadow-4)"
+  },
+  "uiCopySamples": {
+    "pendingTasks": [
+      "看深度学习入门",
+      "去B站看知识图谱导论课",
+      "线性代数与统计学入门",
+      "撰写微积分课程手册第6章内容",
+      "整理 Convex Optimization 课后习题",
+      "阅读 Attention Is All You Need 论文",
+      "准备周五组会 PPT",
+      "完成数据清洗脚本"
+    ],
+    "completedTasks": [
+      "准备读机器学习西瓜书",
+      "开发Sumi的Skill与Mcp等插件",
+      "提交 Lab3 实验报告",
+      "修复导航栏滚动卡顿问题"
+    ]
+  },
+  "unknowns": []
+}

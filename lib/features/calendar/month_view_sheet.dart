@@ -5,7 +5,7 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../projects/month_card_pager.dart';
 import '../projects/project_card.dart';
-import '../projects/project_editor.dart';
+import '../projects/project_editor_page.dart';
 import '../projects/project_tabs.dart';
 import 'month_calendar.dart';
 
@@ -80,7 +80,12 @@ class MonthViewSheet extends StatelessWidget {
                       GestureDetector(
                         onTap: () {
                           HapticFeedback.selectionClick();
-                          showProjectEditor(context, store);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              fullscreenDialog: true,
+                              builder: (_) => const ProjectEditorPage(),
+                            ),
+                          );
                         },
                         child: Container(
                           width: double.infinity,

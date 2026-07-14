@@ -1,0 +1,81 @@
+{
+  "name": "Todo Card",
+  "slug": "todo-card",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "category": "data-display",
+  "description": "单张 Todo 卡片，用于瀑布流网格。支持 done/pin 交互、项目归属色标、提醒时间。radius-card(16px), padding 12px",
+  "variants": [
+    {
+      "id": "default",
+      "name": "Default",
+      "description": "白色背景 + shadow-1，含 done 图标 + 标题 + pin 图标"
+    },
+    {
+      "id": "project-colored",
+      "name": "Project Colored",
+      "description": "背景为项目色 25% 透明度，无 shadow，显示项目色标 + 项目名"
+    },
+    {
+      "id": "with-reminder",
+      "name": "With Reminder",
+      "description": "在项目行下方显示 schedule 图标 + 提醒时间"
+    }
+  ],
+  "states": [
+    { "name": "default", "description": "正常展示态" },
+    {
+      "name": "done",
+      "description": "已完成态：opacity 0.6 + 删除线 + muted 文字 + check_circle 图标"
+    },
+    {
+      "name": "pinned",
+      "description": "已固定态：pin 图标变为 mint 色"
+    },
+    {
+      "name": "pressed",
+      "description": "按下态：brightness(0.97) 轻微变暗"
+    },
+    {
+      "name": "dragging",
+      "description": "拖拽态：shadow-4，原位 0.3 透明度"
+    },
+    {
+      "name": "dismissing",
+      "description": "左滑删除态：背景切换为 error-500 danger 色"
+    }
+  ],
+  "renderHints": {
+    "radius": "var(--radius-card)",
+    "padding": "var(--space-6)",
+    "bg": "var(--surface)",
+    "shadow": "var(--shadow-1)",
+    "doneIconColor": "var(--success-500)",
+    "pinIconColor": "var(--accent-teal-400)",
+    "dangerBg": "var(--error-500)",
+    "titleFontSize": "var(--font-size-body-base)",
+    "metaFontSize": "var(--font-size-body-sm)",
+    "doneOpacity": "0.6",
+    "doneTextDecoration": "line-through",
+    "doneTextColor": "var(--on-surface-variant)",
+    "pressedFilter": "brightness(0.97)",
+    "draggingShadow": "var(--shadow-4)",
+    "draggingOpacity": "0.3",
+    "projectBgOpacity": "0.25"
+  },
+  "uiCopySamples": {
+    "pendingTasks": [
+      "看深度学习入门",
+      "撰写微积分课程手册第6章"
+    ],
+    "completedTasks": [
+      "准备读机器学习西瓜书"
+    ],
+    "projectNames": [
+      "数学",
+      "编程"
+    ]
+  },
+  "unknowns": []
+}

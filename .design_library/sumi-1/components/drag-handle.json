@@ -1,0 +1,23 @@
+{
+  "name": "Drag Handle",
+  "slug": "drag-handle",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "底部 Sheet 顶部的拖拽指示条",
+  "variants": [
+    {
+      "name": "default",
+      "description": "默认样式"
+    }
+  ],
+  "states": [],
+  "renderHints": {
+    "width": "36px",
+    "height": "4px",
+    "radius": "var(--radius-2)",
+    "bg": "rgba(var(--on-surface-variant), 0.3)"
+  },
+  "uiCopySamples": {},
+  "unknowns": []
+}

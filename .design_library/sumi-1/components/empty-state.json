@@ -1,0 +1,38 @@
+{
+  "name": "Empty State",
+  "slug": "empty-state",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "列表/页面无数据时的占位展示",
+  "variants": [
+    {
+      "name": "chat-empty",
+      "description": "icon + 主文案 + 副文案"
+    },
+    {
+      "name": "todo-empty",
+      "description": "纯文字"
+    },
+    {
+      "name": "conversation-empty",
+      "description": "纯文字"
+    }
+  ],
+  "states": [],
+  "renderHints": {
+    "iconSize": "64px",
+    "iconColor": "rgba(var(--primary-500), 0.4)",
+    "titleFontSize": "var(--font-size-body-base)",
+    "titleWeight": 500,
+    "subtitleFontSize": "var(--font-size-body-base)",
+    "subtitleColor": "var(--on-surface-variant)",
+    "spacing": "var(--space-5)"
+  },
+  "uiCopySamples": {
+    "chatTitle": "和 Sumi 聊聊学习计划吧",
+    "chatSubtitle": "我可以帮你制定计划、解答疑问",
+    "todoText": "还没有事项，在下方输入框创建吧"
+  },
+  "unknowns": []
+}

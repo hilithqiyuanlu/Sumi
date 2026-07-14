@@ -63,6 +63,141 @@ class AppSettings {
 }
 
 // ---------------------------------------------------------------------------
+// 06 轮新增：评估与规划类型
+// ---------------------------------------------------------------------------
+
+enum AssessmentVerdict { a, b, c, d }
+
+enum BubbleType { thinking, searching, validating, info }
+
+class SearchSnippet {
+  final String title;
+  final String url;
+  final String content;
+
+  const SearchSnippet({
+    required this.title,
+    required this.url,
+    required this.content,
+  });
+
+  factory SearchSnippet.fromJson(Map<String, Object?> json) => SearchSnippet(
+        title: (json['title'] as String?) ?? '',
+        url: (json['url'] as String?) ?? '',
+        content: (json['content'] as String?) ?? '',
+      );
+
+  Map<String, Object?> toJson() => {
+        'title': title,
+        'url': url,
+        'content': content,
+      };
+}
+
+class GoalAssessment {
+  final double clarity;
+  final double feasibility;
+  final double challengeFit;
+  final double decomposability;
+  final double timeRealism;
+  final double motivationPotential;
+  final double resourceAccess;
+  final double measurability;
+  final AssessmentVerdict verdict;
+  final List<String> concerns;
+  final List<String> suggestions;
+  final String? estimatedHours;
+  final String? domainSummary;
+  final List<SearchSnippet> sources;
+
+  const GoalAssessment({
+    required this.clarity,
+    required this.feasibility,
+    required this.challengeFit,
+    required this.decomposability,
+    required this.timeRealism,
+    required this.motivationPotential,
+    required this.resourceAccess,
+    required this.measurability,
+    required this.verdict,
+    this.concerns = const [],
+    this.suggestions = const [],
+    this.estimatedHours,
+    this.domainSummary,
+    this.sources = const [],
+  });
+
+  factory GoalAssessment.fromJson(Map<String, Object?> json) {
+    final sourcesRaw = json['sources'] as List<Object?>?;
+    return GoalAssessment(
+      clarity: _parseDouble(json['clarity']),
+      feasibility: _parseDouble(json['feasibility']),
+      challengeFit: _parseDouble(json['challengeFit']),
+      decomposability: _parseDouble(json['decomposability']),
+      timeRealism: _parseDouble(json['timeRealism']),
+      motivationPotential: _parseDouble(json['motivationPotential']),
+      resourceAccess: _parseDouble(json['resourceAccess']),
+      measurability: _parseDouble(json['measurability']),
+      verdict: _parseVerdict(json['verdict']),
+      concerns: (json['concerns'] as List<Object?>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      suggestions: (json['suggestions'] as List<Object?>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      estimatedHours: json['estimatedHours'] as String?,
+      domainSummary: json['domainSummary'] as String?,
+      sources: sourcesRaw
+              ?.map(
+                  (e) => SearchSnippet.fromJson(e as Map<String, Object?>))
+              .toList() ??
+          [],
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'clarity': clarity,
+        'feasibility': feasibility,
+        'challengeFit': challengeFit,
+        'decomposability': decomposability,
+        'timeRealism': timeRealism,
+        'motivationPotential': motivationPotential,
+        'resourceAccess': resourceAccess,
+        'measurability': measurability,
+        'verdict': verdict.name,
+        'concerns': concerns,
+        'suggestions': suggestions,
+        if (estimatedHours != null) 'estimatedHours': estimatedHours,
+        if (domainSummary != null) 'domainSummary': domainSummary,
+        'sources': sources.map((s) => s.toJson()).toList(),
+      };
+}
+
+double _parseDouble(Object? raw) {
+  if (raw is num) return raw.toDouble();
+  if (raw is String) return double.tryParse(raw) ?? 0.5;
+  return 0.5;
+}
+
+AssessmentVerdict _parseVerdict(Object? raw) {
+  final s = raw?.toString() ?? 'c';
+  return AssessmentVerdict.values.firstWhere(
+    (v) => v.name == s,
+    orElse: () => AssessmentVerdict.c,
+  );
+}
+
+/// 规划弹幕消息（运行时使用，不持久化）。
+class PlanningBubble {
+  final String text;
+  final BubbleType type;
+
+  const PlanningBubble({required this.text, this.type = BubbleType.thinking});
+}
+
+// ---------------------------------------------------------------------------
 // Project
 // ---------------------------------------------------------------------------
 
@@ -76,6 +211,7 @@ class Project {
   final int timeConstraint; // 小时/周，0 表示未设置
   final int currentMonthIndex;
   final DateTime createdAt;
+  final String? lastAssessmentJson; // 06 轮：最近一次评估结果 JSON
 
   const Project({
     required this.id,
@@ -87,6 +223,7 @@ class Project {
     this.timeConstraint = 0,
     this.currentMonthIndex = 0,
     required this.createdAt,
+    this.lastAssessmentJson,
   });
 
   Project copyWith({
@@ -97,6 +234,7 @@ class Project {
     int? cycleMonths,
     int? timeConstraint,
     int? currentMonthIndex,
+    String? lastAssessmentJson,
   }) {
     return Project(
       id: id,
@@ -108,6 +246,7 @@ class Project {
       timeConstraint: timeConstraint ?? this.timeConstraint,
       currentMonthIndex: currentMonthIndex ?? this.currentMonthIndex,
       createdAt: createdAt,
+      lastAssessmentJson: lastAssessmentJson ?? this.lastAssessmentJson,
     );
   }
 
@@ -121,6 +260,8 @@ class Project {
         'timeConstraint': timeConstraint,
         'currentMonthIndex': currentMonthIndex,
         'createdAt': createdAt.toIso8601String(),
+        if (lastAssessmentJson != null)
+          'lastAssessmentJson': lastAssessmentJson,
       };
 
   factory Project.fromJson(Map<String, Object?> json) {
@@ -139,6 +280,7 @@ class Project {
       currentMonthIndex: (json['currentMonthIndex'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
+      lastAssessmentJson: json['lastAssessmentJson'] as String?,
     );
   }
 }

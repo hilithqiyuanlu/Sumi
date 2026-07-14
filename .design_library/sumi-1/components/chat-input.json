@@ -1,0 +1,49 @@
+{
+  "name": "Chat Input",
+  "slug": "chat-input",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "Bottom text input bar: rounded pill input field, no leading icon, send button on the right, with long-press voice input support",
+  "variants": [
+    {
+      "id": "default",
+      "name": "Default",
+      "description": "Rounded pill input field with placeholder, send button hidden when empty"
+    },
+    {
+      "id": "recording",
+      "name": "Recording",
+      "description": "Long-press triggered voice recording state: primary@8% background, primary@50% border, placeholder '正在收听…'"
+    }
+  ],
+  "states": [
+    { "name": "default", "description": "Empty input with placeholder, no send button" },
+    { "name": "has-text", "description": "Text entered, send button visible on the right" },
+    { "name": "focused", "description": "Input field with focus ring" },
+    { "name": "loading", "description": "AI processing, input field disabled" }
+  ],
+  "renderHints": {
+    "radius": "var(--radius-full)",
+    "bg": "var(--color-surface)",
+    "border": "1px solid var(--color-outline-variant)",
+    "textColor": "var(--color-on-surface)",
+    "placeholderColor": "var(--color-muted-foreground)",
+    "fontSize": "var(--font-size-body)",
+    "minHeight": "40px",
+    "maxHeight": "120px",
+    "maxLines": 4,
+    "padding": "var(--space-5) var(--space-7)",
+    "gap": "8px"
+  },
+  "features": [
+    {
+      "id": "voice-input",
+      "description": "Long-press (500ms) to start voice recording, swipe up to cancel, release to send"
+    }
+  ],
+  "uiCopySamples": {
+    "placeholder": "尽管说"
+  },
+  "unknowns": []
+}

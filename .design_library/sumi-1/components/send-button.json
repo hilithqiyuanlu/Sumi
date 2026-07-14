@@ -1,0 +1,29 @@
+{
+  "name": "Send Button",
+  "slug": "send-button",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "输入框右侧的圆形发送按钮",
+  "variants": [
+    {
+      "name": "default",
+      "description": "默认样式"
+    }
+  ],
+  "states": [
+    { "name": "visible", "description": "有文字时显示" },
+    { "name": "hidden", "description": "空输入时隐藏" },
+    { "name": "pressed", "description": "按下状态" }
+  ],
+  "renderHints": {
+    "size": "40px",
+    "radius": "var(--radius-full)",
+    "bg": "var(--primary-500)",
+    "iconColor": "#ffffff",
+    "iconSize": "var(--size-icon-md)",
+    "transition": "var(--duration-fast)"
+  },
+  "uiCopySamples": {},
+  "unknowns": []
+}

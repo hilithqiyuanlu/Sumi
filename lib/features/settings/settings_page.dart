@@ -71,14 +71,16 @@ class _SettingsPageState extends State<SettingsPage> {
           // ── 开发者区 ──
           _sectionHeader('开发者'),
           const SizedBox(height: s8),
-          SwitchListTile(
+          ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('披露全部月卡',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
             subtitle: const Text('关闭锁卡，显示所有月份的规划内容',
                 style: TextStyle(fontSize: 12)),
-            value: store.appSettings.showAllMonthCards,
-            onChanged: (v) => store.setShowAllMonthCards(v),
+            trailing: Switch(
+              value: store.appSettings.showAllMonthCards,
+              onChanged: (v) => store.setShowAllMonthCards(v),
+            ),
           ),
 
           const SizedBox(height: s24),
@@ -87,21 +89,19 @@ class _SettingsPageState extends State<SettingsPage> {
           _sectionHeader('数据管理'),
           const SizedBox(height: s8),
           Center(
-            child: TextButton.icon(
+            child: FilledButton.icon(
               onPressed: () => _confirmClearData(context, store),
-              icon: Icon(Icons.delete_outline,
-                  size: 16, color: danger),
-              label: Text('清除数据',
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('清除数据',
                   style: TextStyle(
-                      fontSize: 13,
-                      color: danger,
-                      fontWeight: FontWeight.w500)),
-              style: TextButton.styleFrom(
+                      fontSize: 13, fontWeight: FontWeight.w500)),
+              style: FilledButton.styleFrom(
+                backgroundColor: danger,
+                foregroundColor: Colors.white,
                 padding:
                     const EdgeInsets.symmetric(horizontal: s20, vertical: s10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(radiusPill),
-                  side: BorderSide(color: danger.withValues(alpha: 0.7), width: 1),
                 ),
               ),
             ),
@@ -224,7 +224,8 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: danger),
+                  backgroundColor: danger,
+                  foregroundColor: Colors.white),
               onPressed: () {
                 store.clearAllData(keepSecrets: true);
                 Navigator.pop(ctx);

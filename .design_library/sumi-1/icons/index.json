@@ -1,0 +1,13 @@
+{
+  "style": "outline",
+  "strokeWidth": "1.5px",
+  "size": "24x24",
+  "color": "currentColor",
+  "categories": {
+    "navigation": ["arrow-back", "arrow-right", "menu", "close", "more-vertical", "expand-more"],
+    "action": ["add", "edit", "delete", "check", "search", "filter", "send", "copy"],
+    "status": ["bell", "bell-off", "check-circle", "alert-circle"],
+    "function": ["calendar", "chat", "attach", "mic", "image", "settings", "tune", "auto-awesome"],
+    "special": ["circle", "circle-filled", "push-pin", "schedule"]
+  }
+}

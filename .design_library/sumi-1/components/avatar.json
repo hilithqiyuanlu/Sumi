@@ -1,0 +1,36 @@
+{
+  "name": "Avatar",
+  "slug": "avatar",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "用户头像圆形组件，支持在线状态指示器",
+  "variants": [
+    {
+      "name": "default",
+      "description": "纯头像"
+    },
+    {
+      "name": "with-status",
+      "description": "带在线状态圆点"
+    }
+  ],
+  "states": [
+    { "name": "online", "description": "success-500 绿点" },
+    { "name": "offline", "description": "neutral-400 灰点" },
+    { "name": "busy", "description": "error-500 红点" }
+  ],
+  "renderHints": {
+    "sizes": ["24px", "32px", "40px", "48px", "64px"],
+    "radius": "var(--radius-full)",
+    "statusDotSize": "10px",
+    "statusPosition": "bottom-right",
+    "onlineColor": "var(--success-500)",
+    "offlineColor": "var(--neutral-400)",
+    "busyColor": "var(--error-500)"
+  },
+  "uiCopySamples": {
+    "initials": ["E", "S", "U"]
+  },
+  "unknowns": []
+}

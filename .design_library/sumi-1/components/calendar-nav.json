@@ -1,0 +1,56 @@
+{
+  "name": "Calendar Navigation",
+  "slug": "calendar-nav",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "description": "Horizontal full-month date strip with daysInMonth-day横向滚动, weekday labels, date numbers, and optional task indicator dots; each date cell is a rounded rectangle (not pill/circle); supports drag-handle to expand month view",
+  "variants": [
+    {
+      "id": "default",
+      "name": "Default DateStrip",
+      "description": "整月 daysInMonth 天横向滚动日期条，每格显示周几标签 + 日期数字，可选任务圆点指示"
+    },
+    {
+      "id": "month-view-toggle",
+      "name": "Month View Toggle",
+      "description": "DateStrip 底部附带 DragHandle，下拉可展开为完整月历网格视图；收起时回到横向滚动条"
+    }
+  ],
+  "states": [
+    { "name": "selected", "description": "选中日期：var(--radius-12) 圆角矩形 + primary-600 背景色 + 白色文字" },
+    { "name": "today", "description": "今日标记：primary-100 背景 50% 透明度 + 原色文字，区别于 selected 的实心 + 白文字" },
+    { "name": "today-with-dot", "description": "今日且有日程：在 today 状态基础上，日期下方显示小圆点指示任务" },
+    { "name": "past", "description": "过去日期：文字使用 muted-foreground 色，视觉弱化" },
+    { "name": "inactive", "description": "非选中、非今日的普通日期默认态" },
+    { "name": "drag-hover", "description": "拖拽悬停时浅 primary 背景反馈，用于拖拽任务到日期时的目标指示" }
+  ],
+  "renderHints": {
+    "layout": "horizontal-scroll",
+    "radius": "var(--radius-12)",
+    "chipWidth": "48px",
+    "chipHeight": "68px",
+    "selectedBg": "var(--color-primary)",
+    "selectedText": "var(--color-on-primary)",
+    "todayBg": "rgba(var(--color-primary-100), 0.5)",
+    "todayText": "var(--color-primary)",
+    "inactiveText": "var(--color-on-surface)",
+    "pastText": "var(--color-muted-foreground)",
+    "weekdayText": "var(--color-muted-foreground)",
+    "dragHoverBg": "rgba(var(--color-primary), 0.08)",
+    "dotColor": "var(--task-dot)",
+    "dotSize": "4px",
+    "weekdayFontSize": "13px",
+    "weekdayFontWeight": "600",
+    "dateFontSize": "22px",
+    "dateFontWeight": "700",
+    "chipSpacing": "4px",
+    "dragHandleHeight": "6px",
+    "dragHandleRadius": "3px"
+  },
+  "uiCopySamples": {
+    "weekdays": ["一", "二", "三", "四", "五", "六", "日"],
+    "dates": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+  },
+  "unknowns": []
+}

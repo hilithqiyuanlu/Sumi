@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import 'project_card.dart';
-import 'project_editor.dart';
+import 'project_editor_page.dart';
 
 /// 项目切换 Tab 栏 —— 横向滚动，当前项目高亮。
 class ProjectTabs extends StatelessWidget {
@@ -83,7 +83,12 @@ class ProjectTabs extends StatelessWidget {
           GestureDetector(
               onTap: () {
                 HapticFeedback.selectionClick();
-                showProjectEditor(context, store);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    fullscreenDialog: true,
+                    builder: (_) => const ProjectEditorPage(),
+                  ),
+                );
               },
               child: Container(
                 padding:

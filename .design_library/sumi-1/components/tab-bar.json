@@ -1,0 +1,57 @@
+{
+  "name": "Tab Bar",
+  "slug": "tab-bar",
+  "sourceKind": "inferred",
+  "confidence": "high",
+  "intentKind": "simple",
+  "category": "navigation",
+  "description": "应用底部 3 Tab 导航（Sumi/事项/设置），自定义实现。每个 Tab 含图标+文字标签。active 态有 primary-100 圆角背景（32x32, radius-12）+ primary-700 图标/文字色。顶部有 outline-variant 分割线，底部含 SafeArea",
+  "variants": [
+    {
+      "id": "sumi-tab",
+      "name": "Sumi Tab",
+      "description": "AI 对话入口，图标 auto_awesome"
+    },
+    {
+      "id": "todos-tab",
+      "name": "Todos Tab",
+      "description": "事项管理，图标 check_circle / circle_outlined"
+    },
+    {
+      "id": "settings-tab",
+      "name": "Settings Tab",
+      "description": "设置页，图标 tune"
+    }
+  ],
+  "states": [
+    {
+      "name": "active",
+      "description": "primary-100 圆角背景 + primary-700 图标/文字色"
+    },
+    {
+      "name": "inactive",
+      "description": "透明背景 + muted 图标/文字色"
+    }
+  ],
+  "renderHints": {
+    "height": "56px",
+    "safeAreaBottom": "env(safe-area-inset-bottom)",
+    "activeBg": "var(--primary-100)",
+    "activeIconColor": "var(--primary-700)",
+    "activeTextColor": "var(--primary-700)",
+    "activeIndicatorSize": "32px",
+    "activeIndicatorRadius": "var(--radius-12)",
+    "inactiveColor": "var(--on-surface-variant)",
+    "tabFontSize": "11px",
+    "iconSize": "22px",
+    "dividerColor": "var(--outline-variant)"
+  },
+  "uiCopySamples": {
+    "tabLabels": {
+      "sumi": "Sumi",
+      "todos": "事项",
+      "settings": "设置"
+    }
+  },
+  "unknowns": []
+}

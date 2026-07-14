@@ -128,7 +128,7 @@ class _TodosPageState extends State<TodosPage>
                 ),
               ),
               // 输入框
-              const TodoInput(),
+              TodoInput(voiceService: store.voiceService),
             ],
           ),
           // 月视图覆盖层 —— 跟手 + 弹簧吸附
