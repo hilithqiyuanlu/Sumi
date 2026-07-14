@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 // ---------------------------------------------------------------------------
@@ -409,21 +410,39 @@ class AiService {
           )
           .timeout(Duration(seconds: timeoutSeconds));
 
-      if (response.statusCode != 200) return null;
+      if (response.statusCode != 200) {
+        debugPrint('[callJsonApi] HTTP ${response.statusCode}: ${response.body}');
+        return null;
+      }
 
       final body = jsonDecode(response.body) as Map<String, Object?>;
       final choices = body['choices'] as List<Object?>?;
-      if (choices == null || choices.isEmpty) return null;
+      if (choices == null || choices.isEmpty) {
+        debugPrint('[callJsonApi] 响应无 choices: ${response.body}');
+        return null;
+      }
 
       final message = (choices.first as Map<String, Object?>?)?['message']
           as Map<String, Object?>?;
-      if (message == null) return null;
+      if (message == null) {
+        debugPrint('[callJsonApi] 响应无 message: ${choices.first}');
+        return null;
+      }
 
       final content = message['content'] as String?;
-      if (content == null) return null;
+      if (content == null) {
+        debugPrint('[callJsonApi] message 无 content: $message');
+        return null;
+      }
 
-      return jsonDecode(content) as Map<String, Object?>;
-    } catch (_) {
+      try {
+        return jsonDecode(content) as Map<String, Object?>;
+      } catch (e) {
+        debugPrint('[callJsonApi] content 不是合法 JSON: $content');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[callJsonApi] 异常: $e');
       return null;
     }
   }
@@ -450,18 +469,55 @@ class AiService {
   // ---------------------------------------------------------------------------
 
   Future<String?> polishTodo(String text) async {
-    final result = await _callJsonApi(
-      systemPrompt: '你是 Sumi，一个个人助手。你的任务是优化用户提供的 todo 标题。\n'
-          '要求：凝练清晰、保留原意、2-18 字。\n'
-          '以 JSON 格式回复：{"result": "优化后的文本"}',
-      userPrompt: text,
-      model: _modelFlash,
-      thinking: false,
-      maxTokens: 100,
-      timeoutSeconds: 10,
-    );
-    if (result == null) return null;
-    return (result['result'] as String?)?.trim();
+    try {
+      debugPrint('[polishTodo] 开始润色: "$text"');
+      final response = await _client
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': _modelFlash,
+              'messages': [
+                {
+                  'role': 'system',
+                  'content': '你是 Sumi，一个个人助手。优化用户提供的 todo 标题。\n'
+                      '要求：凝练清晰、保留原意、2-18 字。\n'
+                      '只返回优化后的文本，不要加引号或额外文字。',
+                },
+                {'role': 'user', 'content': text},
+              ],
+              'temperature': 1.0,
+              'top_p': 1.0,
+              'max_tokens': 200,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        debugPrint('[polishTodo] HTTP ${response.statusCode}: ${response.body}');
+        return null;
+      }
+
+      final body = jsonDecode(response.body) as Map<String, Object?>;
+      final choices = body['choices'] as List<Object?>?;
+      if (choices == null || choices.isEmpty) {
+        debugPrint('[polishTodo] 无 choices: ${response.body}');
+        return null;
+      }
+
+      final message = (choices.first as Map<String, Object?>?)?['message']
+          as Map<String, Object?>?;
+      final content = message?['content'] as String?;
+      final result = content?.trim();
+      debugPrint('[polishTodo] 结果: "$result"');
+      return (result != null && result.isNotEmpty) ? result : null;
+    } catch (e) {
+      debugPrint('[polishTodo] 异常: $e');
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------

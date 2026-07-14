@@ -116,8 +116,8 @@ class _DateStripState extends State<DateStrip> {
                 widget.onExpandMonth();
               },
               child: Container(
-                height: 36,
-                alignment: Alignment.center,
+                height: 48,
+                alignment: const Alignment(0, 0.4),
                 child: const DragHandle(),
               ),
             ),

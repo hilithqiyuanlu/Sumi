@@ -16,7 +16,7 @@ Future<void> showTodoEditSheet(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
     ),
     builder: (ctx) => _TodoEditSheet(store: store, todo: todo),
   );
@@ -108,7 +108,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
       final action = await showModalBottomSheet<String>(
         context: context,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
         ),
         builder: (ctx) {
           return SafeArea(
@@ -120,12 +120,12 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                   const DragHandle(),
                   const SizedBox(height: s16),
                   ListTile(
-                    leading: const Icon(Icons.timer_rounded, color: ink),
+                    leading: const Icon(Icons.schedule, color: ink),
                     title: Text('修改定时（当前 ${_todo.reminderTime}）'),
                     onTap: () => Navigator.pop(ctx, 'edit'),
                   ),
                   ListTile(
-                    leading: Icon(Icons.clear_rounded, color: danger),
+                    leading: Icon(Icons.close, color: danger),
                     title: Text('清除定时', style: TextStyle(color: danger)),
                     onTap: () => Navigator.pop(ctx, 'clear'),
                   ),
@@ -277,15 +277,15 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                 fillColor: surfaceAlt,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(radiusPanel),
-                  borderSide: BorderSide(color: line.withValues(alpha: 0.4)),
+                  borderSide: BorderSide(color: line.withValues(alpha: 0.2)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(radiusPanel),
-                  borderSide: BorderSide(color: line.withValues(alpha: 0.4)),
+                  borderSide: BorderSide(color: line.withValues(alpha: 0.2)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(radiusPanel),
-                  borderSide: const BorderSide(color: ink),
+                  borderSide: const BorderSide(color: primary500),
                 ),
                 contentPadding: const EdgeInsets.all(s12),
               ),
@@ -297,28 +297,28 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
             Row(
               children: [
                 _ActionChip(
-                  icon: Icons.auto_fix_high_rounded,
+                  icon: Icons.auto_awesome,
                   label: '润色',
                   loading: _polishing,
                   onTap: _polish,
                 ),
                 const SizedBox(width: s8),
                 _ActionChip(
-                  icon: Icons.folder_rounded,
+                  icon: Icons.folder_outlined,
                   label: '项目',
                   active: todo.projectId != null,
                   onTap: _toggleProjects,
                 ),
                 const SizedBox(width: s8),
                 _ActionChip(
-                  icon: Icons.timer_rounded,
+                  icon: Icons.schedule,
                   label: todo.reminderTime ?? '定时',
                   active: todo.reminderTime != null,
                   onTap: _pickReminder,
                 ),
                 const SizedBox(width: s8),
                 _ActionChip(
-                  icon: Icons.copy_rounded,
+                  icon: Icons.content_copy,
                   label: '复制',
                   onTap: _copy,
                 ),
@@ -399,7 +399,7 @@ class _ActionChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
         decoration: BoxDecoration(
-          color: active ? mintDeep.withValues(alpha: 0.12) : line.withValues(alpha: 0.3),
+          color: active ? mintDeep.withValues(alpha: 0.12) : surfaceAlt,
           borderRadius: BorderRadius.circular(radiusPill),
           border: active
               ? Border.all(color: mintDeep.withValues(alpha: 0.4))
@@ -460,7 +460,7 @@ class _PolishPreview extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.auto_fix_high_rounded, size: 16, color: mintDeep),
+              Icon(Icons.auto_awesome, size: 16, color: mintDeep),
               const SizedBox(width: s6),
               Text(
                 '润色结果',
@@ -482,7 +482,7 @@ class _PolishPreview extends StatelessWidget {
             children: [
               TextButton.icon(
                 onPressed: onApply,
-                icon: Icon(Icons.check_rounded, size: 16, color: mintDeep),
+                icon: Icon(Icons.check, size: 16, color: mintDeep),
                 label: Text(
                   '应用',
                   style: TextStyle(
@@ -495,7 +495,7 @@ class _PolishPreview extends StatelessWidget {
               const SizedBox(width: s4),
               TextButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
+                icon: const Icon(Icons.refresh, size: 16),
                 label: const Text(
                   '重试',
                   style: TextStyle(
@@ -532,7 +532,7 @@ class _ProjectPicker extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: s12),
       padding: const EdgeInsets.all(s12),
       decoration: BoxDecoration(
-        color: paper,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(radiusPanel),
         border: Border.all(color: line.withValues(alpha: 0.3)),
         boxShadow: const [...shadow1],
@@ -632,7 +632,7 @@ class _ProjectOption extends StatelessWidget {
             ),
             const Spacer(),
             if (selected)
-              Icon(Icons.check_rounded, size: 18, color: mintDeep),
+              Icon(Icons.check, size: 18, color: mintDeep),
           ],
         ),
       ),

@@ -82,12 +82,12 @@ class _ChatPageState extends State<ChatPage> {
               )
             : null,
         leading: IconButton(
-          icon: const Icon(Icons.menu_rounded),
+          icon: const Icon(Icons.menu),
           onPressed: () => ConversationList.show(context, store),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.build_rounded, size: 22),
+            icon: const Icon(Icons.tune, size: 22),
             tooltip: 'Sumi 工具',
             onPressed: () => SumiToolsSheet.show(context, store),
           ),
@@ -187,7 +187,7 @@ class _ChatPageState extends State<ChatPage> {
                                   ],
                                 ),
                                 child: const Icon(
-                                  Icons.keyboard_arrow_down_rounded,
+                                  Icons.keyboard_arrow_down,
                                   size: 22,
                                   color: mintDeep,
                                 ),
@@ -221,7 +221,7 @@ class _EmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.psychology_rounded,
+            Icons.auto_awesome,
             size: 64,
             color: mintDeep.withValues(alpha: 0.4),
           ),

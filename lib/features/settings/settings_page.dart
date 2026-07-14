@@ -28,28 +28,42 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s8),
         children: [
           // ── API Key 区 ──
-          _sectionHeader('API 密钥'),
-          const SizedBox(height: s8),
+          Container(
+            margin: const EdgeInsets.only(bottom: s8),
+            padding: const EdgeInsets.all(s16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(radiusCard),
+              boxShadow: const [...shadow1],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sectionHeader('API 密钥'),
+                const SizedBox(height: s12),
 
-          // DeepSeek
-          _apiKeyTile(
-            label: 'DeepSeek API Key',
-            currentValue: store.appSettings.deepseekApiKey,
-            visible: _deepseekVisible,
-            onToggle: () =>
-                setState(() => _deepseekVisible = !_deepseekVisible),
-            onSave: (v) => store.updateDeepseekApiKey(v),
-          ),
-          const Divider(height: 1),
+                // DeepSeek
+                _apiKeyTile(
+                  label: 'DeepSeek API Key',
+                  currentValue: store.appSettings.deepseekApiKey,
+                  visible: _deepseekVisible,
+                  onToggle: () =>
+                      setState(() => _deepseekVisible = !_deepseekVisible),
+                  onSave: (v) => store.updateDeepseekApiKey(v),
+                ),
+                const Divider(height: 1),
 
-          // Tavily
-          _apiKeyTile(
-            label: 'Tavily API Key',
-            currentValue: store.appSettings.tavilyApiKey,
-            visible: _tavilyVisible,
-            onToggle: () =>
-                setState(() => _tavilyVisible = !_tavilyVisible),
-            onSave: (v) => store.updateTavilyApiKey(v),
+                // Tavily
+                _apiKeyTile(
+                  label: 'Tavily API Key',
+                  currentValue: store.appSettings.tavilyApiKey,
+                  visible: _tavilyVisible,
+                  onToggle: () =>
+                      setState(() => _tavilyVisible = !_tavilyVisible),
+                  onSave: (v) => store.updateTavilyApiKey(v),
+                ),
+              ],
+            ),
           ),
 
           const SizedBox(height: s24),
@@ -60,7 +74,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Center(
             child: TextButton.icon(
               onPressed: () => _confirmClearData(context, store),
-              icon: Icon(Icons.delete_outline_rounded,
+              icon: Icon(Icons.delete_outline,
                   size: 16, color: danger),
               label: Text('清除数据',
                   style: TextStyle(
@@ -131,13 +145,13 @@ class _SettingsPageState extends State<SettingsPage> {
           if (hasKey)
             IconButton(
               icon: Icon(
-                visible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                visible ? Icons.visibility_off : Icons.visibility,
                 size: iconSmall,
               ),
               onPressed: onToggle,
             ),
           IconButton(
-            icon: Icon(Icons.edit_rounded, size: iconSmall),
+            icon: Icon(Icons.edit, size: iconSmall),
             onPressed: () => _editApiKey(
               context, label, currentValue, onSave),
           ),

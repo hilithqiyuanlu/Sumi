@@ -76,9 +76,9 @@ class _UnlockedCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: paper,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(radiusCard),
-        border: Border.all(color: line.withValues(alpha: 0.3)),
+        border: Border.all(color: line.withValues(alpha: 0.15)),
         boxShadow: const [...shadow1],
       ),
       padding: const EdgeInsets.all(s16),
@@ -114,7 +114,7 @@ class _UnlockedCard extends StatelessWidget {
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.auto_awesome_rounded,
+                      Icon(Icons.auto_awesome,
                           size: 11, color: mintDeep),
                       SizedBox(width: s4),
                       Text(
@@ -202,7 +202,7 @@ class _LockedMonthCard extends StatelessWidget {
           border: Border.all(color: line.withValues(alpha: 0.2)),
         ),
         child: Center(
-          child: Icon(Icons.lock_outline_rounded,
+          child: Icon(Icons.lock_outline,
               size: 36, color: textTertiary),
         ),
       ),

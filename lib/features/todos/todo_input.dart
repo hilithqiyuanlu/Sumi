@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -14,7 +15,30 @@ class TodoInput extends StatefulWidget {
 
 class _TodoInputState extends State<TodoInput> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+  bool _hasText = false;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onTextChanged);
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    final hasText = _controller.text.trim().isNotEmpty;
+    if (hasText != _hasText) {
+      setState(() => _hasText = hasText);
+    }
+  }
 
   Future<void> _submit() async {
     final text = _controller.text.trim();
@@ -38,10 +62,8 @@ class _TodoInputState extends State<TodoInput> {
       if (!mounted) return;
 
       if (result != null && result.split) {
-        // 需要拆分确认
         await showSplitConfirmSheet(context, store, result.items);
       }
-      // 其余情况（无需拆分 / 降级）静默处理，不弹 toast
       _controller.clear();
     } finally {
       if (mounted) {
@@ -51,54 +73,80 @@ class _TodoInputState extends State<TodoInput> {
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: paper,
-        border: Border(top: BorderSide(color: line)),
+        border: Border(
+          top: BorderSide(color: line.withValues(alpha: 0.5)),
+        ),
       ),
       padding: EdgeInsets.fromLTRB(
         s16,
         s10,
-        s8,
+        s16,
         MediaQuery.of(context).padding.bottom + s10,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              enabled: !_loading,
-              decoration: const InputDecoration(
-                hintText: '添加新事项...',
-                filled: true,
-                fillColor: paper,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(radiusPill),
+                border: Border.all(
+                  color: line.withValues(alpha: 0.3),
+                ),
+              ),
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(),
+                enabled: !_loading,
+                decoration: InputDecoration(
+                  hintText: '添加新事项...',
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: s16,
+                    vertical: s10,
+                  ),
+                ),
               ),
             ),
           ),
-          const SizedBox(width: s8),
-          _loading
-              ? const Padding(
-                  padding: EdgeInsets.all(s10),
-                  child: SizedBox(
-                    width: iconSection,
-                    height: iconSection,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : IconButton(
-                  onPressed: _submit,
-                  icon: const Icon(Icons.send_rounded, size: iconSection),
-                  color: mintDeep,
+          if (_hasText || _loading) ...[
+            const SizedBox(width: s8),
+            if (_loading)
+              Padding(
+                padding: const EdgeInsets.all(s10),
+                child: SizedBox(
+                  width: sizeButtonMd,
+                  height: sizeButtonMd,
+                  child: const CircularProgressIndicator(strokeWidth: 2, color: primary500),
                 ),
+              )
+            else
+              Material(
+                color: primary500,
+                borderRadius: BorderRadius.circular(radiusPill),
+                child: InkWell(
+                  onTap: _submit,
+                  borderRadius: BorderRadius.circular(radiusPill),
+                  child: Container(
+                    width: sizeButtonMd,
+                    height: sizeButtonMd,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.send,
+                      size: iconMedium,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );

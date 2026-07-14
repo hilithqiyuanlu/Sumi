@@ -53,8 +53,8 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
               children: [
                 Icon(
                   _expanded
-                      ? Icons.keyboard_arrow_down_rounded
-                      : Icons.keyboard_arrow_right_rounded,
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_right,
                   size: widget.iconSize,
                   color: textTertiary,
                 ),

@@ -342,7 +342,7 @@ class _ChatInputState extends State<ChatInput>
                       height: 40,
                       alignment: Alignment.center,
                       child: const Icon(
-                        Icons.send_rounded,
+                        Icons.send,
                         size: 20,
                         color: paper,
                       ),

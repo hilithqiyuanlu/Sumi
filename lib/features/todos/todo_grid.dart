@@ -161,7 +161,7 @@ class _DraggableTodoCell extends StatelessWidget {
                   color: danger,
                   borderRadius: BorderRadius.circular(radiusCard),
                 ),
-                child: const Icon(Icons.delete_rounded, color: Colors.white),
+                child: const Icon(Icons.delete_outline, color: Colors.white),
               ),
               onDismissed: (_) {
                 store.deleteTodo(todo.id);

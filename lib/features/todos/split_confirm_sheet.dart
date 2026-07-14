@@ -17,7 +17,7 @@ Future<void> showSplitConfirmSheet(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
     ),
     builder: (ctx) {
       return StatefulBuilder(

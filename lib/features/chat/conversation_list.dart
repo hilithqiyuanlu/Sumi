@@ -62,7 +62,7 @@ class ConversationList extends StatelessWidget {
                           Navigator.pop(context);
                           store.createConversation();
                         },
-                        icon: const Icon(Icons.add_rounded, size: 18),
+                        icon: const Icon(Icons.add, size: 18),
                         label: const Text('新建'),
                       ),
                     ],
@@ -106,7 +106,7 @@ class ConversationList extends StatelessWidget {
                                 style: const TextStyle(fontSize: 12),
                               ),
                               trailing: isActive
-                                  ? Icon(Icons.chat_bubble_rounded,
+                                  ? Icon(Icons.chat_bubble_outline,
                                       size: 18, color: mintDeep)
                                   : null,
                               onTap: () {

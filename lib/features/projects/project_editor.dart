@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
@@ -48,123 +49,191 @@ void showProjectEditor(
     builder: (ctx) {
       return StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            title: Text(isEditing ? '编辑项目' : '新建项目'),
-            content: SingleChildScrollView(
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: s20, vertical: s24),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(s20, s20, s20, s12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 名称
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '项目名称',
-                      hintText: '输入项目名称',
+                  // 标题
+                  Text(
+                    isEditing ? '编辑项目' : '新建项目',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: ink,
                     ),
                   ),
-                  const SizedBox(height: s12),
-                  // 颜色选择
-                  const Text('颜色', style: TextStyle(fontSize: 13, color: textTertiary)),
-                  const SizedBox(height: s8),
-                  Wrap(
-                    spacing: s6,
-                    runSpacing: s6,
-                    children: ProjectColor.values.map((c) {
-                      final selected = c == color;
-                      final fill = projectFillColor(c);
-                      return GestureDetector(
-                        onTap: () => setDialogState(() => color = c),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: fill,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: selected ? mintDeep : Colors.transparent,
-                              width: 2.5,
+                  const SizedBox(height: s16),
+                  // 可滚动表单
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 名称
+                          TextField(
+                            controller: nameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: '项目名称',
+                              hintText: '未命名项目',
                             ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: s12),
-                  // 目标
-                  TextField(
-                    controller: goalCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: '目标',
-                      hintText: '描述你的学习目标',
+                          const SizedBox(height: s12),
+                          // 颜色选择
+                          const Text('颜色',
+                              style: TextStyle(fontSize: 13, color: textTertiary)),
+                          const SizedBox(height: s8),
+                          Wrap(
+                            spacing: s6,
+                            runSpacing: s6,
+                            children: ProjectColor.values.map((c) {
+                              final selected = c == color;
+                              final fill = projectFillColor(c);
+                              return GestureDetector(
+                                onTap: () => setDialogState(() => color = c),
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: fill,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: selected
+                                          ? mintDeep
+                                          : Colors.transparent,
+                                      width: 2.5,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: s12),
+                          // 目标（必填）
+                          TextField(
+                            controller: goalCtrl,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              labelText: '目标 *',
+                              hintText: '描述你的学习目标',
+                            ),
+                          ),
+                          const SizedBox(height: s12),
+                          // 水平
+                          TextField(
+                            controller: levelCtrl,
+                            decoration: const InputDecoration(
+                              labelText: '当前水平',
+                              hintText: '如：零基础 / 入门 / 进阶',
+                            ),
+                          ),
+                          const SizedBox(height: s12),
+                          // 周期 + 投入时间并排
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('周期',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            color: textTertiary)),
+                                    const SizedBox(height: s6),
+                                    _ItemWheelPicker<int>(
+                                      value: cycleMonths,
+                                      items: cycleValues,
+                                      labels: cycleLabels,
+                                      onChanged: (v) =>
+                                          setDialogState(() => cycleMonths = v),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: s12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('投入时间',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            color: textTertiary)),
+                                    const SizedBox(height: s6),
+                                    _ItemWheelPicker<int>(
+                                      value: timeConstraint,
+                                      items: hourValues,
+                                      labels: hourLabels,
+                                      onChanged: (v) =>
+                                          setDialogState(
+                                              () => timeConstraint = v),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: s12),
-                  // 水平
-                  TextField(
-                    controller: levelCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '当前水平',
-                      hintText: '如：零基础 / 入门 / 进阶',
-                    ),
-                  ),
-                  const SizedBox(height: s12),
-                  // 周期
-                  const Text('周期', style: TextStyle(fontSize: 13, color: textTertiary)),
-                  const SizedBox(height: s6),
-                  _ItemWheelPicker<int>(
-                    value: cycleMonths,
-                    items: cycleValues,
-                    labels: cycleLabels,
-                    onChanged: (v) => setDialogState(() => cycleMonths = v),
-                  ),
-                  const SizedBox(height: s12),
-                  // 投入时间
-                  const Text('投入时间', style: TextStyle(fontSize: 13, color: textTertiary)),
-                  const SizedBox(height: s6),
-                  _ItemWheelPicker<int>(
-                    value: timeConstraint,
-                    items: hourValues,
-                    labels: hourLabels,
-                    onChanged: (v) => setDialogState(() => timeConstraint = v),
+                  // 按钮
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消'),
+                      ),
+                      const SizedBox(width: s8),
+                      FilledButton(
+                        onPressed: () {
+                          // 目标必填
+                          if (goalCtrl.text.trim().isEmpty) return;
+                          final projectName =
+                              nameCtrl.text.trim().isEmpty
+                                  ? (isEditing
+                                      ? (project?.name ?? '未命名项目')
+                                      : '未命名项目')
+                                  : nameCtrl.text.trim();
+                          if (isEditing) {
+                            store.updateProject(
+                              project.id,
+                              name: projectName,
+                              color: color,
+                              goal: goalCtrl.text.trim(),
+                              level: levelCtrl.text.trim(),
+                              cycleMonths: cycleMonths,
+                              timeConstraint: timeConstraint,
+                            );
+                          } else {
+                            store.addProject(
+                              name: projectName,
+                              color: color,
+                              goal: goalCtrl.text.trim(),
+                              level: levelCtrl.text.trim(),
+                              cycleMonths: cycleMonths,
+                              timeConstraint: timeConstraint,
+                            );
+                          }
+                          Navigator.pop(ctx);
+                        },
+                        child: Text(isEditing ? '保存' : '创建'),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  if (nameCtrl.text.trim().isEmpty) return;
-                  if (isEditing) {
-                    store.updateProject(
-                      project.id,
-                      name: nameCtrl.text.trim(),
-                      color: color,
-                      goal: goalCtrl.text.trim(),
-                      level: levelCtrl.text.trim(),
-                      cycleMonths: cycleMonths,
-                      timeConstraint: timeConstraint,
-                    );
-                  } else {
-                    store.addProject(
-                      name: nameCtrl.text.trim(),
-                      color: color,
-                      goal: goalCtrl.text.trim(),
-                      level: levelCtrl.text.trim(),
-                      cycleMonths: cycleMonths,
-                      timeConstraint: timeConstraint,
-                    );
-                  }
-                  Navigator.pop(ctx);
-                },
-                child: Text(isEditing ? '保存' : '创建'),
-              ),
-            ],
           );
         },
       );
@@ -236,6 +305,7 @@ class _ItemWheelPickerState<T> extends State<_ItemWheelPicker<T>> {
             perspective: 0.005,
             physics: const FixedExtentScrollPhysics(),
             onSelectedItemChanged: (index) {
+              HapticFeedback.selectionClick();
               if (index >= 0 && index < widget.items.length) {
                 widget.onChanged(widget.items[index]);
               }

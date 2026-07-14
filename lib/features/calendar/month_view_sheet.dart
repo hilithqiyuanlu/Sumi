@@ -48,7 +48,7 @@ class MonthViewSheet extends StatelessWidget {
                       HapticFeedback.mediumImpact();
                       onClose();
                     },
-                    icon: const Icon(Icons.close_rounded),
+                    icon: const Icon(Icons.close),
                   ),
                 ],
               ),
@@ -88,7 +88,7 @@ class MonthViewSheet extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: paper,
                             borderRadius: BorderRadius.circular(radiusCard),
-                            border: Border.all(color: line),
+                            border: Border.all(color: line.withValues(alpha: 0.3)),
                           ),
                           child: const Center(
                             child: Text(

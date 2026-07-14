@@ -53,17 +53,17 @@ const double sizeInputHeight = 36;
 // Color Palette — aligned with Sumi Design System
 // ---------------------------------------------------------------------------
 
-// Primary (Mint)
-const Color primary50 = Color(0xFFE9F7F1);
-const Color primary100 = Color(0xFFC8EBDD);
-const Color primary200 = Color(0xFF9DDBC5);
-const Color primary300 = Color(0xFF6EC5A9);
-const Color primary400 = Color(0xFF4FB895);
-const Color primary500 = Color(0xFF4AAE92); // @primary
-const Color primary600 = Color(0xFF3B967C);
-const Color primary700 = Color(0xFF317A66);
-const Color primary800 = Color(0xFF2A6354);
-const Color primary900 = Color(0xFF1F4D40);
+// Primary (Indigo Blue) — Google-inspired
+const Color primary50 = Color(0xFFEEF1FE);
+const Color primary100 = Color(0xFFD9E2FC);
+const Color primary200 = Color(0xFFB4C5FA);
+const Color primary300 = Color(0xFF8298F5);
+const Color primary400 = Color(0xFF5E76ED);
+const Color primary500 = Color(0xFF4758E0); // @primary — main blue
+const Color primary600 = Color(0xFF3740C7);
+const Color primary700 = Color(0xFF2E35A3);
+const Color primary800 = Color(0xFF292D85);
+const Color primary900 = Color(0xFF27296B);
 
 // Accent (Coral)
 const Color accent50 = Color(0xFFFDF1EE);
@@ -130,8 +130,8 @@ const Color surfaceChip = Color(0xFFF5F1E9); // --surface-chip
 const Color surfaceAlt = Color(0xFFF3F1ED); // neutral-100 / surface-container-low
 const Color surfaceMuted = Color(0xFFFAF9F7); // neutral-50
 
-const Color mint = Color(0xFFC8EBDD); // primary-100 (lighter shade for user bubble bg)
-const Color mintDeep = Color(0xFF4AAE92); // primary-500
+const Color mint = primary100; // primary-100 — indigo-100 for selections
+const Color mintDeep = primary500; // primary-500 — indigo-500
 const Color lemon = Color(0xFFFFE9A8); // tertiary-200
 const Color lilac = Color(0xFFDCCBFF); // tag-violet
 const Color cherry = Color(0xFFF8B4C8); // tag-peach
@@ -142,16 +142,16 @@ const Color sage = Color(0xFFD4E8D4); // sage green
 const Color danger = Color(0xFFD95D4F); // error-500
 
 // Interactive overlays (from spec)
-const Color interactiveHover = Color(0x144AAE92); // 8% primary
-const Color interactiveFocus = Color(0x1F4AAE92); // 12% primary
-const Color interactivePress = Color(0x294AAE92); // 16% primary
+const Color interactiveHover = Color(0x144758E0); // 8% primary (indigo)
+const Color interactiveFocus = Color(0x1F4758E0); // 12% primary (indigo)
+const Color interactivePress = Color(0x294758E0); // 16% primary (indigo)
 
 // ---------------------------------------------------------------------------
 // Shadows (from design spec)
 // ---------------------------------------------------------------------------
 
 const List<BoxShadow> shadow1 = [
-  BoxShadow(color: Color(0x083E372F), offset: Offset(0, 1), blurRadius: 2), // Card
+  BoxShadow(color: Color(0x0F3E372F), offset: Offset(0, 1), blurRadius: 3), // Card — spec: 0 1px 3px rgba(62,55,47,.06)
 ];
 const List<BoxShadow> shadow2 = [
   BoxShadow(color: Color(0x0A3E372F), offset: Offset(0, 1), blurRadius: 3), // Card Hover
@@ -334,21 +334,25 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius12),
         ),
-        backgroundColor: neutral800,
+        backgroundColor: primary800,
       ),
 
-      // Navigation bar
-      navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: mint,
-        backgroundColor: paper,
-        surfaceTintColor: Colors.transparent,
-        labelTextStyle: WidgetStatePropertyAll(
-          TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: ink,
-          ),
-        ),
+      // Switch — iOS style, matching spec toggle
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return Colors.white.withValues(alpha: 0.5);
+          }
+          return Colors.white;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return primary500;
+          }
+          return neutral300;
+        }),
+        trackOutlineColor: WidgetStatePropertyAll(Colors.transparent),
+        trackOutlineWidth: WidgetStatePropertyAll(0),
       ),
 
       // Text styles
@@ -382,7 +386,7 @@ class AppTheme {
 
       // Splash
       splashFactory: InkRipple.splashFactory,
-      splashColor: mintDeep.withValues(alpha: 0.15),
+      splashColor: primary500.withValues(alpha: 0.15),
     );
   }
 }

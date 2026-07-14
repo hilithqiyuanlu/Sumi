@@ -96,7 +96,7 @@ class ProjectTabs extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_rounded,
+                    Icon(Icons.add,
                         size: iconSmall, color: textTertiary),
                     const SizedBox(width: s4),
                     Text(

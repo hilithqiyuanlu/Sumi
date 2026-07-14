@@ -54,6 +54,7 @@ class _ProjectCardState extends State<ProjectCard> {
       decoration: BoxDecoration(
         color: fill.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(radiusCard),
+        boxShadow: const [...shadow1],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,7 +80,7 @@ class _ProjectCardState extends State<ProjectCard> {
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const Icon(Icons.keyboard_arrow_down_rounded,
+                    child: const Icon(Icons.keyboard_arrow_down,
                         color: textTertiary),
                   ),
                 ],
@@ -124,7 +125,7 @@ class _ProjectCardState extends State<ProjectCard> {
                                 store.retryPlanning(p.id);
                               });
                             },
-                            icon: const Icon(Icons.auto_fix_high_rounded,
+                            icon: const Icon(Icons.auto_awesome,
                                 size: iconSmall, color: mintDeep),
                             label: const Text('重规划',
                                 style: TextStyle(color: mintDeep)),
@@ -136,13 +137,13 @@ class _ProjectCardState extends State<ProjectCard> {
                             project: p,
                           ),
                           icon:
-                              const Icon(Icons.edit_rounded, size: iconSmall),
+                              const Icon(Icons.edit, size: iconSmall),
                           label: const Text('编辑'),
                         ),
                         const SizedBox(width: s8),
                         TextButton.icon(
                           onPressed: () => confirmDeleteProject(context, store, p),
-                          icon: Icon(Icons.delete_rounded,
+                          icon: Icon(Icons.delete_outline,
                               size: iconSmall, color: danger),
                           label: Text('删除',
                               style: TextStyle(color: danger)),
