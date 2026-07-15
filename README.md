@@ -18,6 +18,8 @@
 - **📅 日历导航** — 折叠日期条 + 展开月视图，垂直拖拽手势自然切换；历史日期只读，仅可查看过往对话
 - **🎤 语音输入** — 长按说话松开发送、上滑取消，支持连续识别与自动提交
 - **🧭 侧边抽屉** — 左滑唤出会话列表，新建 / 切换 / 删除对话，支持置顶与自定义标题
+- **🧠 用户模型** — USER_MODEL.md 替代旧 MEMORY.md，结构化五区段记忆（实时状态 / 核心记忆 / 领域画像 / 长期偏好 / 归档），HOT/WARM 分层注入对话上下文，Dice coefficient 去重合并，每周自动 AI 反思更新
+- **📡 行为信号** — todo 创建/完成/编辑/拖拽、项目目标/水平/周期设定等 10 种信号自动采集，AI 通过 read_signals 工具查询历史模式
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Keychain 安全存储，无需服务器
 
 ## 技术栈
@@ -66,14 +68,17 @@ lib/
 │   ├── sumi_store_chat.dart             # 对话状态 + Agent 循环
 │   └── sumi_store_persist.dart          # 快照持久化
 ├── data/
-│   ├── local_database.dart              # SQLite 主库
-│   └── chat_database.dart               # 对话数据 CRUD
+│   ├── local_database.dart              # SQLite 主库（含 signals 表）
+│   ├── chat_database.dart               # 对话数据 CRUD
+│   └── signal_database.dart             # 信号数据持久化（07 轮）
 ├── services/
-│   ├── ai_service.dart                  # DeepSeek API 封装（对话 / 拆分 / 规划 / 搜索）
-│   ├── tool_executor.dart               # Function Calling 工具执行
-│   ├── voice_input_service.dart         # iOS 语音识别
+│   ├── ai_service.dart                  # DeepSeek API 封装（对话 / 拆分 / 规划 / 搜索 / 反思）
+│   ├── tool_executor.dart               # Function Calling 工具执行（含记忆合并）
+│   ├── voice_input_service.dart         # speech_to_text 语音识别
 │   ├── goal_assessor.dart               # 目标评估（搜索 + 多维分析）
 │   ├── plan_generator.dart              # 学习计划生成器（流式 + 降级）
+│   ├── user_model_service.dart          # USER_MODEL.md 读写 / 统计 / 合并 / 迁移（07 轮）
+│   ├── signal_service.dart              # 信号采集 / 编辑区分 / 凝练还原保护（07 轮）
 │   └── secure_settings_store.dart       # Keychain 安全存储
 ├── widgets/
 │   ├── bubble_barrage.dart              # 弹幕加载动画
@@ -85,7 +90,7 @@ lib/
     ├── todos/                           # 事项网格、卡片、输入、编辑、Chip 轮播、拆分确认
     ├── calendar/                        # 日期条、月历、月视图
     ├── projects/                        # 项目卡、月卡翻页、编辑器、评估 & 规划页
-    ├── settings/                        # 设置页（API Key、Thinking 开关、用户昵称）
+    ├── settings/                        # 设置页（API Key、用户模型编辑器、信号日志）
     └── shared/                          # 可折叠区域、拖拽把手
 ```
 

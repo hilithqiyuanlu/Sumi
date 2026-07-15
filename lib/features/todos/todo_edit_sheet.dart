@@ -4,29 +4,33 @@ import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
+import '../../utils/utils.dart';
 import '../shared/drag_handle.dart';
 
 /// 底部弹出编辑面板 —— 标题 + 备注编辑，标记/项目/定时操作，删除/保存。
+/// 07 轮：过去日期 todo 为只读模式。
 Future<void> showTodoEditSheet(
   BuildContext context,
   SumiStore store,
   TodoItem todo,
 ) async {
+  final isReadonly = isPastDate(todo.date);
   await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
     ),
-    builder: (ctx) => _TodoEditSheet(store: store, todo: todo),
+    builder: (ctx) => _TodoEditSheet(store: store, todo: todo, isReadonly: isReadonly),
   );
 }
 
 class _TodoEditSheet extends StatefulWidget {
   final SumiStore store;
   final TodoItem todo;
+  final bool isReadonly;
 
-  const _TodoEditSheet({required this.store, required this.todo});
+  const _TodoEditSheet({required this.store, required this.todo, this.isReadonly = false});
 
   @override
   State<_TodoEditSheet> createState() => _TodoEditSheetState();
@@ -39,6 +43,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   bool _showProjects = false;
 
   SumiStore get _store => widget.store;
+  bool get _isReadonly => widget.isReadonly;
   TodoItem get _todo => _store.todoItems.firstWhere(
         (t) => t.id == widget.todo.id,
         orElse: () => widget.todo,
@@ -139,12 +144,31 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
             const DragHandle(),
             const SizedBox(height: s16),
 
+            // 只读提示
+            if (_isReadonly)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: s8),
+                decoration: BoxDecoration(
+                  color: warning500.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(radiusPanel),
+                ),
+                child: const Text(
+                  '过去日期的事项为只读',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: warning600),
+                ),
+              ),
+            if (_isReadonly) const SizedBox(height: s12),
+
             // 标题输入
             TextField(
               controller: _titleCtrl,
-              autofocus: true,
+              autofocus: !_isReadonly,
               maxLines: 3,
               minLines: 1,
+              readOnly: _isReadonly,
+              enabled: !_isReadonly,
               decoration: const InputDecoration(
                 hintText: '编辑事项标题',
               ),
@@ -156,6 +180,8 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
               controller: _bodyCtrl,
               maxLines: 8,
               minLines: 2,
+              readOnly: _isReadonly,
+              enabled: !_isReadonly,
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
                 hintText: '备注',
@@ -179,44 +205,52 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
             ),
             const SizedBox(height: s12),
 
-            // 操作栏：左侧 chips + 右侧按钮
-            Row(
-              children: [
-                _ActionChip(
-                  icon: todo.done ? Icons.radio_button_unchecked : Icons.check_circle_outline,
-                  label: todo.done ? '标记未完成' : '标记完成',
-                  active: todo.done,
-                  onTap: () {
-                    H.click();
-                    _store.toggleTodo(_todo.id);
-                    if (mounted) setState(() {});
-                  },
+            // 操作栏
+            if (_isReadonly)
+              Center(
+                child: _FilledButton(
+                  label: '关闭',
+                  onTap: () => Navigator.pop(context),
                 ),
-                const SizedBox(width: s6),
-                _ActionChip(
-                  icon: Icons.folder_outlined,
-                  label: '项目',
-                  active: todo.projectId != null,
-                  onTap: _toggleProjects,
-                ),
-                const Spacer(),
-                _TextButton(
-                  label: '删除',
-                  color: danger,
-                  onTap: _delete,
-                ),
-                const SizedBox(width: s8),
-                _FilledButton(
-                  label: '保存',
-                  loading: _saving,
-                  onTap: _save,
-                ),
-              ],
-            ),
+              )
+            else
+              Row(
+                children: [
+                  _ActionChip(
+                    icon: todo.done ? Icons.radio_button_unchecked : Icons.check_circle_outline,
+                    label: todo.done ? '标记未完成' : '标记完成',
+                    active: todo.done,
+                    onTap: () {
+                      H.click();
+                      _store.toggleTodo(_todo.id);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  const SizedBox(width: s6),
+                  _ActionChip(
+                    icon: Icons.folder_outlined,
+                    label: '项目',
+                    active: todo.projectId != null,
+                    onTap: _toggleProjects,
+                  ),
+                  const Spacer(),
+                  _TextButton(
+                    label: '删除',
+                    color: danger,
+                    onTap: _delete,
+                  ),
+                  const SizedBox(width: s8),
+                  _FilledButton(
+                    label: '保存',
+                    loading: _saving,
+                    onTap: _save,
+                  ),
+                ],
+              ),
             const SizedBox(height: s12),
 
             // 项目选择
-            if (_showProjects) _ProjectPicker(
+            if (_showProjects && !_isReadonly) _ProjectPicker(
               store: _store,
               selectedId: todo.projectId,
               onSelect: _assignProject,

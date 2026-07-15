@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Sumi 数据模型 —— 所有模型集中在一个文件。
 
 // ---------------------------------------------------------------------------
@@ -5,6 +7,20 @@
 // ---------------------------------------------------------------------------
 
 enum TodoSource { user, system }
+
+/// 用户行为信号类型（07 轮新增）。
+enum SignalType {
+  todoCreated,
+  todoCompleted,
+  todoUncompleted,
+  todoDeleted,
+  todoEdited,
+  todoMovedDate,
+  projectGoalSet,
+  projectLevelSet,
+  projectCycleSet,
+  projectTimeSet,
+}
 
 enum ProjectColor {
   lemon,
@@ -505,6 +521,7 @@ class TodoItem {
   final int sortOrder; // 手动排序序号（越大越靠前）
   final String? reminderTime; // 提醒时间 "HH:mm"
   final DateTime createdAt;
+  final String? condensedFrom; // 07 轮：AI 凝练前原始文本，用于凝练还原保护
 
   const TodoItem({
     required this.id,
@@ -518,6 +535,7 @@ class TodoItem {
     this.sortOrder = 0,
     this.reminderTime,
     required this.createdAt,
+    this.condensedFrom,
   });
 
   /// 判断 todo 是否属于指定日期。
@@ -534,6 +552,7 @@ class TodoItem {
     String? reminderTime,
     String? date,
     String? projectId,
+    String? condensedFrom,
   }) {
     return TodoItem(
       id: id,
@@ -547,6 +566,7 @@ class TodoItem {
       sortOrder: sortOrder ?? this.sortOrder,
       reminderTime: reminderTime ?? this.reminderTime,
       createdAt: createdAt,
+      condensedFrom: condensedFrom ?? this.condensedFrom,
     );
   }
 
@@ -562,6 +582,7 @@ class TodoItem {
         'sortOrder': sortOrder,
         'reminderTime': reminderTime,
         'createdAt': createdAt.toIso8601String(),
+        if (condensedFrom != null) 'condensedFrom': condensedFrom,
       };
 
   factory TodoItem.fromJson(Map<String, Object?> json) {
@@ -582,6 +603,72 @@ class TodoItem {
       reminderTime: json['reminderTime'] as String?,
       createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
+      condensedFrom: json['condensedFrom'] as String?,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 07 轮新增：用户信号
+// ---------------------------------------------------------------------------
+
+class UserSignal {
+  final int? id; // DB 自增主键
+  final SignalType signal;
+  final DateTime time;
+  final String contextJson; // JSON 字符串：title, project, domain, plannedDate, completedOnTime, hourOfDay 等
+  final String? projectId;
+  final String? todoId;
+  final String? domain;
+  final DateTime createdAt;
+
+  const UserSignal({
+    this.id,
+    required this.signal,
+    required this.time,
+    this.contextJson = '{}',
+    this.projectId,
+    this.todoId,
+    this.domain,
+    required this.createdAt,
+  });
+
+  /// 解析 contextJson 为 Map（供展示用）。
+  Map<String, Object?> get context => _parseContext(contextJson);
+
+  Map<String, Object?> _parseContext(String json) {
+    try {
+      final decoded = const JsonDecoder().convert(json);
+      if (decoded is Map<String, Object?>) return decoded;
+    } catch (_) {}
+    return {};
+  }
+
+  Map<String, Object?> toJson() => {
+        if (id != null) 'id': id,
+        'signal': signal.name,
+        'time': time.toIso8601String(),
+        'contextJson': contextJson,
+        'projectId': projectId,
+        'todoId': todoId,
+        'domain': domain,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory UserSignal.fromJson(Map<String, Object?> json) {
+    final signalName = (json['signal'] as String?) ?? 'todoCreated';
+    return UserSignal(
+      id: json['id'] as int?,
+      signal: SignalType.values.firstWhere(
+        (s) => s.name == signalName,
+        orElse: () => SignalType.todoCreated,
+      ),
+      time: DateTime.tryParse((json['time'] as String?) ?? '') ?? DateTime.now(),
+      contextJson: (json['contextJson'] as String?) ?? '{}',
+      projectId: json['projectId'] as String?,
+      todoId: json['todoId'] as String?,
+      domain: json['domain'] as String?,
+      createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ?? DateTime.now(),
     );
   }
 }

@@ -60,12 +60,15 @@ class ChatBubble extends StatelessWidget {
           if (!isUser &&
               reasoningContent != null &&
               reasoningContent!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: s4),
-              child: CollapsibleSection(
-                title: '思考过程',
-                body: reasoningContent!,
-                backgroundColor: surfaceAlt,
+            SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: s4),
+                child: CollapsibleSection(
+                  title: '思考过程',
+                  body: reasoningContent!,
+                  backgroundColor: surfaceAlt,
+                ),
               ),
             ),
           // 工具调用指示（仅 AI 且有 tool_calls 时显示，简洁样式）

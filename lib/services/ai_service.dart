@@ -94,6 +94,12 @@ class PlanResult {
   }
 }
 
+/// 周度反思结果（07 轮新增）。
+class WeeklyReflectionResult {
+  final String updatedUserModel;
+  const WeeklyReflectionResult({required this.updatedUserModel});
+}
+
 class DailyTodoResult {
   final List<TodoSeed> todos;
 
@@ -194,7 +200,7 @@ class AiService {
       '1. 如果文本描述的是单一事项（尽管很长），不要拆分，在 items 中返回一条凝练后的文本。\n'
       '2. 如果包含多个独立步骤或事项，拆分为独立 todo。\n'
       '3. 每条 todo 保留完整的语义，可脱离上下文理解。\n'
-      '4. 每条 todo 凝练到 2-20 字。\n'
+      '4. 每条 todo 凝练到 2-16 字。\n'
       '5. 以 JSON 格式回复，不要带任何额外文字。\n'
       '\n'
       '回复格式：\n'
@@ -226,14 +232,14 @@ class AiService {
         '\n'
         '### 月计划\n'
         '- 为每个月生成一个月计划卡\n'
-        '- 每月有一个凝练的主题（5-15 字）和详细摘要（30-120 字）\n'
+        '- 每月有一个凝练的主题（2-10 字）和详细摘要（30-120 字）\n'
         '- 摘要要高维度、战略性，具体步骤留给每日 todo\n'
         '- 内容量匹配当月实际天数\n'
         '- 各月之间递进关系清晰（基础 → 进阶 → 综合）\n'
         '\n'
         '### 每日 Todo（仅第一天）\n'
         '- 基于第一个月计划拆解为可执行 todo\n'
-        '- 标题 2-20 字，可附带 body\n'
+        '- 标题 2-16 字，可附带 body\n'
         '- 数量：1-2 条，考虑时间约束不超出用户能力\n'
         '\n'
         '## 输出格式\n'
@@ -253,21 +259,10 @@ class AiService {
       '你是 Sumi。根据月计划为指定日期生成 1-3 条待办。\n'
           '\n'
           '要求：\n'
-          '- 标题 2-20 字，是可执行的具体动作（不是抽象描述）\n'
+          '- 标题 2-16 字，是可执行的具体动作（不是抽象描述）\n'
           '- 如果当天已有足够的待办，可以返回空列表\n'
           '- 可附带 body 作为补充说明\n'
           '- 输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
-
-  static const _suggestionsSystemPrompt =
-      '你是 Sumi。根据用户的待办列表，生成 3 条用户可能想让你执行的操作建议。\n'
-          '\n'
-          '要求：\n'
-          '1. 每条是用户会对助手说的自然指令（如"帮我..."、"建议我..."、"总结..."）。\n'
-          '2. 必须基于今日待办的具体内容，不要泛泛而谈。\n'
-          '3. 每条 8-20 字。\n'
-          '4. 只输出 JSON，不要任何额外文字。\n'
-          '\n'
-          '输出格式：{"suggestions": ["建议1", "建议2", "建议3"]}';
 
   static const _assessmentSystemPrompt =
       '你是 Sumi，一个专业的自学规划评估师。\n'
@@ -337,7 +332,7 @@ class AiService {
           '  "suggestions": ["可操作的调整建议"],\n'
           '  "estimatedHours": "约 200-300 小时",\n'
           '  "domainSummary": "该领域的概述",\n'
-          '  "goalSummary": "5-15字目标凝练，用于卡片标题展示"\n'
+          '  "goalSummary": "2-10字目标凝练，用于卡片标题展示"\n'
           '}';
 
   // ---------------------------------------------------------------------------
@@ -366,7 +361,7 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'read_memory',
-        'description': '读取 Sumi 自己的持久记忆（MEMORY.md）。MEMORY.md 记录的是 Sumi 的自我认知、从对话中学到的经验、以及对用户的理解。除非内容明确标注"用户："前缀，否则所有内容描述的都是 Sumi 自己。',
+        'description': '读取 Sumi 对用户的理解（USER_MODEL.md）。返回当前实时状态摘要和核心记忆，用于快速了解用户。如需查询历史行为模式，使用 read_signals。',
         'parameters': {'type': 'object', 'properties': {}},
       },
     },
@@ -374,13 +369,17 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'write_memory',
-        'description': '将重要信息写入 Sumi 自己的记忆（MEMORY.md）。用于记录学到的经验、用户偏好、重要决策等。注意：MEMORY.md 默认记录的是 Sumi 自己的事；如果要记录关于用户的信息，请用"用户："前缀标注，例如"用户：偏好中文交流"。',
+        'description': '将重要信息写入 Sumi 的记忆（USER_MODEL.md）。用于记录用户的偏好、习惯、学习模式、重要决策等。系统会自动去重和合并。',
         'parameters': {
           'type': 'object',
           'properties': {
             'content': {
               'type': 'string',
-              'description': '要写入的记忆内容。简洁、独立、可检索的事实陈述。不要写对话流水账。',
+              'description': '要写入的记忆内容。以"用户：xxx"格式记录关于用户的信息。简洁、独立、可检索的事实陈述。不要写对话流水账。',
+            },
+            'confidence': {
+              'type': 'string',
+              'description': '置信度：用户明确表述过的用"确信"，从行为推断的用"推断"。默认"推断"。',
             },
           },
           'required': ['content'],
@@ -413,7 +412,7 @@ class AiService {
           'properties': {
             'title': {
               'type': 'string',
-              'description': '事项标题（2-20 字）',
+              'description': '事项标题（2-16 字）',
             },
             'date': {
               'type': 'string',
@@ -429,6 +428,34 @@ class AiService {
             },
           },
           'required': ['title'],
+        },
+      },
+    },
+    {
+      'type': 'function',
+      'function': {
+        'name': 'read_signals',
+        'description': '查询用户的历史行为信号（操作日志）。用于发现用户的行为模式、偏好变化、学习节奏等。当你需要理解用户长期行为模式时，优先调用此工具。',
+        'parameters': {
+          'type': 'object',
+          'properties': {
+            'type': {
+              'type': 'string',
+              'description': '信号类型筛选。可选值：todoCreated, todoCompleted, todoUncompleted, todoDeleted, todoEdited, todoMovedDate, projectGoalSet, projectLevelSet, projectCycleSet, projectTimeSet',
+            },
+            'projectId': {
+              'type': 'string',
+              'description': '按项目ID筛选，可选',
+            },
+            'range': {
+              'type': 'string',
+              'description': '时间范围：7d（最近7天）、30d（最近30天）、all（全部），默认7d',
+            },
+            'limit': {
+              'type': 'integer',
+              'description': '最多返回条数，默认20',
+            },
+          },
         },
       },
     },
@@ -697,7 +724,7 @@ class AiService {
                 {
                   'role': 'system',
                   'content': '你是 Sumi，一个个人助手。优化用户提供的 todo 标题。\n'
-                      '要求：凝练清晰、保留原意、2-20 字。\n'
+                      '要求：凝练清晰、保留原意、2-16 字。\n'
                       '只返回优化后的文本，不要加引号或额外文字。',
                 },
                 {'role': 'user', 'content': text},
@@ -887,32 +914,6 @@ $domainKnowledge
     return DailyTodoResult.fromJson(result);
   }
 
-  /// 基于当前上下文生成建议提问。
-  Future<List<String>> generateSuggestions({
-    required String todayTodosText,
-    required String memory,
-  }) async {
-    final userPrompt = '''
-今日待办：
-$todayTodosText
-
-记忆：
-${memory.trim().isEmpty ? '（暂无记忆）' : memory}''';
-
-    final result = await _callJsonApi(
-      systemPrompt: _suggestionsSystemPrompt,
-      userPrompt: userPrompt,
-      model: _modelFlash,
-      thinking: false,
-      maxTokens: 800,
-      timeoutSeconds: 20,
-    );
-    if (result == null) return [];
-    final raw = result['suggestions'] as List<Object?>?;
-    if (raw == null) return [];
-    return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
-  }
-
   // ---------------------------------------------------------------------------
   // 目标评估（06 轮新增）
   // ---------------------------------------------------------------------------
@@ -948,6 +949,84 @@ $domainContext
     );
     if (result == null) return null;
     return GoalAssessment.fromJson(result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 07 轮新增：个性化建议 + 周度反思
+  // ---------------------------------------------------------------------------
+
+  static const _openingSuggestionsPrompt =
+      '你是 Sumi。根据用户当前状态和核心记忆，生成 3-4 条用户可能想让你执行的个性化建议。\n'
+      '\n'
+      '要求：\n'
+      '1. 每条是用户会对助手说的自然指令（如"帮我..."、"建议我..."、"总结..."）。\n'
+      '2. 必须反映用户当前状态（完成率、连续活跃天数等）和历史偏好。\n'
+      '3. 每条 8-20 字。\n'
+      '4. 每条建议应覆盖不同维度（规划/总结/学习/休息/探索），避免语义重复或高度相似。\n'
+      '5. 只输出 JSON，不要任何额外文字。\n'
+      '\n'
+      '输出格式：{"suggestions": ["建议1", "建议2", "建议3"]}';
+
+  /// 生成 App 打开时的个性化建议（Flash, ~300 token）。
+  Future<List<String>> generateOpeningSuggestions({
+    required String realtimeStats,
+    required String coreMemory,
+  }) async {
+    final userPrompt = '''
+用户当前状态：
+$realtimeStats
+
+核心记忆：
+${coreMemory.trim().isEmpty ? '（暂无）' : coreMemory}
+
+请基于以上信息生成 3-4 条个性化建议。''';
+
+    final result = await _callJsonApi(
+      systemPrompt: _openingSuggestionsPrompt,
+      userPrompt: userPrompt,
+      model: _modelFlash,
+      thinking: false,
+      maxTokens: 400,
+      timeoutSeconds: 15,
+    );
+    if (result == null) return [];
+    final raw = result['suggestions'] as List<Object?>?;
+    if (raw == null) return [];
+    return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+  }
+
+  /// 周度反思（Pro + thinking, ~2000 token）。
+  Future<WeeklyReflectionResult?> generateWeeklyReflection({
+    required String userModel,
+    required String weeklySignals,
+  }) async {
+    final userPrompt = '''
+## USER_MODEL.md 全文
+$userModel
+
+## 本周信号（7 天）
+$weeklySignals
+
+请基于以上信息进行周度反思，更新 USER_MODEL.md：
+1. 领域画像 — 更新学习速度、薄弱维度
+2. 长期偏好 — 如本周行为改变了之前的推断，则更新
+3. 核心记忆 — 写入一条"本周洞察"
+4. 归档 — 将超过 30 天的核心记忆条目移入归档区
+
+输出 JSON：{"updatedUserModel": "完整的 USER_MODEL.md 内容（markdown 格式，保留所有区段结构）"}''';
+
+    final result = await _callJsonApi(
+      systemPrompt: '你是 Sumi。你正在进行每周反思，更新对用户的理解。只输出 JSON。',
+      userPrompt: userPrompt,
+      model: _modelPro,
+      thinking: true,
+      maxTokens: 4096,
+      timeoutSeconds: 120,
+    );
+    if (result == null) return null;
+    final content = (result['updatedUserModel'] as String?) ?? '';
+    if (content.isEmpty) return null;
+    return WeeklyReflectionResult(updatedUserModel: content);
   }
 
   // ---------------------------------------------------------------------------

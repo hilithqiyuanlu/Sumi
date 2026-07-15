@@ -5,6 +5,7 @@ import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/utils.dart';
 import 'todo_card.dart';
 
 /// Keep 风格瀑布流网格 —— 使用 MasonryGridView 实现不规则排列。
@@ -86,6 +87,7 @@ class TodoGrid extends StatelessWidget {
 }
 
 /// 可拖拽的 Todo 单元格 —— LongPressDraggable + DragTarget。
+/// 07 轮：过去日期禁用拖拽、滑动删除、完成标记、置顶。
 class _DraggableTodoCell extends StatelessWidget {
   final TodoItem todo;
   final Project? project;
@@ -104,6 +106,21 @@ class _DraggableTodoCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isReadonly = isPastDate(todo.date);
+
+    Widget card = TodoCard(
+      todo: todo,
+      project: project,
+      onTapDone: isReadonly ? () {} : () => store.toggleTodo(todo.id),
+      onTapPin: isReadonly ? () {} : () => store.togglePin(todo.id),
+      onTapBody: () => onTapBody?.call(todo),
+      isReadonly: isReadonly,
+    );
+
+    if (isReadonly) {
+      return Opacity(opacity: 0.7, child: SizedBox(height: extent, child: card));
+    }
+
     return DragTarget<TodoItem>(
       onWillAcceptWithDetails: (details) {
         return details.data.id != todo.id;
@@ -173,13 +190,7 @@ class _DraggableTodoCell extends StatelessWidget {
               onDismissed: (_) {
                 store.deleteTodo(todo.id);
               },
-              child: TodoCard(
-                todo: todo,
-                project: project,
-                onTapDone: () => store.toggleTodo(todo.id),
-                onTapPin: () => store.togglePin(todo.id),
-                onTapBody: () => onTapBody?.call(todo),
-              ),
+              child: card,
             ),
           ),
         );

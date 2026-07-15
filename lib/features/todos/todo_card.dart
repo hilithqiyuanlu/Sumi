@@ -18,6 +18,7 @@ class TodoCard extends StatefulWidget {
   final VoidCallback onTapPin;
   final VoidCallback onTapBody;
   final bool isDragging; // 是否正被拖拽（反馈用）
+  final bool isReadonly; // 07 轮：过去日期只读
 
   const TodoCard({
     required this.todo,
@@ -26,6 +27,7 @@ class TodoCard extends StatefulWidget {
     required this.onTapPin,
     required this.onTapBody,
     this.isDragging = false,
+    this.isReadonly = false,
     super.key,
   });
 
@@ -88,14 +90,16 @@ class _TodoCardState extends State<TodoCard> {
                     children: [
                       // 左上角 done toggle
                       GestureDetector(
-                        onTap: widget.onTapDone,
+                        onTap: widget.isReadonly ? null : widget.onTapDone,
                         behavior: HitTestBehavior.opaque,
                         child: Padding(
                           padding: const EdgeInsets.only(right: s8, top: s2),
                           child: Icon(
                             done ? Icons.check_circle : Icons.circle_outlined,
                             size: iconSection,
-                            color: done ? mintDeep : line,
+                            color: widget.isReadonly
+                                ? (done ? textTertiary : line)
+                                : (done ? mintDeep : line),
                           ),
                         ),
                       ),
@@ -119,19 +123,20 @@ class _TodoCardState extends State<TodoCard> {
                           ),
                         ),
                       ),
-                      // 右上角 pin toggle
-                      GestureDetector(
-                        onTap: widget.onTapPin,
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: s4),
-                          child: Icon(
-                            pinned ? Icons.push_pin : Icons.push_pin,
-                            size: iconSection,
-                            color: pinned ? mintDeep : textTertiary.withValues(alpha: 0.35),
+                      // 右上角 pin toggle（过去日期隐藏）
+                      if (!widget.isReadonly)
+                        GestureDetector(
+                          onTap: widget.onTapPin,
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: s4),
+                            child: Icon(
+                              pinned ? Icons.push_pin : Icons.push_pin,
+                              size: iconSection,
+                              color: pinned ? mintDeep : textTertiary.withValues(alpha: 0.35),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   // 第二行：项目归属（系统 todo 不显示，仅用户 todo 显示）

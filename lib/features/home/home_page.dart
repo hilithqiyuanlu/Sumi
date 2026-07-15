@@ -27,7 +27,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _drawerOpen = false;
 
   // 月视图动画
@@ -39,10 +39,7 @@ class _HomePageState extends State<HomePage>
   );
   InputMode _inputMode = InputMode.todo;
   List<String> _suggestions = [];
-  Timer? _suggestionTimer;
   bool _isGeneratingSuggestions = false;
-  String? _todaySuggestion;
-  String? _userModelSuggestion;
   final _scrollController = ScrollController();
   bool _showScrollToBottom = false;
   int _lastMessageSentSignal = 0;
@@ -66,21 +63,47 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _monthController = AnimationController(vsync: this);
     _monthController.addListener(() => setState(() {}));
     _refreshChatGreeting();
     _lastSelectedDate = SumiScope.read(context).selectedDate;
     _generateSuggestions();
-    _startSuggestionPolling();
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    _suggestionTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _monthController.dispose();
     super.dispose();
+  }
+
+  // 07 轮：App 生命周期监听
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final store = SumiScope.read(context);
+      final now = DateTime.now();
+
+      // 节流：2 分钟内不重复
+      if (store.lastSuggestionTime != null &&
+          now.difference(store.lastSuggestionTime!).inMinutes < 2) {
+        return;
+      }
+      // 强制刷新：后台 > 30 分钟
+      if (store.lastForegroundTime != null &&
+          now.difference(store.lastForegroundTime!).inMinutes > 30) {
+        store.setSuggestionsDirty(true);
+      }
+      store.lastForegroundTime = now;
+
+      // 检查周度反思
+      store.checkAndRunWeeklyReflection();
+
+      _generateSuggestions();
+    }
   }
 
   void _refreshChatGreeting() {
@@ -95,11 +118,63 @@ class _HomePageState extends State<HomePage>
     setState(() => _inputMode = mode);
   }
 
-  void _startSuggestionPolling() {
-    _suggestionTimer?.cancel();
-    _suggestionTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _generateSuggestions();
+  /// 07 轮：缓存策略。UI 立即展示缓存/规则预设，后台异步 AI 替换。
+  Future<void> _generateSuggestions() async {
+    final store = SumiScope.read(context);
+
+    // 规则预设：立即展示
+    final presets = _rulePresetSuggestions(store);
+    // 优先使用缓存
+    final cached = store.cachedSuggestions;
+    if (!mounted) return;
+    setState(() {
+      _suggestions = cached.isNotEmpty ? cached : presets;
     });
+
+    // 后台 AI 生成（如果缓存脏或首次）
+    if (!store.suggestionsDirty && cached.isNotEmpty) return;
+    if (_isGeneratingSuggestions) return;
+
+    final ai = store.aiService;
+    if (ai == null) return;
+
+    _isGeneratingSuggestions = true;
+
+    try {
+      final ums = store.userModelService;
+      if (ums == null) return;
+      final model = await ums.readUserModel();
+      final stats = await ums.computeRealtimeStats();
+      final modelWithStats = ums.injectRealtimeStats(model, stats);
+      final coreMemory = ums.buildHotPrompt(modelWithStats);
+
+      final aiSuggestions = await ai.generateOpeningSuggestions(
+        realtimeStats: stats.entries.map((e) => '${e.key}: ${e.value}').join('\n'),
+        coreMemory: coreMemory,
+      );
+
+      if (aiSuggestions.isNotEmpty && mounted) {
+        store.cachedSuggestions = aiSuggestions;
+        store.lastSuggestionTime = DateTime.now();
+        store.setSuggestionsDirty(false);
+        // 去重合并：AI 结果优先，与当前显示的预设做去重
+        setState(() {
+          if (_suggestions == presets || _suggestions == cached) {
+            _suggestions = _mergeAndDedup(aiSuggestions, _suggestions);
+          }
+        });
+      }
+    } catch (_) {
+      // 失败保持当前展示
+    } finally {
+      _isGeneratingSuggestions = false;
+    }
+  }
+
+  /// 规则预设建议：随机池不放回抽取 3-4 条，作为 AI 结果回来前的瞬时展示。
+  List<String> _rulePresetSuggestions(SumiStore store) {
+    final pool = List<String>.from(_suggestionPool)..shuffle();
+    return pool.take(4).toList();
   }
 
   void _onScroll() {
@@ -136,95 +211,6 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Future<void> _generateSuggestions() async {
-    if (_isGeneratingSuggestions) return;
-
-    final store = SumiScope.read(context);
-    final aiService = store.aiService;
-
-    final todayKey = dateKey(dateOnly(store.selectedDate));
-    final todayTodos = store.todoItems
-        .where((t) => t.date == null || t.date == todayKey)
-        .map((t) => t.title)
-        .join('\n');
-    final hasTodayTodos = todayTodos.trim().isNotEmpty;
-
-    final memory = await store.readMemory();
-    final hasMemory = memory.trim().isNotEmpty;
-
-    final needAi = (hasTodayTodos || hasMemory) && aiService != null;
-
-    if (!needAi) {
-      _buildSuggestionList();
-      return;
-    }
-
-    _isGeneratingSuggestions = true;
-
-    try {
-      final results = await Future.wait([
-        if (hasTodayTodos)
-          _generateTodaySuggestion(aiService!, todayTodos, memory)
-              .then((v) => _todaySuggestion = v),
-        if (hasMemory)
-          _generateUserModelSuggestion(aiService!, memory)
-              .then((v) => _userModelSuggestion = v),
-      ]);
-
-      if (!mounted) return;
-      _buildSuggestionList();
-    } catch (_) {
-      if (!mounted) return;
-      _buildSuggestionList();
-    } finally {
-      _isGeneratingSuggestions = false;
-    }
-  }
-
-  Future<String?> _generateTodaySuggestion(
-      AiService aiService, String todayTodos, String memory) async {
-    final suggestions = await aiService.generateSuggestions(
-      todayTodosText: todayTodos,
-      memory: memory,
-    );
-    return suggestions.isNotEmpty ? suggestions.first : null;
-  }
-
-  Future<String?> _generateUserModelSuggestion(
-      AiService aiService, String memory) async {
-    final suggestions = await aiService.generateSuggestions(
-      todayTodosText: '',
-      memory: memory,
-    );
-    return suggestions.isNotEmpty ? suggestions.first : null;
-  }
-
-  void _buildSuggestionList() {
-    final store = SumiScope.read(context);
-    final todayKey = dateKey(dateOnly(store.selectedDate));
-    final hasTodayTodos = store.todoItems
-        .any((t) => (t.date == null || t.date == todayKey) && t.title.isNotEmpty);
-
-    final List<String> result = [];
-
-    _pinnedIndex = (_pinnedIndex + 1) % _pinnedSuggestions.length;
-    result.add(_pinnedSuggestions[_pinnedIndex]);
-
-    if (hasTodayTodos && _todaySuggestion != null) {
-      result.add(_todaySuggestion!);
-    }
-
-    if (_userModelSuggestion != null) {
-      result.add(_userModelSuggestion!);
-    }
-
-    result.addAll(_randomFaq());
-
-    setState(() {
-      _suggestions = result;
-    });
-  }
-
   int _pinnedIndex = 0;
 
   List<String> get _pinnedSuggestions => [
@@ -233,19 +219,48 @@ class _HomePageState extends State<HomePage>
         '建议我再学些什么',
       ];
 
-  List<String> _randomFaq() {
-    final faqs = [
-      '我现在应该专注做什么',
-      '帮我回顾一下最近学了什么',
-      '推荐一个学习方法',
-      '帮我制定一个学习计划',
-      '最近有什么值得学的',
-      '如何提高学习效率',
-      '给我一些学习建议',
-      '帮我分析一下学习进度',
-    ];
-    final shuffled = List<String>.from(faqs)..shuffle();
-    return shuffled.take(2).toList();
+  static const _suggestionPool = [
+    // 规划向
+    '帮我制定今天的学习计划',
+    '建议我今天优先完成什么',
+    // 总结向
+    '帮我回顾一下最近学了什么',
+    '帮我分析一下学习进度',
+    '帮我总结一下最近的学习进展',
+    // 探索向
+    '最近有什么值得学的',
+    '推荐一个学习方法',
+    '推荐相关学习资源',
+    // 调整向
+    '帮我调整今天的学习计划',
+    '帮我看看还有什么没完成的',
+    // 效率向
+    '如何提高学习效率',
+    '给我一些学习建议',
+    // 灵感向
+    '最近有什么值得关注的学习趋势',
+    '有没有适合我的学习技巧',
+  ];
+
+  /// 合并 AI 建议与现有建议，去重，AI 结果优先，最多 4 条。
+  List<String> _mergeAndDedup(List<String> ai, List<String> existing) {
+    final result = <String>[];
+    final seen = <String>{};
+    for (final s in [...ai, ...existing]) {
+      if (result.length >= 4) break;
+      // 精确去重
+      if (seen.contains(s)) continue;
+      // 近似去重：任一已有条目是当前条目的子串（≥4 字），或反之
+      final isSimilar = result.any((r) {
+        final shorter = r.length < s.length ? r : s;
+        final longer = r.length < s.length ? s : r;
+        return shorter.length >= 4 && longer.contains(shorter);
+      });
+      if (isSimilar) continue;
+      result.add(s);
+      seen.add(s);
+    }
+    return result;
   }
 
   void _closeDrawer() {
@@ -332,6 +347,7 @@ class _HomePageState extends State<HomePage>
     if (_lastSelectedDate != null &&
         !isSameDate(selectedDate, _lastSelectedDate!)) {
       _lastSelectedDate = selectedDate;
+      _showScrollToBottom = false; // 日期切换时重置悬浮按钮状态
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateSuggestions();
       });
@@ -448,32 +464,33 @@ class _HomePageState extends State<HomePage>
                     opacity: isPast ? 0.0 : 1.0,
                     duration: const Duration(milliseconds: 320),
                     curve: isPast ? Curves.easeIn : Curves.easeOut,
-                    child: AnimatedSize(
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOut,
-                      alignment: Alignment.topCenter,
-                      child: isPast
-                          ? const SizedBox.shrink()
-                          : Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SuggestionStrip(
-                                  suggestions: _suggestions,
-                                  onSelect: _handleSuggestionSelect,
-                                  enabled: !store.isStreaming,
-                                ),
-                                ChatInput(
-                                  mode: _inputMode,
-                                  isFutureDate: isFuture,
-                                  onSend: (content) => store.sendMessage(content,
-                                      currentGreeting: _chatGreeting),
-                                  onAddTodo: _handleAddTodo,
-                                  onModeChanged: _switchMode,
-                                  enabled: !store.isStreaming,
-                                  voiceService: store.voiceService,
-                                ),
-                              ],
+                    child: ClipRect(
+                      child: AnimatedAlign(
+                        alignment: Alignment.topCenter,
+                        heightFactor: isPast ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SuggestionStrip(
+                              suggestions: _suggestions,
+                              onSelect: _handleSuggestionSelect,
+                              enabled: !store.isStreaming,
                             ),
+                            ChatInput(
+                              mode: _inputMode,
+                              isFutureDate: isFuture,
+                              onSend: (content) => store.sendMessage(content,
+                                  currentGreeting: _chatGreeting),
+                              onAddTodo: _handleAddTodo,
+                              onModeChanged: _switchMode,
+                              enabled: !store.isStreaming,
+                              voiceService: store.voiceService,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],

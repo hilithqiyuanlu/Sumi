@@ -17,6 +17,11 @@ mixin SumiStorePersist on ChangeNotifier {
   AppSettings get appSettings;
   set appSettings(AppSettings v);
   Future<void> clearChatData(); // 由 SumiStoreChat mixin 提供
+  // 07 轮新增
+  SignalDatabase? get signalDb;
+  UserModelService? get userModelService;
+  DateTime? get lastWeeklyReflection;
+  set lastWeeklyReflection(DateTime? v);
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -63,12 +68,17 @@ mixin SumiStorePersist on ChangeNotifier {
       final d = DateTime.tryParse(dateStr);
       if (d != null) selectedDate = dateOnly(d);
     }
+    // 07 轮：恢复周度反思时间
+    final rDateStr = map['lastWeeklyReflection'] as String?;
+    if (rDateStr != null) {
+      lastWeeklyReflection = DateTime.tryParse(rDateStr);
+    }
     // monthViewExpanded 已由 AnimationController 管理，不再持久化
   }
 
   Map<String, Object?> snapshotMap() {
     return {
-      'v': 1,
+      'v': 2,
       'settings': appSettings.toJson(includeSecrets: false),
       'projects': projectList.map((p) => p.toJson()).toList(),
       'monthCards': monthCardList.map((m) => m.toJson()).toList(),
@@ -76,6 +86,8 @@ mixin SumiStorePersist on ChangeNotifier {
       'currentProjectId': currentProjectId,
       'selectedDate': selectedDate.toIso8601String(),
       'thinkingEnabled': appSettings.thinkingEnabled,
+      if (lastWeeklyReflection != null)
+        'lastWeeklyReflection': lastWeeklyReflection!.toIso8601String(),
     };
   }
 
@@ -101,6 +113,10 @@ mixin SumiStorePersist on ChangeNotifier {
 
     // 也清除对话历史
     await clearChatData();
+
+    // 07 轮：清除信号和用户模型
+    await signalDb?.clearAll();
+    await userModelService?.writeUserModel('');
 
     await writeToDb();
     notifyListeners();

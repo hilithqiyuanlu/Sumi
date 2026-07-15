@@ -1,7 +1,7 @@
 part of 'sumi_store.dart';
 
 // ---------------------------------------------------------------------------
-// Todo Mutations mixin
+// Todo Mutations mixin（07 轮：增加信号采集 + 过去日期门禁 + 编辑区分）
 // ---------------------------------------------------------------------------
 
 mixin SumiStoreTodos on ChangeNotifier {
@@ -9,6 +9,7 @@ mixin SumiStoreTodos on ChangeNotifier {
   List<Project> get projectList;
   DateTime get selectedDate;
   AiService? get aiService;
+  SignalService? get signalService; // 07 轮
   void afterMutation();
 
   // ---------------------------------------------------------------------------
@@ -16,25 +17,28 @@ mixin SumiStoreTodos on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 添加用户 todo —— 自动赋值 date（当前选中日期）和 sortOrder。
-  void addUserTodo(String title) {
+  Future<void> addUserTodo(String title, {String? condensedFrom}) async {
     if (title.trim().isEmpty) return;
     final nextOrder = _nextSortOrder();
-    todoItems.add(TodoItem(
+    final todo = TodoItem(
       id: newSumiId('todo'),
       source: TodoSource.user,
       date: dateKey(selectedDate),
       title: title.trim(),
       sortOrder: nextOrder,
       createdAt: DateTime.now(),
-    ));
+      condensedFrom: condensedFrom,
+    );
+    todoItems.add(todo);
     afterMutation();
+    await signalService?.emitTodoCreated(todo);
   }
 
   /// 添加系统 todo。
-  void addSystemTodo(String title, String projectId, {String? date, String? body}) {
+  Future<void> addSystemTodo(String title, String projectId, {String? date, String? body}) async {
     if (title.trim().isEmpty) return;
     final nextOrder = _nextSortOrder();
-    todoItems.add(TodoItem(
+    final todo = TodoItem(
       id: newSumiId('todo'),
       source: TodoSource.system,
       projectId: projectId,
@@ -43,8 +47,10 @@ mixin SumiStoreTodos on ChangeNotifier {
       body: body,
       sortOrder: nextOrder,
       createdAt: DateTime.now(),
-    ));
+    );
+    todoItems.add(todo);
     afterMutation();
+    await signalService?.emitTodoCreated(todo);
   }
 
   int _nextSortOrder() {
@@ -61,25 +67,76 @@ mixin SumiStoreTodos on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 切换完成状态。
-  void toggleTodo(String id) {
+  Future<void> toggleTodo(String id) async {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
-    todoItems[i] = todoItems[i].copyWith(done: !todoItems[i].done);
+    final todo = todoItems[i];
+    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可操作
+    todoItems[i] = todo.copyWith(done: !todo.done);
     afterMutation();
+    if (todoItems[i].done) {
+      await signalService?.emitTodoCompleted(todoItems[i]);
+    } else {
+      await signalService?.emitTodoUncompleted(todoItems[i]);
+    }
   }
 
   /// 删除 todo。
-  void deleteTodo(String id) {
+  Future<void> deleteTodo(String id) async {
+    final i = todoItems.indexWhere((t) => t.id == id);
+    if (i == -1) return;
+    final todo = todoItems[i];
+    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可删除
+    await signalService?.emitTodoDeleted(todo);
     todoItems.removeWhere((t) => t.id == id);
     afterMutation();
   }
 
-  /// 更新标题。
-  void updateTodoTitle(String id, String newTitle) {
-    if (newTitle.trim().isEmpty) return;
+  /// 更新标题（含编辑区分 + 凝练还原保护）。
+  Future<void> updateTodoTitle(String id, String newTitle) async {
+    if (newTitle.trim().isEmpty) {
+      deleteTodo(id); // 清空标题 ≈ 删除
+      return;
+    }
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
-    todoItems[i] = todoItems[i].copyWith(title: newTitle.trim());
+    final todo = todoItems[i];
+    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可编辑
+
+    final classification = signalService?.classifyEdit(
+      todo.title,
+      newTitle.trim(),
+      condensedFrom: todo.condensedFrom,
+    ) ?? EditClassification.minor;
+
+    switch (classification) {
+      case EditClassification.condensedRestore:
+        // 还原为凝练前文本 → 不产生信号，直接更新
+        todoItems[i] = todo.copyWith(title: newTitle.trim());
+      case EditClassification.cleared:
+        await signalService?.emitTodoDeleted(todo);
+        todoItems.removeWhere((t) => t.id == id);
+      case EditClassification.major:
+        await signalService?.emitTodoDeleted(todo, reason: 'largeEdit');
+        final newTodo = TodoItem(
+          id: id,
+          source: todo.source,
+          projectId: todo.projectId,
+          date: todo.date,
+          title: newTitle.trim(),
+          body: todo.body,
+          done: todo.done,
+          pinned: todo.pinned,
+          sortOrder: todo.sortOrder,
+          reminderTime: todo.reminderTime,
+          createdAt: todo.createdAt,
+        );
+        todoItems[i] = newTodo;
+        await signalService?.emitTodoCreated(newTodo);
+      case EditClassification.minor:
+        await signalService?.emitTodoEdited(todo, todo.title, newTitle.trim());
+        todoItems[i] = todo.copyWith(title: newTitle.trim());
+    }
     afterMutation();
   }
 
@@ -91,8 +148,10 @@ mixin SumiStoreTodos on ChangeNotifier {
   void togglePin(String id) {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
+    if (isPastDate(todoItems[i].date)) return; // 07 轮：过去日期不可操作
     todoItems[i] = todoItems[i].copyWith(pinned: !todoItems[i].pinned);
     afterMutation();
+    // 置顶不产生信号
   }
 
   // ---------------------------------------------------------------------------
@@ -100,11 +159,15 @@ mixin SumiStoreTodos on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 更新 todo 的分配日期。
-  void updateTodoDate(String id, String? date) {
+  Future<void> updateTodoDate(String id, String? date) async {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
-    todoItems[i] = todoItems[i].copyWith(date: date);
+    final todo = todoItems[i];
+    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可拖拽
+    final oldDate = todo.date ?? '';
+    todoItems[i] = todo.copyWith(date: date);
     afterMutation();
+    await signalService?.emitTodoMovedDate(todoItems[i], oldDate, date ?? '');
   }
 
   // ---------------------------------------------------------------------------
@@ -112,10 +175,13 @@ mixin SumiStoreTodos on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 更新 todo 的项目归属（null = 移除项目）。
-  void updateTodoProject(String id, String? projectId) {
+  Future<void> updateTodoProject(String id, String? projectId) async {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
-    todoItems[i] = todoItems[i].copyWith(projectId: projectId);
+    final todo = todoItems[i];
+    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可操作
+    await signalService?.emitTodoEdited(todo, todo.title, todo.title, projectChanged: true);
+    todoItems[i] = todo.copyWith(projectId: projectId);
     afterMutation();
   }
 
@@ -135,6 +201,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     todoItems[targetIdx] =
         todoItems[targetIdx].copyWith(sortOrder: dragOrder);
     afterMutation();
+    // 排序不产生信号
   }
 
   // ---------------------------------------------------------------------------
@@ -152,22 +219,53 @@ mixin SumiStoreTodos on ChangeNotifier {
   // 批量更新（编辑面板用）
   // ---------------------------------------------------------------------------
 
-  /// 批量更新 todo 字段。
-  void updateTodo(
+  /// 批量更新 todo 字段（07 轮：增加编辑区分）。
+  Future<void> updateTodo(
     String id, {
     String? title,
     String? body,
     String? projectId,
     String? reminderTime,
-  }) {
+  }) async {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
-    todoItems[i] = todoItems[i].copyWith(
-      title: title,
-      body: body,
-      projectId: projectId,
-      reminderTime: reminderTime,
-    );
+    final todo = todoItems[i];
+    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可编辑
+
+    // 标题变更使用编辑区分
+    if (title != null && title.trim() != todo.title) {
+      final classification = signalService?.classifyEdit(
+        todo.title,
+        title.trim(),
+        condensedFrom: todo.condensedFrom,
+      ) ?? EditClassification.minor;
+
+      switch (classification) {
+        case EditClassification.condensedRestore:
+          todoItems[i] = todo.copyWith(title: title.trim(), body: body, projectId: projectId, reminderTime: reminderTime);
+        case EditClassification.cleared:
+          await signalService?.emitTodoDeleted(todo);
+          todoItems.removeWhere((t) => t.id == id);
+          afterMutation();
+          return;
+        case EditClassification.major:
+          await signalService?.emitTodoDeleted(todo, reason: 'largeEdit');
+          final newTodo = TodoItem(
+            id: id, source: todo.source, projectId: todo.projectId, date: todo.date,
+            title: title.trim(), body: body ?? todo.body, done: todo.done,
+            pinned: todo.pinned, sortOrder: todo.sortOrder,
+            reminderTime: reminderTime ?? todo.reminderTime, createdAt: todo.createdAt,
+          );
+          todoItems[i] = newTodo;
+          await signalService?.emitTodoCreated(newTodo);
+        case EditClassification.minor:
+          await signalService?.emitTodoEdited(todo, todo.title, title.trim());
+          todoItems[i] = todo.copyWith(title: title.trim(), body: body, projectId: projectId, reminderTime: reminderTime);
+      }
+    } else {
+      // 仅 body/projectId/reminderTime 变更，不产生信号
+      todoItems[i] = todo.copyWith(body: body, projectId: projectId, reminderTime: reminderTime);
+    }
     afterMutation();
   }
 
@@ -189,10 +287,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     return sortedTodos.where((t) => t.date == null || t.date == key).toList();
   }
 
-  /// 排序后的 todo 列表：
-  /// 1. pinned（sortOrder 降序）
-  /// 2. 未完成（sortOrder 降序）
-  /// 3. 已完成（sortOrder 降序）
+  /// 排序后的 todo 列表。
   List<TodoItem> get sortedTodos {
     final list = List<TodoItem>.of(todoItems);
     list.sort(_todoComparator);
@@ -200,13 +295,11 @@ mixin SumiStoreTodos on ChangeNotifier {
   }
 
   int _todoComparator(TodoItem a, TodoItem b) {
-    // pinned 置顶
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
-    // 未完成优先于已完成
     if (!a.done && b.done) return -1;
     if (a.done && !b.done) return 1;
-    // sortOrder 升序（越小越靠前 = 添加顺序）
     return a.sortOrder.compareTo(b.sortOrder);
   }
+
 }

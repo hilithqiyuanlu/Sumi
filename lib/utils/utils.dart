@@ -9,6 +9,7 @@ const _toolNameMap = {
   'write_memory': '写入记忆',
   'read_todos': '查看事项',
   'write_todo': '创建事项',
+  'read_signals': '查询信号',
 };
 
 /// 工具名称 → 中文标签。
@@ -24,3 +25,11 @@ String dateKey(DateTime dt) =>
 
 String newSumiId(String prefix) =>
     '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+
+/// 判断日期字符串是否为过去日期（今天之前）。
+bool isPastDate(String? dateStr) {
+  if (dateStr == null) return false;
+  final d = DateTime.tryParse(dateStr);
+  if (d == null) return false;
+  return dateOnly(d).isBefore(dateOnly(DateTime.now()));
+}

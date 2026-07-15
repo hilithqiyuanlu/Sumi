@@ -74,17 +74,27 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
                 ),
               ],
             ),
-            if (_expanded && hasBody) ...[
-              const SizedBox(height: s8),
-              Text(
-                widget.body!,
-                style: TextStyle(
-                  fontSize: widget.bodyFontSize,
-                  height: 1.45,
-                  color: textTertiary,
-                ),
-              ),
-            ],
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: _expanded && hasBody
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: s8),
+                        Text(
+                          widget.body!,
+                          style: TextStyle(
+                            fontSize: widget.bodyFontSize,
+                            height: 1.45,
+                            color: textTertiary,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ),
       ),

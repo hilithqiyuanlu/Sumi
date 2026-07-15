@@ -6,10 +6,13 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/chat_database.dart';
 import '../data/local_database.dart';
+import '../data/signal_database.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../services/secure_settings_store.dart';
+import '../services/signal_service.dart';
 import '../services/tool_executor.dart';
+import '../services/user_model_service.dart';
 import '../services/voice_input_service.dart';
 import '../utils/utils.dart';
 
@@ -28,6 +31,28 @@ class SumiStore extends ChangeNotifier
   ChatDatabase? _chatDatabase;
   ToolExecutor? _toolExecutor;
   VoiceInputService? _voiceService;
+
+  // 07 轮新增
+  SignalDatabase? _signalDb;
+  UserModelService? _userModelService;
+  SignalService? _signalService;
+
+  /// 信号数据库（供 mixin 使用）。
+  SignalDatabase? get signalDb => _signalDb;
+  /// 用户模型服务。
+  UserModelService? get userModelService => _userModelService;
+  /// 信号发射服务（供 mixin 使用）。
+  SignalService? get signalService => _signalService;
+
+  // 07 轮：建议缓存状态
+  List<String> cachedSuggestions = [];
+  bool _suggestionsDirty = true;
+  bool get suggestionsDirty => _suggestionsDirty;
+  DateTime? lastForegroundTime;
+  DateTime? lastSuggestionTime;
+
+  // 07 轮：周度反思状态
+  DateTime? lastWeeklyReflection;
 
   /// todo 标题最大字数，超过触发 AI 凝练。
   static const todoTitleMaxLength = 16;
@@ -98,6 +123,14 @@ class SumiStore extends ChangeNotifier
     // 初始化对话数据库
     store._chatDatabase = ChatDatabase(db);
 
+    // 07 轮：初始化信号数据库和用户模型服务
+    store._signalDb = SignalDatabase(db);
+    store._userModelService = UserModelService(store._signalDb!);
+    store._signalService = SignalService(store._signalDb!);
+
+    // 07 轮：迁移旧 MEMORY.md → USER_MODEL.md
+    await store._migrateLegacyMemory();
+
     // 从安全存储读取 API Key（并行读取，减少启动延迟）
     final keyResults = await Future.wait([
       ss.readDeepseekApiKey(),
@@ -139,8 +172,8 @@ class SumiStore extends ChangeNotifier
       );
       _toolExecutor = ToolExecutor(
         aiService: _aiService,
-        readMemory: () => readMemory(),
-        appendMemory: (c) => appendMemory(c),
+        userModelService: _userModelService!,
+        signalDatabase: _signalDb!,
         readTodos: ({String? filter}) => _readTodosForTool(filter: filter),
         writeTodo: ({
           required String title,
@@ -179,7 +212,7 @@ class SumiStore extends ChangeNotifier
       // AI 调用失败 → 若超长尝试凝练，否则直接创建
       if (text.length > todoTitleMaxLength) {
         final condensed = await polishText(text);
-        addUserTodo(condensed ?? text);
+        addUserTodo(condensed ?? text, condensedFrom: text);
       } else {
         addUserTodo(text);
       }
@@ -191,9 +224,9 @@ class SumiStore extends ChangeNotifier
       final single = result.items.isNotEmpty ? result.items.first : text;
       if (single.length > todoTitleMaxLength) {
         final condensed = await polishText(single);
-        addUserTodo(condensed ?? single);
+        addUserTodo(condensed ?? single, condensedFrom: text);
       } else {
-        addUserTodo(single);
+        addUserTodo(single, condensedFrom: text);
       }
       return null;
     }
@@ -271,57 +304,89 @@ class SumiStore extends ChangeNotifier
   }
 
   // ---------------------------------------------------------------------------
-  // MEMORY.md
+  // USER_MODEL.md（07 轮：替代旧 MEMORY.md）
   // ---------------------------------------------------------------------------
 
-  /// 读取 MEMORY.md 的完整内容。
+  /// 读取 USER_MODEL.md 的完整内容（注入实时统计后）。
   Future<String> readMemory() async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = io.File('${dir.path}/sumi/MEMORY.md');
-      if (!await file.exists()) {
-        return '';
-      }
-      return await file.readAsString();
-    } catch (_) {
-      return '';
-    }
+    if (_userModelService == null) return '';
+    final content = await _userModelService!.readUserModel();
+    final stats = await _userModelService!.computeRealtimeStats();
+    stats['userName'] = appSettings.userName.isNotEmpty ? appSettings.userName : '未设置';
+    return _userModelService!.injectRealtimeStats(content, stats);
   }
 
-  /// 追加内容到 MEMORY.md。
+  /// 追加内容到 USER_MODEL.md 核心记忆区。
   Future<void> appendMemory(String content) async {
+    if (_userModelService == null) return;
+    await _userModelService!.appendToSection('coreMemory', content);
+  }
+
+  /// 覆写整个 USER_MODEL.md（用于编辑器保存）。
+  Future<void> writeMemory(String content) async {
+    if (_userModelService == null) return;
+    await _userModelService!.writeUserModel(content);
+  }
+
+  /// 迁移旧 MEMORY.md → USER_MODEL.md（仅运行一次）。
+  Future<void> _migrateLegacyMemory() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final sumiDir = io.Directory('${dir.path}/sumi');
-      if (!await sumiDir.exists()) {
-        await sumiDir.create(recursive: true);
-      }
-      final file = io.File('${sumiDir.path}/MEMORY.md');
-      final timestamp = DateTime.now().toIso8601String().substring(0, 16);
-      final entry = '\n### 记忆 $timestamp\n$content\n';
-      if (await file.exists()) {
-        await file.writeAsString(entry, mode: io.FileMode.append);
-      } else {
-        await file.writeAsString('# Sumi MEMORY.md\n$entry');
+      final legacyFile = io.File('${dir.path}/sumi/MEMORY.md');
+      final newFile = io.File('${dir.path}/sumi/USER_MODEL.md');
+
+      // 如果 USER_MODEL.md 已存在，跳过
+      if (await newFile.exists()) return;
+
+      if (await legacyFile.exists()) {
+        final legacyContent = await legacyFile.readAsString();
+        final migrated = await _userModelService!.migrateFromLegacyMemory(legacyContent);
+        await _userModelService!.writeUserModel(migrated);
+        // 不删除旧文件，保留备份
       }
     } catch (_) {
       // 静默失败
     }
   }
 
-  /// 覆写整个 MEMORY.md（用于编辑器保存）。
-  Future<void> writeMemory(String content) async {
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final sumiDir = io.Directory('${dir.path}/sumi');
-      if (!await sumiDir.exists()) {
-        await sumiDir.create(recursive: true);
-      }
-      final file = io.File('${sumiDir.path}/MEMORY.md');
-      await file.writeAsString(content);
-    } catch (_) {
-      // 静默失败
+  /// 周期性检查并触发周度反思（由 HomePage 在回前台时调用）。
+  Future<void> checkAndRunWeeklyReflection() async {
+    final ai = _aiService;
+    if (ai == null) return;
+
+    final now = DateTime.now();
+    final isSunday = now.weekday == DateTime.sunday;
+    final isMondayMorning = now.weekday == DateTime.monday && now.hour < 12;
+    if (!isSunday && !isMondayMorning) return;
+
+    if (lastWeeklyReflection != null) {
+      final daysSince = now.difference(lastWeeklyReflection!).inDays;
+      if (daysSince < 6) return;
     }
+
+    lastWeeklyReflection = now;
+    afterMutation(); // 持久化
+
+    try {
+      final model = await _userModelService!.readUserModel();
+      final weekSignals = await _signalDb!.query(range: '7d', limit: 200);
+      final signalsText = SignalDatabase.formatForPrompt(weekSignals);
+
+      final result = await ai.generateWeeklyReflection(
+        userModel: model,
+        weeklySignals: signalsText,
+      );
+      if (result != null) {
+        await _userModelService!.writeUserModel(result.updatedUserModel);
+      }
+    } catch (e) {
+      debugPrint('Weekly reflection failed (non-blocking): $e');
+    }
+  }
+
+  /// 设置建议脏标记。true = 下次回前台时刷新，false = 已是最新。
+  void setSuggestionsDirty(bool v) {
+    _suggestionsDirty = v;
   }
 
   // ---------------------------------------------------------------------------

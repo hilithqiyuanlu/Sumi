@@ -17,7 +17,6 @@ class ProjectEditorPage extends StatefulWidget {
 }
 
 class _ProjectEditorPageState extends State<ProjectEditorPage> {
-  late final TextEditingController _nameCtrl;
   late final TextEditingController _goalCtrl;
   late final TextEditingController _levelCtrl;
 
@@ -46,7 +45,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   void initState() {
     super.initState();
     final p = widget.project;
-    _nameCtrl = TextEditingController(text: p?.name ?? '');
     _goalCtrl = TextEditingController(text: p?.goal ?? '');
     _levelCtrl = TextEditingController(text: p?.level ?? '');
     _color = p?.color ?? SumiScope.read(context).nextAvailableColor();
@@ -62,14 +60,14 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
     _goalCtrl.dispose();
     _levelCtrl.dispose();
     super.dispose();
   }
 
-  /// 编辑模式下判断是否仅修改了名称（名称变更不触发重新规划）。
-  bool get _onlyNameChanged {
+  /// 编辑模式下判断是否仅修改了非规划字段（名称、颜色等）。
+  /// 这些变更不触发重新评估与规划。
+  bool get _onlyCosmeticChanges {
     if (!_isEditing) return false;
     final p = widget.project!;
     final goal = _goalCtrl.text.trim();
@@ -77,8 +75,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     return goal == p.goal &&
         level == p.level &&
         _cycleMonths == p.cycleMonths &&
-        _timeConstraint == p.timeConstraint &&
-        _color == p.color;
+        _timeConstraint == p.timeConstraint;
   }
 
   void _submit() {
@@ -86,9 +83,8 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     if (goal.isEmpty) return;
 
     final store = SumiScope.read(context);
-    final name = _nameCtrl.text.trim().isEmpty
-        ? (_isEditing ? (widget.project?.name ?? '未命名项目') : '未命名项目')
-        : _nameCtrl.text.trim();
+    // 名称由 AI 评估生成的 goalSummary 作为项目展示标题
+    final name = '';
 
     String projectId;
     if (_isEditing) {
@@ -103,8 +99,8 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
         timeConstraint: _timeConstraint,
       );
 
-      // 仅改名 → 直接保存并返回，不重新评估
-      if (_onlyNameChanged) {
+      // 仅改外观字段 → 直接保存并返回，不重新评估
+      if (_onlyCosmeticChanges) {
         Navigator.of(context).pop();
         return;
       }
@@ -149,16 +145,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
               child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 名称
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '项目名称',
-                    hintText: '未命名项目',
-                  ),
-                ),
-                const SizedBox(height: s16),
-
                 // 颜色选择
                 const Text('颜色',
                     style: TextStyle(fontSize: 13, color: textTertiary)),

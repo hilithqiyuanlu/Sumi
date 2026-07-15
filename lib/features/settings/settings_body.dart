@@ -4,6 +4,8 @@ import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
+import 'signal_log_page.dart';
+import 'user_model_editor_page.dart';
 
 class SettingsBody extends StatefulWidget {
   const SettingsBody({super.key});
@@ -16,101 +18,7 @@ class _SettingsBodyState extends State<SettingsBody> {
   bool _deepseekVisible = false;
   bool _tavilyVisible = false;
 
-  // Sumi 记忆
-  final _memoryController = TextEditingController();
-  final _memoryFocusNode = FocusNode();
-  bool _memoryLoaded = false;
-  bool _memorySaving = false;
-  bool _isEditingMemory = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadMemory();
-  }
-
-  @override
-  void dispose() {
-    _memoryController.dispose();
-    _memoryFocusNode.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadMemory() async {
-    final store = SumiScope.read(context);
-    final content = await store.readMemory();
-    if (!mounted) return;
-    _memoryController.text = content;
-    setState(() => _memoryLoaded = true);
-  }
-
-  Future<void> _saveMemory() async {
-    H.click();
-    setState(() => _memorySaving = true);
-    final store = SumiScope.read(context);
-    await store.writeMemory(_memoryController.text);
-    if (!mounted) return;
-    setState(() {
-      _memorySaving = false;
-      _isEditingMemory = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('记忆已保存'),
-        duration: Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _clearMemory() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
-        ),
-        title: const Text('清空记忆', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        content: const Text('确定要清空 Sumi 的全部记忆吗？此操作不可撤销。', style: TextStyle(fontSize: 14)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('清空', style: TextStyle(color: danger)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      H.medium();
-      _memoryController.clear();
-      final store = SumiScope.read(context);
-      await store.writeMemory('');
-      if (!mounted) return;
-      setState(() => _isEditingMemory = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('记忆已清空'),
-          duration: Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  String _memoryPreview(String text) {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) return '暂无记忆';
-    final lines = trimmed.split('\n');
-    final firstLines = lines.take(3).join('\n');
-    if (lines.length > 3 || trimmed.length > 80) {
-      return '${firstLines.substring(0, firstLines.length.clamp(0, 80))}…';
-    }
-    return firstLines;
-  }
+  // 07 轮：移除内联编辑，改为导航到独立编辑器页面
 
   @override
   Widget build(BuildContext context) {
@@ -147,9 +55,38 @@ class _SettingsBodyState extends State<SettingsBody> {
           ),
         ),
         const SizedBox(height: s24),
-        _sectionHeader('Sumi 记忆'),
+        // 用户名片
+        _sectionHeader('用户名片'),
         const SizedBox(height: s12),
-        _buildMemoryCard(store),
+        _buildCard(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('昵称', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            subtitle: Text(
+              store.appSettings.userName.isEmpty ? '未设置' : store.appSettings.userName,
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.edit, size: iconSmall),
+              onPressed: () => _editUserName(context, store),
+            ),
+          ),
+        ),
+        const SizedBox(height: s24),
+        _sectionHeader('用户模型（USER_MODEL.md）'),
+        const SizedBox(height: s12),
+        _buildCard(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('编辑记忆', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            subtitle: const Text('查看和编辑 Sumi 对你的理解', style: TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, size: iconSection, color: textTertiary),
+            onTap: () {
+              H.light();
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const UserModelEditorPage()));
+            },
+          ),
+        ),
         const SizedBox(height: s24),
         _sectionHeader('思考模式'),
         const SizedBox(height: s12),
@@ -170,16 +107,33 @@ class _SettingsBodyState extends State<SettingsBody> {
         _sectionHeader('开发者'),
         const SizedBox(height: s12),
         _buildCard(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('披露全部月卡',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            subtitle: const Text('关闭锁卡，显示所有月份的规划内容',
-                style: TextStyle(fontSize: 12)),
-            trailing: Switch(
-              value: store.appSettings.showAllMonthCards,
-              onChanged: (v) { H.click(); store.setShowAllMonthCards(v); },
-            ),
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('披露全部月卡',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                subtitle: const Text('关闭锁卡，显示所有月份的规划内容',
+                    style: TextStyle(fontSize: 12)),
+                trailing: Switch(
+                  value: store.appSettings.showAllMonthCards,
+                  onChanged: (v) { H.click(); store.setShowAllMonthCards(v); },
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('信号日志',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                subtitle: const Text('查看用户行为信号记录',
+                    style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right, size: iconSection, color: textTertiary),
+                onTap: () {
+                  H.light();
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SignalLogPage()));
+                },
+              ),
+            ],
           ),
         ),
         const SizedBox(height: s24),
@@ -228,97 +182,32 @@ class _SettingsBodyState extends State<SettingsBody> {
     );
   }
 
-  Widget _buildMemoryCard(SumiStore store) {
-    if (!_memoryLoaded) {
-      return _buildCard(
-        child: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(s24),
-            child: CircularProgressIndicator(strokeWidth: 2),
+  void _editUserName(BuildContext context, SumiStore store) {
+    final controller = TextEditingController(text: store.appSettings.userName);
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(radiusCard))),
+          title: const Text('设置昵称', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: '输入你的昵称'),
           ),
-        ),
-      );
-    }
-
-    return _buildCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_isEditingMemory) ...[
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: line),
-                borderRadius: BorderRadius.circular(radiusPanel),
-              ),
-              child: TextField(
-                controller: _memoryController,
-                focusNode: _memoryFocusNode,
-                autofocus: true,
-                maxLines: 12,
-                minLines: 6,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'monospace',
-                  height: 1.5,
-                ),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(s12),
-                ),
-              ),
-            ),
-            const SizedBox(height: s12),
-            Row(
-              children: [
-                FilledButton(
-                  onPressed: _memorySaving ? null : _saveMemory,
-                  child: const Text('保存'),
-                ),
-                const SizedBox(width: s8),
-                TextButton(
-                  onPressed: _clearMemory,
-                  child: Text(
-                    '清空记忆',
-                    style: TextStyle(color: danger),
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => setState(() => _isEditingMemory = false),
-                  child: const Text('取消'),
-                ),
-              ],
-            ),
-          ] else ...[
-            Text(
-              _memoryPreview(_memoryController.text),
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.5,
-                color: _memoryController.text.trim().isEmpty
-                    ? textTertiary
-                    : ink,
-              ),
-            ),
-            const SizedBox(height: s12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  H.light();
-                  setState(() => _isEditingMemory = true);
-                  // 延迟一帧确保 TextField 已挂载再聚焦
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _memoryFocusNode.requestFocus();
-                  });
-                },
-                child: const Text('编辑'),
-              ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                store.updateUserName(controller.text);
+                Navigator.pop(ctx);
+              },
+              child: const Text('保存'),
             ),
           ],
-        ],
-      ),
-    );
+        );
+      },
+    ).then((_) => controller.dispose());
   }
 
   Widget _sectionHeader(String title) {

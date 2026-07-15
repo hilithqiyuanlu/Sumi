@@ -11,6 +11,7 @@ mixin SumiStoreProjects on ChangeNotifier {
   String? get currentProjectId;
   set currentProjectId(String? v);
   AiService? get aiService;
+  SignalService? get signalService; // 07 轮
   void afterMutation();
 
   // ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ mixin SumiStoreProjects on ChangeNotifier {
   }
 
   /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
-  void updateProject(String id, {
+  Future<void> updateProject(String id, {
     String? name,
     ProjectColor? color,
     String? goal,
@@ -94,7 +95,7 @@ mixin SumiStoreProjects on ChangeNotifier {
     int? timeConstraint,
     int? currentMonthIndex,
     String? goalSummary,
-  }) {
+  }) async {
     final i = projectList.indexWhere((p) => p.id == id);
     if (i == -1) return;
     final old = projectList[i];
@@ -126,6 +127,22 @@ mixin SumiStoreProjects on ChangeNotifier {
         );
       }
     }
+
+    // 07 轮：采集项目编辑信号
+    final updated = projectList[i];
+    if (goal != null && goal != old.goal) {
+      await signalService?.emitProjectGoalSet(updated, old.goal);
+    }
+    if (level != null && level != old.level) {
+      await signalService?.emitProjectLevelSet(updated, old.level);
+    }
+    if (cycleMonths != null && cycleMonths != old.cycleMonths) {
+      await signalService?.emitProjectCycleSet(updated, old.cycleMonths);
+    }
+    if (timeConstraint != null && timeConstraint != old.timeConstraint) {
+      await signalService?.emitProjectTimeSet(updated, old.timeConstraint);
+    }
+
     afterMutation();
     // 06 轮：不再自动触发重规划，由 UI 层通过评估→规划流程驱动
   }
@@ -294,7 +311,7 @@ mixin SumiStoreProjects on ChangeNotifier {
 
   /// 规划完成后一次性提交（06 轮新增）。
   /// 写入月卡 + 首日 todo，完成后触发 UI 刷新。
-  void commitPlan(String projectId, PlanResult plan) {
+  Future<void> commitPlan(String projectId, PlanResult plan) async {
     // 清除该项目的旧月卡（如果有）
     monthCardList.removeWhere((m) => m.projectId == projectId);
 
@@ -318,6 +335,15 @@ mixin SumiStoreProjects on ChangeNotifier {
         date: seed.date,
         projectId: projectId,
       );
+    }
+
+    // 07 轮：规划完成产生项目目标信号
+    final proj = projectList.cast<Project?>().firstWhere(
+      (p) => p?.id == projectId,
+      orElse: () => null,
+    );
+    if (proj != null) {
+      await signalService?.emitProjectGoalSet(proj, null);
     }
 
     afterMutation();

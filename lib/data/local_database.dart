@@ -18,7 +18,7 @@ class SumiLocalDatabase {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -45,6 +45,9 @@ class SumiLocalDatabase {
         }
         if (oldVersion < 6) {
           await _migrateV5toV6(db);
+        }
+        if (oldVersion < 7) {
+          await _migrateV6toV7(db);
         }
       },
     );
@@ -79,6 +82,33 @@ class SumiLocalDatabase {
       CREATE INDEX IF NOT EXISTS idx_messages_conv
       ON messages(conversation_id, created_at)
     ''');
+    // 07 轮：信号表
+    await _createSignalsTable(db);
+  }
+
+  /// 创建 signals 表（07 轮新增）。
+  Future<void> _createSignalsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signal TEXT NOT NULL,
+        time TEXT NOT NULL,
+        context_json TEXT NOT NULL DEFAULT '{}',
+        project_id TEXT,
+        todo_id TEXT,
+        domain TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_signals_time ON signals(time)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id)
+    ''');
   }
 
   /// v2→v3: messages 表新增 reasoning_content 和 tool_calls_json 列。
@@ -103,6 +133,11 @@ class SumiLocalDatabase {
     await db.execute(
       "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
     );
+  }
+
+  /// v6→v7: 新增 signals 表（07 轮）。
+  Future<void> _migrateV6toV7(Database db) async {
+    await _createSignalsTable(db);
   }
 
   /// v5→v6: conversations 表新增 date_key 列，并回填已有数据。

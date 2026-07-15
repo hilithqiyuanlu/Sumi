@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../utils/haptics.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../projects/month_card_pager.dart';
-import '../projects/project_card.dart';
-import '../projects/project_editor_page.dart';
 import '../projects/project_tabs.dart';
 import '../shared/drag_handle.dart';
 import 'month_calendar.dart';
@@ -57,45 +54,14 @@ class MonthViewSheet extends StatelessWidget {
                   const MonthCalendar(),
                   const SizedBox(height: s20),
 
-                  // 项目 Tab 栏
+                  // 项目 Tab 栏（含项目详情展开）
                   const ProjectTabs(),
                   const SizedBox(height: s12),
 
-                  // 项目卡
+                  // 月卡 Pager
                   if (project != null) ...[
-                    const SizedBox(height: s4),
-                    ProjectCard(project: project),
-                    const SizedBox(height: s16),
-
-                    // 月卡 Pager
+                    const SizedBox(height: s8),
                     MonthCardPager(project: project),
-                  ] else ...[
-                    GestureDetector(
-                      onTap: () {
-                        H.light();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            fullscreenDialog: true,
-                            builder: (_) => const ProjectEditorPage(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(s24),
-                        decoration: BoxDecoration(
-                          color: paper,
-                          borderRadius: BorderRadius.circular(radiusCard),
-                          border: Border.all(color: line.withValues(alpha: 0.3)),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '点击此处创建第一个项目',
-                            style: TextStyle(color: textTertiary),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                   // 底部拖拽把手（上推收起）
                   const SizedBox(height: s12),
