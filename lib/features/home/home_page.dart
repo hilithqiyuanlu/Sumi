@@ -406,10 +406,10 @@ class _HomePageState extends State<HomePage>
     final isPast = selected.isBefore(today);
 
     final String title;
-    if (isFuture) {
-      title = '前方的区域还没有开放\n过段时间再来探索吧';
-    } else if (isPast) {
+    if (isPast) {
       title = '这一天没有对话';
+    } else if (isFuture) {
+      title = _chatGreeting;
     } else if (_inputMode == InputMode.todo) {
       title = userName.isEmpty
           ? '嗨，今天要和 Sumi 一起做点什么？'

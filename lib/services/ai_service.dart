@@ -390,13 +390,13 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'read_todos',
-        'description': '查询当前的待办事项列表。',
+        'description': '查询待办事项列表。默认优先查今天的待办；当用户明确提到"所有待办""全部事项""之前的任务""历史待办""某个项目"等跨日期/跨范围语义时，再查全部或指定项目。',
         'parameters': {
           'type': 'object',
           'properties': {
             'filter': {
               'type': 'string',
-              'description': '筛选条件：today（今日）、all（全部）、或 project:xxx（指定项目）',
+              'description': '筛选条件：today（今天的待办，默认首选）、all（全部待办，用户明确提及时才用）、或 project:xxx（指定项目的待办）',
             },
           },
         },

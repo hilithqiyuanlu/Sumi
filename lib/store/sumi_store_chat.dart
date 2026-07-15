@@ -22,6 +22,7 @@ mixin SumiStoreChat on ChangeNotifier {
   List<ChatMessage> _currentMessages = [];
   bool _isStreaming = false;
   bool _isLoadingConversation = false;
+  bool _isTemporaryConversation = false;
 
   /// Agent 状态
   bool _isThinking = false;
@@ -36,27 +37,49 @@ mixin SumiStoreChat on ChangeNotifier {
   bool get isThinking => _isThinking;
   bool get isLoadingConversation => _isLoadingConversation;
   String? get currentToolCallLabel => _currentToolCallLabel;
+  bool get isTemporaryConversation => _isTemporaryConversation;
+
+  /// 判断 dateKey 是否为未来日期（相对于今天）。
+  static bool _isFutureDate(String dateKey) {
+    final today = dateKey(DateTime.now());
+    return dateKey.compareTo(today) > 0;
+  }
 
   // ---------------------------------------------------------------------------
   // 日期驱动会话
   // ---------------------------------------------------------------------------
 
   /// 获取或创建指定日期的会话，加载其消息。
+  /// 未来日期走临时会话（内存中，不持久化）。
   Future<void> _getOrCreateConversationForDate(String dateKey) async {
     final db = chatDatabase;
-    if (db == null) return;
     if (_currentDateKey == dateKey && _currentConversationId != null) return;
 
     _isLoadingConversation = true;
     notifyListeners();
 
-    // 查找或创建
-    Conversation? conv = await db.findConversationByDate(dateKey);
-    conv ??= await db.createConversationForDate(dateKey);
+    final isFuture = _isFutureDate(dateKey);
 
-    _currentConversationId = conv.id;
-    _currentDateKey = dateKey;
-    _currentMessages = await db.loadMessages(conv.id);
+    if (isFuture) {
+      _currentConversationId = 'temp-$dateKey';
+      _currentDateKey = dateKey;
+      _currentMessages = [];
+      _isTemporaryConversation = true;
+    } else {
+      if (db == null) {
+        _isLoadingConversation = false;
+        notifyListeners();
+        return;
+      }
+      Conversation? conv = await db.findConversationByDate(dateKey);
+      conv ??= await db.createConversationForDate(dateKey);
+
+      _currentConversationId = conv.id;
+      _currentDateKey = dateKey;
+      _currentMessages = await db.loadMessages(conv.id);
+      _isTemporaryConversation = false;
+    }
+
     _isLoadingConversation = false;
     notifyListeners();
   }
@@ -64,7 +87,6 @@ mixin SumiStoreChat on ChangeNotifier {
   /// 删除一个消息对：从指定 user 消息开始，直到下一个 user 消息（或末尾）。
   Future<void> deleteMessagePair(int userMsgIndex) async {
     final db = chatDatabase;
-    if (db == null) return;
     if (userMsgIndex < 0 || userMsgIndex >= _currentMessages.length) return;
     if (_currentMessages[userMsgIndex].role != 'user') return;
 
@@ -83,8 +105,10 @@ mixin SumiStoreChat on ChangeNotifier {
       idsToDelete.add(_currentMessages[i].id);
     }
 
-    // 从 DB 和内存中删除
-    await db.deleteMessagesByIds(idsToDelete);
+    // 从 DB 和内存中删除（临时会话仅内存）
+    if (!_isTemporaryConversation && db != null) {
+      await db.deleteMessagesByIds(idsToDelete);
+    }
     _currentMessages.removeRange(userMsgIndex, endIndex + 1);
     notifyListeners();
   }
@@ -111,25 +135,32 @@ mixin SumiStoreChat on ChangeNotifier {
     final db = chatDatabase;
     final svc = aiService;
     final exec = toolExecutor;
-    if (db == null || svc == null || exec == null) return;
+    if (svc == null || exec == null) return;
     if (content.trim().isEmpty) return;
 
     // 记录问候语上下文（仅用于新会话首条消息）
     _activeGreeting = currentGreeting;
 
-    // 对话模式始终使用今天的会话，发送后回到今天
     final today = dateKey(DateTime.now());
-    await _getOrCreateConversationForDate(today);
-    final convId = _currentConversationId!;
+    final selectedKey = dateKey(selectedDate);
+    final isFuture = _isFutureDate(selectedKey);
 
-    // 如果当前不在今天，切回今天
-    if (dateKey(selectedDate) != today) {
-      selectedDate = dateOnly(DateTime.now());
-      triggerNavigateToToday();
+    if (isFuture) {
+      // 未来日期：留在当前日期，使用临时会话
+      await _getOrCreateConversationForDate(selectedKey);
+    } else {
+      // 非未来日期：强制切回今天的会话
+      await _getOrCreateConversationForDate(today);
+      if (selectedKey != today) {
+        selectedDate = dateOnly(DateTime.now());
+        triggerNavigateToToday();
+      }
     }
+    final convId = _currentConversationId!;
     if (convId.isEmpty) return;
+    final isTemporary = _isTemporaryConversation;
 
-    // 保存用户消息
+    // 保存用户消息（临时会话仅内存，不写DB）
     final userMsg = ChatMessage(
       id: 'msg-${DateTime.now().microsecondsSinceEpoch}',
       conversationId: convId,
@@ -137,8 +168,10 @@ mixin SumiStoreChat on ChangeNotifier {
       content: content.trim(),
       createdAt: DateTime.now(),
     );
-    await db.saveMessage(userMsg);
-    await db.touchConversation(convId);
+    if (!isTemporary && db != null) {
+      await db.saveMessage(userMsg);
+      await db.touchConversation(convId);
+    }
     _currentMessages = [..._currentMessages, userMsg];
     notifyListeners();
     notifyMessageSent(); // 通知 UI 滚动到用户消息
@@ -170,9 +203,12 @@ mixin SumiStoreChat on ChangeNotifier {
       db: db,
       svc: svc,
       exec: exec,
+      isTemporary: isTemporary,
     );
 
-    await db.touchConversation(convId);
+    if (!isTemporary && db != null) {
+      await db.touchConversation(convId);
+    }
     notifyListeners();
   }
 
@@ -181,9 +217,10 @@ mixin SumiStoreChat on ChangeNotifier {
     final db = chatDatabase;
     final svc = aiService;
     final exec = toolExecutor;
-    if (db == null || svc == null || exec == null) return;
+    if (svc == null || exec == null) return;
     final convId = _currentConversationId;
     if (convId == null) return;
+    final isTemporary = _isTemporaryConversation;
 
     // 找到并移除最后一条 AI 消息及关联的 tool 消息
     final lastAiIdx = _currentMessages.lastIndexWhere((m) => m.role == 'assistant');
@@ -200,9 +237,11 @@ mixin SumiStoreChat on ChangeNotifier {
         final idx = _currentMessages.indexOf(m);
         return idx >= lastAiIdx && (m.role == 'assistant' || m.role == 'tool');
       });
-      await db.popLastAssistantMessage(convId);
-      // 也清除 DB 中残留的 tool 消息
-      await db.popToolMessages(convId);
+      if (!isTemporary && db != null) {
+        await db.popLastAssistantMessage(convId);
+        // 也清除 DB 中残留的 tool 消息
+        await db.popToolMessages(convId);
+      }
       notifyListeners();
     }
 
@@ -234,9 +273,12 @@ mixin SumiStoreChat on ChangeNotifier {
       db: db,
       svc: svc,
       exec: exec,
+      isTemporary: isTemporary,
     );
 
-    await db.touchConversation(convId);
+    if (!isTemporary && db != null) {
+      await db.touchConversation(convId);
+    }
     notifyListeners();
   }
 
@@ -247,14 +289,16 @@ mixin SumiStoreChat on ChangeNotifier {
   /// 执行一次 Agent Loop 流式调用，处理所有事件并持久化结果。
   /// [messages] 会就地修改（追加 assistant + tool 消息）。
   /// [msgCountBefore] sendAgentLoop 调用前 messages 的长度，用于只持久化新增的 tool 消息。
+  /// [isTemporary] 临时会话不写 DB，仅更新内存。
   Future<void> _streamAndPersistReply({
     required List<Map<String, Object?>> messages,
     required int msgCountBefore,
     required String assistantMsgId,
     required String convId,
-    required ChatDatabase db,
+    required ChatDatabase? db,
     required AiService svc,
     required ToolExecutor exec,
+    bool isTemporary = false,
   }) async {
     final contentBuf = StringBuffer();
     final reasoningBuf = StringBuffer();
@@ -313,7 +357,7 @@ mixin SumiStoreChat on ChangeNotifier {
     _isThinking = false;
     _currentToolCallLabel = null;
 
-    // 持久化 AI 回复
+    // 持久化 AI 回复（临时会话仅内存）
     final finalContent = contentBuf.toString();
     if (finalContent.isNotEmpty) {
       final finalReasoning =
@@ -330,20 +374,22 @@ mixin SumiStoreChat on ChangeNotifier {
         );
       }
 
-      await db.saveMessage(ChatMessage(
-        id: assistantMsgId,
-        conversationId: convId,
-        role: 'assistant',
-        content: finalContent,
-        createdAt: DateTime.now(),
-        reasoningContent: finalReasoning,
-        toolCallsJson: finalToolCallsJson,
-      ));
+      if (!isTemporary && db != null) {
+        await db.saveMessage(ChatMessage(
+          id: assistantMsgId,
+          conversationId: convId,
+          role: 'assistant',
+          content: finalContent,
+          createdAt: DateTime.now(),
+          reasoningContent: finalReasoning,
+          toolCallsJson: finalToolCallsJson,
+        ));
+      }
     } else {
       _currentMessages.removeLast();
     }
 
-    // 持久化本轮新增的 tool 结果消息（历史 tool 已在之前轮次保存过）
+    // 持久化本轮新增的 tool 结果消息（临时会话仅内存）
     for (var i = msgCountBefore; i < messages.length; i++) {
       final m = messages[i];
       if (m['role'] == 'tool') {
@@ -355,7 +401,9 @@ mixin SumiStoreChat on ChangeNotifier {
           createdAt: DateTime.now(),
           toolCallId: (m['tool_call_id'] as String?) ?? '',
         );
-        await db.saveMessage(toolMsg);
+        if (!isTemporary && db != null) {
+          await db.saveMessage(toolMsg);
+        }
         _currentMessages = [..._currentMessages, toolMsg];
       }
     }
@@ -370,6 +418,11 @@ mixin SumiStoreChat on ChangeNotifier {
       '\n'
       '## 工具\n'
       '你有搜索网络、读写记忆、管理待办的工具，需要时直接使用。\n'
+      '\n'
+      '## 待办使用策略\n'
+      '- 优先使用 read_todos(today) 查今天的待办，这是默认首选。\n'
+      '- 只有当用户明确提到"所有待办""全部事项""之前的任务""历史待办""某个项目/计划"等跨日期、跨范围语义时，才用 read_todos(all) 或 read_todos(project:xxx) 查全部/指定项目。\n'
+      '- 不要一上来就把所有待办都读一遍，按需读取后也不用主动查。\n'
       '\n'
       '## 记忆（MEMORY.md）\n'
       '已加载到上下文中，不需要重复读取。记录关于用户的信息时加「用户：」前缀。\n'
