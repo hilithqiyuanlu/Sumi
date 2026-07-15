@@ -4,35 +4,36 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "列表/页面无数据时的占位展示",
+  "description": "纯文字空状态占位（无图标），不同日期场景展示不同文案，fontSize 18 w300 ink 色 lineHeight 1.4",
   "variants": [
     {
-      "name": "chat-empty",
-      "description": "icon + 主文案 + 副文案"
+      "id": "future-date",
+      "name": "Future Date",
+      "description": "未来日期空状态：纯文字，无图标"
     },
     {
-      "name": "todo-empty",
-      "description": "纯文字"
+      "id": "past-date",
+      "name": "Past Date",
+      "description": "过去日期空状态：纯文字，无图标"
     },
     {
-      "name": "conversation-empty",
-      "description": "纯文字"
+      "id": "today-greeting",
+      "name": "Today Greeting",
+      "description": "今天空状态：用户名 + 嗨 XXX，今天要和 Sumi 一起做点什么？"
     }
   ],
   "states": [],
   "renderHints": {
-    "iconSize": "64px",
-    "iconColor": "rgba(var(--primary-500), 0.4)",
-    "titleFontSize": "var(--font-size-body-base)",
-    "titleWeight": 500,
-    "subtitleFontSize": "var(--font-size-body-base)",
-    "subtitleColor": "var(--on-surface-variant)",
-    "spacing": "var(--space-5)"
+    "hasIcon": false,
+    "fontSize": "18px",
+    "fontWeight": "300",
+    "color": "var(--color-ink)",
+    "lineHeight": "1.4"
   },
   "uiCopySamples": {
-    "chatTitle": "和 Sumi 聊聊学习计划吧",
-    "chatSubtitle": "我可以帮你制定计划、解答疑问",
-    "todoText": "还没有事项，在下方输入框创建吧"
+    "futureDate": "前方的区域还没有开放，过段时间再来探索吧",
+    "pastDate": "这一天没有对话",
+    "todayGreeting": "嗨 XXX，今天要和 Sumi 一起做点什么？"
   },
   "unknowns": []
 }

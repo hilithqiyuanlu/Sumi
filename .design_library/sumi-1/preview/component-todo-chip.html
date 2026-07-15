@@ -11,21 +11,21 @@
       padding: 0;
       background: var(--neutral-100);
       font-family: var(--font-body);
-      color: var(--on-surface);
+      color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
     .preview-container {
       max-width: 390px;
       margin: 0 auto;
       padding: 16px;
-      background: var(--surface);
+      background: var(--paper);
       min-height: 100vh;
     }
 
     .variant-title {
-      font-size: var(--font-size-body-sm);
+      font-size: 10px;
       font-weight: 600;
-      color: var(--on-surface-variant);
+      color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-bottom: var(--space-6);
@@ -36,69 +36,71 @@
 
     .chip-list {
       display: flex;
-      flex-direction: column;
-      gap: var(--space-4);
+      flex-wrap: wrap;
+      gap: var(--space-3);
     }
 
     /* Todo chip — pill shape */
     .todo-chip {
       display: flex;
       align-items: center;
-      gap: var(--space-5);
-      padding: var(--space-5) var(--space-7);
+      gap: var(--space-2);
+      padding: 10px 14px;
       background: var(--surface-chip);
-      border-radius: var(--radius-full);
+      border-radius: var(--radius-pill);
       border: none;
     }
 
     .todo-chip .chip-icon {
       flex-shrink: 0;
-      width: var(--size-icon-md);
-      height: var(--size-icon-md);
+      width: 18px;
+      height: 18px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .todo-chip .chip-text {
-      font-size: var(--font-size-h-xs);
-      font-weight: 400;
-      color: var(--on-surface);
-      line-height: 1.4;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--ink);
+      line-height: 1.3;
+      white-space: nowrap;
     }
 
-    /* Pending — hollow circle */
+    /* Pending — circle_outlined 18px primary500 */
     .todo-chip.pending .chip-icon svg {
-      width: var(--size-icon-md);
-      height: var(--size-icon-md);
+      width: 18px;
+      height: 18px;
     }
     .todo-chip.pending .circle-outlined {
       fill: none;
-      stroke: var(--neutral-400);
+      stroke: var(--primary-500);
       stroke-width: 1.5;
     }
 
-    /* Completed — filled checkmark circle */
+    /* Completed — check_circle 18px textTertiary, neutral200 bg, no line-through */
     .todo-chip.completed {
-      opacity: 0.5;
+      background: var(--neutral-200);
     }
     .todo-chip.completed .chip-icon svg {
-      width: var(--size-icon-md);
-      height: var(--size-icon-md);
+      width: 18px;
+      height: 18px;
     }
     .todo-chip.completed .circle-filled {
-      fill: var(--success-default);
-      stroke: none;
+      fill: none;
+      stroke: var(--text-tertiary);
+      stroke-width: 1.5;
     }
     .todo-chip.completed .check-mark {
       fill: none;
-      stroke: #ffffff;
+      stroke: var(--text-tertiary);
       stroke-width: 1.8;
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .todo-chip.completed .chip-text {
-      text-decoration: line-through;
+      color: var(--text-tertiary);
     }
   </style>
 </head>
@@ -123,7 +125,7 @@
               <circle class="circle-outlined" cx="12" cy="12" r="9"/>
             </svg>
           </span>
-          <span class="chip-text">去B站看知识图谱导论课</span>
+          <span class="chip-text">线性代数与统计</span>
         </div>
         <div class="todo-chip pending">
           <span class="chip-icon">
@@ -131,7 +133,7 @@
               <circle class="circle-outlined" cx="12" cy="12" r="9"/>
             </svg>
           </span>
-          <span class="chip-text">线性代数与统计</span>
+          <span class="chip-text">去B站看知识图谱导论课</span>
         </div>
         <div class="todo-chip pending">
           <span class="chip-icon">
@@ -156,6 +158,47 @@
             </svg>
           </span>
           <span class="chip-text">准备读机器学习西瓜书</span>
+        </div>
+        <div class="todo-chip completed">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-filled" cx="12" cy="12" r="9"/>
+              <polyline class="check-mark" points="8 12.5 11 15.5 16.5 9"/>
+            </svg>
+          </span>
+          <span class="chip-text">开发Sumi的Skill与Mcp等插件</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIXED variant -->
+    <div class="variant-section">
+      <div class="variant-title">MIXED</div>
+      <div class="chip-list">
+        <div class="todo-chip completed">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-filled" cx="12" cy="12" r="9"/>
+              <polyline class="check-mark" points="8 12.5 11 15.5 16.5 9"/>
+            </svg>
+          </span>
+          <span class="chip-text">准备读机器学习西瓜书</span>
+        </div>
+        <div class="todo-chip pending">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-outlined" cx="12" cy="12" r="9"/>
+            </svg>
+          </span>
+          <span class="chip-text">看深度学习入门</span>
+        </div>
+        <div class="todo-chip pending">
+          <span class="chip-icon">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle class="circle-outlined" cx="12" cy="12" r="9"/>
+            </svg>
+          </span>
+          <span class="chip-text">线性代数与统计</span>
         </div>
         <div class="todo-chip completed">
           <span class="chip-icon">

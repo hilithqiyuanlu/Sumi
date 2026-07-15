@@ -11,21 +11,21 @@
       padding: 0;
       background: var(--neutral-100);
       font-family: var(--font-body);
-      color: var(--on-surface);
+      color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
     .preview-container {
       max-width: 390px;
       margin: 0 auto;
       padding: 16px;
-      background: var(--surface);
+      background: var(--paper);
       min-height: 100vh;
     }
 
     .variant-title {
-      font-size: var(--font-size-body-sm);
+      font-size: 10px;
       font-weight: 600;
-      color: var(--on-surface-variant);
+      color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-bottom: var(--space-6);
@@ -39,20 +39,53 @@
       display: flex;
       align-items: center;
       width: 100%;
-      min-height: 48px;
+      min-height: 56px;
       max-height: 120px;
-      border-radius: var(--radius-full);
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(20px) saturate(180%);
-      -webkit-backdrop-filter: blur(20px) saturate(180%);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: var(--radius-pill);
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 0.5px rgba(255, 255, 255, 0.5);
       box-shadow:
-        0 2px 16px rgba(0, 0, 0, 0.08),
-        0 0 1px rgba(0, 0, 0, 0.04);
-      padding: var(--space-5) var(--space-6) var(--space-5) var(--space-7);
-      gap: var(--space-4);
+        0 2px 20px rgba(0, 0, 0, 0.06),
+        0 0 1px rgba(0, 0, 0, 0.03);
+      padding: var(--space-3) var(--space-3) var(--space-3) 0;
+      gap: var(--space-3);
       transition: box-shadow 250ms var(--easing-standard);
       box-sizing: border-box;
+    }
+
+    /* Mode toggle button — 44x44 circle */
+    .mode-btn {
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .mode-btn svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    /* Todo mode — primary500 bg + white icon */
+    .mode-btn.todo-mode {
+      background: var(--primary-500);
+    }
+    .mode-btn.todo-mode svg {
+      color: #ffffff;
+    }
+
+    /* Chat mode — primary100 bg + primary500 icon */
+    .mode-btn.chat-mode {
+      background: var(--primary-100);
+    }
+    .mode-btn.chat-mode svg {
+      color: var(--primary-500);
     }
 
     /* Text input inside capsule */
@@ -60,9 +93,9 @@
       flex: 1;
       border: none;
       background: transparent;
-      font-size: var(--font-size-body-base);
+      font-size: 16px;
       font-family: var(--font-body);
-      color: var(--on-surface);
+      color: var(--ink);
       outline: none;
       line-height: 1.4;
       padding: 0;
@@ -70,16 +103,16 @@
       resize: none;
     }
     .chat-capsule .input-field::placeholder {
-      color: var(--on-surface-variant);
+      color: var(--text-secondary);
     }
 
-    /* Send button INSIDE capsule */
+    /* Send button INSIDE capsule — 44x44 circle */
     .chat-capsule .send-btn {
       flex-shrink: 0;
-      width: 32px;
-      height: 32px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
-      background: var(--primary-600);
+      background: var(--primary-500);
       border: none;
       display: flex;
       align-items: center;
@@ -88,28 +121,17 @@
       transition: all 150ms var(--easing-standard);
     }
     .chat-capsule .send-btn:hover {
-      background: var(--primary-500);
+      background: var(--primary-600);
     }
     .chat-capsule .send-btn svg {
-      width: 16px;
-      height: 16px;
+      width: 22px;
+      height: 22px;
       color: #ffffff;
     }
 
-    /* Hidden placeholder to keep layout when no send button */
-    .chat-capsule .send-placeholder {
-      flex-shrink: 0;
-      width: 32px;
-      height: 32px;
-      visibility: hidden;
-    }
-
-    /* Focused state — subtle purple glow */
-    .chat-capsule.focused {
-      box-shadow:
-        0 4px 24px rgba(75, 63, 227, 0.12),
-        0 0 1px rgba(75, 63, 227, 0.2);
-      border-color: rgba(75, 63, 227, 0.15);
+    /* Recording state — border changes to mint-deep@60% */
+    .chat-capsule.recording {
+      border-color: rgba(71, 88, 224, 0.6);
     }
 
     /* Dark background demo */
@@ -127,8 +149,7 @@
       border-color: rgba(255, 255, 255, 0.18);
       box-shadow:
         0 2px 20px rgba(0, 0, 0, 0.2),
-        0 0 1px rgba(255, 255, 255, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        0 0 1px rgba(255, 255, 255, 0.1);
     }
     .dark-bg .chat-capsule .input-field {
       color: #ffffff;
@@ -141,47 +162,80 @@
 <body>
   <div class="preview-container">
 
-    <!-- DEFAULT — empty state -->
+    <!-- DEFAULT — empty state, no send button -->
     <div class="variant-section">
-      <div class="variant-title">DEFAULT</div>
+      <div class="variant-title">DEFAULT (CHAT MODE)</div>
       <div class="chat-capsule">
+        <button class="mode-btn chat-mode" type="button">
+          <!-- swap_horiz icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 3h5v5"/>
+            <path d="M4 20L21 3"/>
+            <path d="M21 16v5h-5"/>
+            <path d="M15 15l6 6"/>
+            <path d="M4 4l5 5"/>
+          </svg>
+        </button>
         <input type="text" class="input-field" placeholder="尽管说" readonly>
-        <span class="send-placeholder"></span>
+      </div>
+    </div>
+
+    <!-- TODO MODE — empty state -->
+    <div class="variant-section">
+      <div class="variant-title">DEFAULT (TODO MODE)</div>
+      <div class="chat-capsule">
+        <button class="mode-btn todo-mode" type="button">
+          <!-- swap_horiz icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 3h5v5"/>
+            <path d="M4 20L21 3"/>
+            <path d="M21 16v5h-5"/>
+            <path d="M15 15l6 6"/>
+            <path d="M4 4l5 5"/>
+          </svg>
+        </button>
+        <input type="text" class="input-field" placeholder="添加待办" readonly>
       </div>
     </div>
 
     <!-- WITH TEXT — send button inside capsule -->
     <div class="variant-section">
       <div class="variant-title">WITH TEXT</div>
-      <div class="chat-capsule focused">
+      <div class="chat-capsule">
+        <button class="mode-btn chat-mode" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 3h5v5"/>
+            <path d="M4 20L21 3"/>
+            <path d="M21 16v5h-5"/>
+            <path d="M15 15l6 6"/>
+            <path d="M4 4l5 5"/>
+          </svg>
+        </button>
         <input type="text" class="input-field" value="建议以什么顺序开展我今天的待办" readonly>
         <button class="send-btn" type="button">
+          <!-- send icon (arrow up) -->
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="12" x2="20" y2="12"/>
-            <polyline points="14 6 20 12 14 18"/>
+            <line x1="12" y1="19" x2="12" y2="5"/>
+            <polyline points="5 12 12 5 19 12"/>
           </svg>
         </button>
       </div>
     </div>
 
-    <!-- Dark background — liquid glass effect -->
-    <div class="variant-section dark-bg">
-      <div class="variant-title">LIQUID GLASS (DARK BG)</div>
-      <div class="chat-capsule">
-        <input type="text" class="input-field" placeholder="尽管说" readonly>
-        <span class="send-placeholder"></span>
-      </div>
-    </div>
-    <div class="variant-section dark-bg">
-      <div class="variant-title">LIQUID GLASS + SEND</div>
-      <div class="chat-capsule focused">
-        <input type="text" class="input-field" value="帮我制定本周的学习计划" readonly>
-        <button class="send-btn" type="button">
+    <!-- RECORDING state -->
+    <div class="variant-section">
+      <div class="variant-title">RECORDING</div>
+      <div class="chat-capsule recording">
+        <button class="mode-btn chat-mode" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="12" x2="20" y2="12"/>
-            <polyline points="14 6 20 12 14 18"/>
+            <path d="M16 3h5v5"/>
+            <path d="M4 20L21 3"/>
+            <path d="M21 16v5h-5"/>
+            <path d="M15 15l6 6"/>
+            <path d="M4 4l5 5"/>
           </svg>
         </button>
+        <input type="text" class="input-field" value="正在录音..." readonly>
       </div>
     </div>
 

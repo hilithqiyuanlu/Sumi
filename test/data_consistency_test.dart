@@ -12,8 +12,9 @@ import 'package:sumi/models/models.dart';
 import 'package:sumi/services/ai_service.dart';
 import 'package:sumi/services/daily_planning_policy.dart';
 import 'package:sumi/services/secure_settings_store.dart';
-import 'package:sumi/services/tool_executor.dart';
 import 'package:sumi/services/user_model_service.dart';
+import 'package:sumi/services/memory_service.dart';
+import 'package:sumi/services/memory_extraction.dart';
 import 'package:sumi/services/project_generation.dart';
 import 'package:sumi/services/signal_service.dart';
 import 'package:sumi/services/snapshot_write_queue.dart';
@@ -32,6 +33,36 @@ class _FakeSecureSettingsStore extends SecureSettingsStore {
 
   @override
   Future<void> writeTavilyApiKey(String key) async {}
+}
+
+class _DelayedStreamClient extends http.BaseClient {
+  final _chunks = StreamController<List<int>>();
+  final requested = Completer<void>();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!requested.isCompleted) requested.complete();
+    return http.StreamedResponse(
+      _chunks.stream,
+      200,
+      headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+    );
+  }
+
+  Future<void> completeWithReply(String reply) async {
+    _chunks.add(
+      utf8.encode(
+        'data: ${jsonEncode({
+          'choices': [
+            {
+              'delta': {'content': reply},
+            },
+          ],
+        })}\n\ndata: [DONE]\n\n',
+      ),
+    );
+    await _chunks.close();
+  }
 }
 
 class _FakeSignalDatabase extends SignalDatabase {
@@ -56,7 +87,7 @@ class _FakeUserModelService extends UserModelService {
   int backups = 0;
 
   _FakeUserModelService(super.signalDb, {String? content})
-      : content = content ?? '';
+    : content = content ?? '';
 
   @override
   Future<String> readUserModel() async =>
@@ -83,10 +114,8 @@ class _FakeUserModelService extends UserModelService {
   Future<Map<String, String>> computeRealtimeStats() async => {};
 
   @override
-  String injectRealtimeStats(
-    String fullContent,
-    Map<String, String> stats,
-  ) => fullContent;
+  String injectRealtimeStats(String fullContent, Map<String, String> stats) =>
+      fullContent;
 
   @override
   Future<String?> backupUserModel() async {
@@ -101,19 +130,6 @@ class _FailingStatsUserModelService extends _FakeUserModelService {
   @override
   Future<Map<String, String>> computeRealtimeStats() async {
     throw StateError('stats unavailable');
-  }
-}
-
-class _InvalidReflectionAi extends AiService {
-  _InvalidReflectionAi() : super(apiKey: 'test');
-
-  @override
-  Future<WeeklyReflectionResult?> generateWeeklyReflection({
-    required String hotPrompt,
-    required String warmPrefs,
-    required String weeklySignals,
-  }) async {
-    return const WeeklyReflectionResult(updatedUserModel: '损坏内容');
   }
 }
 
@@ -172,6 +188,28 @@ Future<Database> _openDatabase() async {
       created_at TEXT NOT NULL
     )
   ''');
+  await db.execute('''
+    CREATE TABLE user_hypotheses (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, scope TEXT NOT NULL DEFAULT 'global',
+      claim_json TEXT NOT NULL, confidence REAL NOT NULL, support_count INTEGER NOT NULL DEFAULT 0,
+      contradict_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, source TEXT NOT NULL,
+      last_verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE recommendation_events (
+      id TEXT PRIMARY KEY, text TEXT NOT NULL, topic TEXT NOT NULL, hypothesis_id TEXT,
+      shown_at TEXT NOT NULL, selected_at TEXT, feedback_at TEXT, feedback_type TEXT,
+      context_json TEXT NOT NULL DEFAULT '{}'
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE schedule_recommendation_events (
+      id TEXT PRIMARY KEY, todo_id TEXT NOT NULL UNIQUE, original_date TEXT NOT NULL,
+      suggested_date TEXT NOT NULL, hypothesis_id TEXT NOT NULL, shown_at TEXT NOT NULL,
+      accepted_at TEXT, context_json TEXT NOT NULL DEFAULT '{}'
+    )
+  ''');
   return db;
 }
 
@@ -224,18 +262,134 @@ void main() {
     final db = await _openDatabase();
     addTearDown(db.close);
     final signals = SignalDatabase(SumiLocalDatabase(database: db));
-    await signals.insert(UserSignal(
-      signal: SignalType.todoCreated,
-      time: DateTime(2026, 7, 15, 10),
-      contextJson: '{"title":"阅读文档"}',
-      createdAt: DateTime(2026, 7, 15, 10),
-    ));
+    await signals.insert(
+      UserSignal(
+        signal: SignalType.todoCreated,
+        time: DateTime(2026, 7, 15, 10),
+        contextJson: '{"title":"阅读文档"}',
+        createdAt: DateTime(2026, 7, 15, 10),
+      ),
+    );
 
     final result = await signals.query(range: 'all');
 
     expect(result, isA<List<UserSignal>>());
     expect(result.single.signal, SignalType.todoCreated);
     expect(result.single.context['title'], '阅读文档');
+  });
+
+  test('建议选择形成可追溯隐式记忆，两次反馈后可用于 Agent', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final service = MemoryService(SumiLocalDatabase(database: db));
+    final stats = <String, String>{
+      'weeklyCompletionRate': '80%',
+      'planDeviationRate': '0%',
+    };
+
+    final first = (await service.createSuggestions(
+      realtimeStats: stats,
+    )).firstWhere((item) => item.topic == 'plan');
+    await service.recordSelected(first);
+    expect(await service.hotForAgent('制定计划'), isEmpty);
+
+    final second = (await service.createSuggestions(
+      realtimeStats: stats,
+    )).firstWhere((item) => item.topic == 'plan');
+    await service.recordSelected(second);
+    final trusted = await service.hotForAgent('制定计划');
+    expect(trusted.single.content, 'plan');
+    expect(trusted.single.confidence, greaterThanOrEqualTo(0.70));
+  });
+
+  test('不再推荐会停用默认类别，且不会再次生成', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final service = MemoryService(SumiLocalDatabase(database: db));
+    final stats = <String, String>{
+      'weeklyCompletionRate': '80%',
+      'planDeviationRate': '0%',
+    };
+    final suggestion = (await service.createSuggestions(
+      realtimeStats: stats,
+    )).firstWhere((item) => item.topic == 'plan');
+    await service.recordFeedback(suggestion, disableTopic: true);
+    final later = await service.createSuggestions(realtimeStats: stats);
+    expect(later.where((item) => item.topic == 'plan'), isEmpty);
+    expect((await service.list()).single.status, MemoryStatus.disabled);
+  });
+
+  test('旧版首页建议偏好会迁移为记忆并关联原事件', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    await db.insert('user_hypotheses', {
+      'id': 'legacy-plan',
+      'kind': 'suggestionTopic',
+      'scope': 'global',
+      'claim_json': '{"topic":"plan"}',
+      'confidence': .78,
+      'support_count': 3,
+      'contradict_count': 0,
+      'status': 'active',
+      'source': 'interaction',
+      'created_at': '2026-07-15T09:00:00',
+      'updated_at': '2026-07-15T09:00:00',
+    });
+    await db.insert('recommendation_events', {
+      'id': 'legacy-event',
+      'text': '帮我制定今天的学习计划',
+      'topic': 'plan',
+      'shown_at': '2026-07-15T09:00:00',
+      'context_json': '{}',
+    });
+    final service = MemoryService(SumiLocalDatabase(database: db));
+    await service.importLegacyHypotheses();
+
+    final memory = (await service.list()).single;
+    final events = await db.query(
+      'recommendation_events',
+      where: 'id = ?',
+      whereArgs: ['legacy-event'],
+    );
+    expect(memory.type, MemoryType.implicit);
+    expect(memory.content, 'plan');
+    expect(events.single['memory_id'], memory.id);
+    final legacyTables = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'user_hypotheses'",
+    );
+    expect(legacyTables, isEmpty);
+  });
+
+  test('信号记录待办来源', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final signals = SignalDatabase(SumiLocalDatabase(database: db));
+    final service = SignalService(signals);
+    final user = TodoItem(
+      id: 'user',
+      source: TodoSource.user,
+      date: dateKey(DateTime.now()),
+      title: '手动事项',
+      createdAt: DateTime.now(),
+    );
+    final system = TodoItem(
+      id: 'system',
+      source: TodoSource.system,
+      date: dateKey(DateTime.now()),
+      title: '系统事项',
+      createdAt: DateTime.now(),
+    );
+    await service.emitTodoCreated(user);
+    await service.emitTodoCreated(system);
+    final records = await signals.query(range: 'all', limit: 10);
+    expect(
+      records.firstWhere((s) => s.todoId == 'user').context['source'],
+      'user',
+    );
+    expect(
+      records.firstWhere((s) => s.todoId == 'system').context['source'],
+      'system',
+    );
   });
 
   test('未完成信号保留 false 并写入真实项目信息', () async {
@@ -286,9 +440,7 @@ void main() {
             ],
           })}\n\ndata:[DONE]\n\n',
           200,
-          headers: const {
-            'content-type': 'text/event-stream; charset=utf-8',
-          },
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
         ),
       ),
     );
@@ -335,9 +487,7 @@ void main() {
             ],
           })}\n\ndata: [DONE]\n\n',
           200,
-          headers: const {
-            'content-type': 'text/event-stream; charset=utf-8',
-          },
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
         ),
       ),
     );
@@ -383,9 +533,7 @@ void main() {
             ],
           })}\n\ndata: [DONE]\n\n',
           200,
-          headers: const {
-            'content-type': 'text/event-stream; charset=utf-8',
-          },
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
         );
       }),
     );
@@ -454,9 +602,7 @@ void main() {
             ],
           })}\n\ndata: [DONE]\n\n',
           200,
-          headers: const {
-            'content-type': 'text/event-stream; charset=utf-8',
-          },
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
         );
       }),
     );
@@ -484,67 +630,110 @@ void main() {
     expect(todo.projectId, isNull);
   });
 
-  test('记忆替换写入新内容并保留置信度，追加不产生双横线', () async {
-    final signalDb = _FakeSignalDatabase(SumiLocalDatabase());
-    final userModel = _FakeUserModelService(signalDb);
-    final result = userModel.mergeMemoryEntry(
-      '用户喜欢早上练习英语',
-      '- [确信] 用户喜欢早上学习英语',
-    );
-    expect(result.action, 'replace');
-    expect(result.mergedCoreMemory, contains('- [确信] 用户喜欢早上练习英语'));
-
-    final executor = ToolExecutor(
-      userModelService: userModel,
-      signalDatabase: signalDb,
-      readTodos: ({filter}) => '',
-      writeTodo: ({required title, date, projectId, body}) async {},
-    );
-    await executor.execute(
-      const ToolCall(
-        id: 'call',
-        name: 'write_memory',
-        arguments: {'content': '用户偏好短时练习', 'confidence': '推断'},
+  test('提取记忆必须引用当前用户原话，且支持显式替代', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final local = SumiLocalDatabase(database: db);
+    final memory = MemoryService(local);
+    await memory.claimExtraction('message-1');
+    final saved = await memory.applyExtractionDecision(
+      messageId: 'message-1',
+      userMessage: '我明确偏好短时练习。',
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.save,
+        category: 'preference',
+        content: '偏好短时练习',
+        quotedText: '我明确偏好短时练习',
       ),
+      candidateReplaceIds: const {},
     );
-    expect(userModel.appendedEntry, '[推断] 用户偏好短时练习');
+    expect(saved, isTrue);
+    final old = (await memory.list()).single;
+    await memory.claimExtraction('message-2');
+    final replaced = await memory.applyExtractionDecision(
+      messageId: 'message-2',
+      userMessage: '之前的偏好不对，现在我更喜欢长时间专注。',
+      decision: MemoryExtractionDecision(
+        action: MemoryExtractionAction.replace,
+        category: 'preference',
+        content: '偏好长时间专注',
+        quotedText: '现在我更喜欢长时间专注',
+        replacesId: old.id,
+      ),
+      candidateReplaceIds: {old.id},
+    );
+    expect(replaced, isTrue);
+    expect(
+      (await memory.list())
+          .where((item) => item.status == MemoryStatus.active)
+          .single
+          .content,
+      '偏好长时间专注',
+    );
+    expect(
+      (await memory.list()).firstWhere((item) => item.id == old.id).status,
+      MemoryStatus.superseded,
+    );
   });
 
-  test('清空数据后写回完整用户模型模板', () async {
+  test('提取运行只处理一次，重复明确记忆只追加证据', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final memory = MemoryService(SumiLocalDatabase(database: db));
+    const decision = MemoryExtractionDecision(
+      action: MemoryExtractionAction.save,
+      category: 'constraint',
+      content: '晚上不安排任务',
+      quotedText: '以后晚上不要安排任务',
+    );
+
+    expect(await memory.claimExtraction('message-1'), isTrue);
+    expect(await memory.claimExtraction('message-1'), isFalse);
+    expect(
+      await memory.applyExtractionDecision(
+        messageId: 'message-1',
+        userMessage: '以后晚上不要安排任务。',
+        decision: decision,
+        candidateReplaceIds: const {},
+      ),
+      isTrue,
+    );
+    expect(await memory.claimExtraction('message-2'), isTrue);
+    expect(
+      await memory.applyExtractionDecision(
+        messageId: 'message-2',
+        userMessage: '以后晚上不要安排任务。',
+        decision: decision,
+        candidateReplaceIds: const {},
+      ),
+      isTrue,
+    );
+    final items = await memory.list();
+    expect(items, hasLength(1));
+    expect(await memory.evidenceFor(items.single.id), hasLength(2));
+
+    expect(await memory.claimExtraction('message-3'), isTrue);
+    expect(
+      await memory.applyExtractionDecision(
+        messageId: 'message-3',
+        userMessage: '今晚有空。',
+        decision: decision,
+        candidateReplaceIds: const {},
+      ),
+      isFalse,
+    );
+    expect(await memory.list(), hasLength(1));
+  });
+
+  test('清空数据后清除结构化记忆', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
     final local = SumiLocalDatabase(database: db);
     final signals = _FakeSignalDatabase(local);
-    final userModel = _FakeUserModelService(signals);
-    final store = await _createStore(
-      db,
-      signals: signals,
-      userModel: userModel,
-    );
+    final store = await _createStore(db, signals: signals);
 
     await store.clearAllData();
-    expect(userModel.isValidUserModel(userModel.content), isTrue);
-  });
-
-  test('损坏的周度反思不覆盖模型也不更新时间', () async {
-    final db = await _openDatabase();
-    addTearDown(db.close);
-    final local = SumiLocalDatabase(database: db);
-    final signals = _FakeSignalDatabase(local);
-    final userModel = _FakeUserModelService(signals);
-    final store = await _createStore(
-      db,
-      ai: _InvalidReflectionAi(),
-      signals: signals,
-      userModel: userModel,
-      now: () => DateTime(2026, 7, 19, 10),
-    );
-    final writesBefore = userModel.writes;
-
-    await store.checkAndRunWeeklyReflection();
-    expect(store.lastWeeklyReflection, isNull);
-    expect(userModel.writes, writesBefore);
-    expect(userModel.backups, 0);
+    expect(await store.memoryService?.list(), isEmpty);
   });
 
   test('重新生成只清理最后一轮工具结果', () async {
@@ -582,7 +771,12 @@ void main() {
 
   test('每日规划只统计本周并能选择跨月后的新月卡', () {
     final todos = [
-      for (final date in ['2026-07-12', '2026-07-13', '2026-07-19', '2026-07-20'])
+      for (final date in [
+        '2026-07-12',
+        '2026-07-13',
+        '2026-07-19',
+        '2026-07-20',
+      ])
         TodoItem(
           id: date,
           source: TodoSource.system,
@@ -600,8 +794,18 @@ void main() {
     expect(count, 2);
 
     final cards = [
-      const MonthCard(id: 'old', projectId: 'project', monthIndex: 0, title: '旧月'),
-      const MonthCard(id: 'new', projectId: 'project', monthIndex: 1, title: '新月'),
+      const MonthCard(
+        id: 'old',
+        projectId: 'project',
+        monthIndex: 0,
+        title: '旧月',
+      ),
+      const MonthCard(
+        id: 'new',
+        projectId: 'project',
+        monthIndex: 1,
+        title: '新月',
+      ),
     ];
     expect(
       DailyPlanningPolicy.cardForMonth(
@@ -669,6 +873,56 @@ void main() {
     expect(store.chatView.value.messages.last.content.length, 100);
   });
 
+  test('切换会话时流式回复不会覆盖当前用户消息', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final local = SumiLocalDatabase(database: db);
+    final chatDb = ChatDatabase(local);
+    final yesterday = dateOnly(
+      DateTime.now().subtract(const Duration(days: 1)),
+    );
+    final previousConversation = await chatDb.createConversationForDate(
+      dateKey(yesterday),
+    );
+    await chatDb.saveMessage(
+      ChatMessage(
+        id: 'previous-user-message',
+        conversationId: previousConversation.id,
+        role: 'user',
+        content: '昨天的问题',
+        createdAt: yesterday,
+      ),
+    );
+
+    final client = _DelayedStreamClient();
+    final signals = _FakeSignalDatabase(local);
+    final store = await _createStore(
+      db,
+      ai: AiService(apiKey: 'test', client: client),
+      signals: signals,
+      userModel: _FakeUserModelService(signals),
+    );
+    final today = dateOnly(DateTime.now());
+
+    expect(store.sendMessage('今天的问题'), ChatSendResult.accepted);
+    await client.requested.future.timeout(const Duration(seconds: 2));
+
+    await store.selectDate(yesterday);
+    expect(store.chatView.value.isStreaming, isFalse);
+    expect(store.chatView.value.messages, hasLength(1));
+    expect(store.chatView.value.messages.single.content, '昨天的问题');
+
+    await client.completeWithReply('原会话的回复');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(store.chatView.value.messages.single.content, '昨天的问题');
+    await store.selectDate(today);
+    expect(store.chatView.value.messages.map((message) => message.content), [
+      '今天的问题',
+      '原会话的回复',
+    ]);
+  });
+
   test('旧版 v2 快照无需迁移即可装载到分域控制器', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
@@ -733,7 +987,7 @@ void main() {
     });
     await store.addSystemTodo('系统事项', projectId);
     final beforeDelete = (todoEvents, projectEvents, settingsEvents);
-    store.deleteProject(projectId);
+    await store.deleteProject(projectId);
     expect(todoEvents, beforeDelete.$1 + 1);
     expect(projectEvents, beforeDelete.$2 + 1);
     expect(settingsEvents, beforeDelete.$3);
@@ -833,11 +1087,7 @@ void main() {
     final plan = PlanResult(
       projectTitle: '计划凝练标题',
       monthPlans: const [
-        MonthPlanItem(
-          monthIndex: 0,
-          title: '基础阶段',
-          summary: '建立测试基础并完成练习',
-        ),
+        MonthPlanItem(monthIndex: 0, title: '基础阶段', summary: '建立测试基础并完成练习'),
       ],
       todayTodos: [TodoSeed(title: '阅读测试资料', date: today)],
     );
@@ -871,11 +1121,7 @@ void main() {
     final plan = PlanResult(
       projectTitle: '自动化测试入门',
       monthPlans: const [
-        MonthPlanItem(
-          monthIndex: 0,
-          title: '基础阶段',
-          summary: '建立基础',
-        ),
+        MonthPlanItem(monthIndex: 0, title: '基础阶段', summary: '建立基础'),
       ],
       todayTodos: [TodoSeed(title: '阅读资料', date: today)],
     );

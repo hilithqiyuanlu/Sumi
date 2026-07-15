@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sumi/services/ai_service.dart';
 import 'package:sumi/services/ai_runtime.dart';
+import 'package:sumi/services/memory_extraction.dart';
 
 http.Response _jsonChatResponse(Object content, {int statusCode = 200}) {
   const headers = {'content-type': 'application/json; charset=utf-8'};
@@ -126,6 +127,40 @@ void main() {
     expect(calls, 1);
   });
 
+  test('记忆提取只发送当前消息和最多三条候选，且不重试', () async {
+    var calls = 0;
+    Map<String, Object?>? requestBody;
+    final client = MockClient((request) async {
+      calls++;
+      requestBody = jsonDecode(request.body) as Map<String, Object?>;
+      return _jsonChatResponse('''{
+        "action":"save","category":"preference",
+        "content":"偏好短时练习","quotedText":"我长期偏好短时练习"
+      }''');
+    });
+    final result = await AiService(apiKey: 'key', client: client).extractMemory(
+      message: '我长期偏好短时练习。${'x' * 500}',
+      candidates: [
+        for (var index = 0; index < 4; index++)
+          MemoryExtractionCandidate(
+            id: 'memory-$index',
+            category: 'preference',
+            content: '候选内容$index${'y' * 100}',
+          ),
+      ],
+    );
+    expect(result?.action, MemoryExtractionAction.save);
+    expect(calls, 1);
+    expect(requestBody?['model'], 'deepseek-v4-flash');
+    expect(requestBody?['max_tokens'], 120);
+    final messages = requestBody?['messages'] as List<Object?>;
+    final payload = jsonDecode(
+      ((messages.last as Map<String, Object?>)['content'] as String),
+    ) as Map<String, Object?>;
+    expect((payload['message'] as String).length, 240);
+    expect((payload['candidates'] as List<Object?>), hasLength(3));
+  });
+
   test('评估接口不支持 response_format 时自动降级一次', () async {
     var calls = 0;
     final bodies = <Map<String, Object?>>[];
@@ -135,20 +170,22 @@ void main() {
       if (calls == 1) {
         return _jsonChatResponse('', statusCode: 400);
       }
-      return _jsonChatResponse(jsonEncode({
-        'clarity': 0.8,
-        'feasibility': 0.8,
-        'challengeFit': 0.7,
-        'decomposability': 0.7,
-        'timeRealism': 0.6,
-        'motivationPotential': 0.5,
-        'resourceAccess': 0.9,
-        'measurability': 0.8,
-        'verdict': 'a',
-        'concerns': <String>[],
-        'suggestions': <String>[],
-        'goalSummary': '学习测试技术',
-      }));
+      return _jsonChatResponse(
+        jsonEncode({
+          'clarity': 0.8,
+          'feasibility': 0.8,
+          'challengeFit': 0.7,
+          'decomposability': 0.7,
+          'timeRealism': 0.6,
+          'motivationPotential': 0.5,
+          'resourceAccess': 0.9,
+          'measurability': 0.8,
+          'verdict': 'a',
+          'concerns': <String>[],
+          'suggestions': <String>[],
+          'goalSummary': '学习测试技术',
+        }),
+      );
     });
 
     final result = await AiTransport(apiKey: 'key', client: client).assessGoal(
@@ -273,17 +310,13 @@ void main() {
             ],
           }),
           200,
-          headers: const {
-            'content-type': 'text/event-stream; charset=utf-8',
-          },
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
         );
       }
       return http.Response(
         _sse({'content': '完成'}),
         200,
-        headers: const {
-          'content-type': 'text/event-stream; charset=utf-8',
-        },
+        headers: const {'content-type': 'text/event-stream; charset=utf-8'},
       );
     });
     final runtime = AiRuntime.fromClient(

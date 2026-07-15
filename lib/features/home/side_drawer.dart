@@ -9,12 +9,14 @@ class SideDrawer extends StatelessWidget {
   final bool isOpen;
   final VoidCallback onClose;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenMemory;
 
   const SideDrawer({
     super.key,
     required this.isOpen,
     required this.onClose,
     required this.onOpenSettings,
+    required this.onOpenMemory,
   });
 
   @override
@@ -41,6 +43,7 @@ class SideDrawer extends StatelessWidget {
               children: [
                 _buildUserProfile(context),
                 const Divider(height: 1),
+                _buildMemoryButton(),
                 const Spacer(),
                 _buildSettingsButton(),
               ],
@@ -71,11 +74,7 @@ class SideDrawer extends StatelessWidget {
               color: primary100,
               borderRadius: BorderRadius.circular(radiusPill),
             ),
-            child: const Icon(
-              Icons.person,
-              size: 24,
-              color: primary500,
-            ),
+            child: const Icon(Icons.person, size: 24, color: primary500),
           ),
           const SizedBox(width: s12),
           Expanded(
@@ -121,9 +120,10 @@ class SideDrawer extends StatelessWidget {
                 Text(
                   '设置',
                   style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: ink),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: ink,
+                  ),
                 ),
               ],
             ),
@@ -132,6 +132,35 @@ class SideDrawer extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildMemoryButton() => Padding(
+    padding: const EdgeInsets.fromLTRB(s12, s12, s12, 0),
+    child: InkWell(
+      onTap: () {
+        H.click();
+        onClose();
+        onOpenMemory();
+      },
+      borderRadius: BorderRadius.circular(radius12),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: s12, vertical: s12),
+        child: Row(
+          children: [
+            Icon(Icons.psychology_outlined, size: 24, color: primary500),
+            SizedBox(width: s12),
+            Text(
+              '记忆',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   void _editUserName(BuildContext context, SumiStore store) {
     final controller = TextEditingController(text: store.appSettings.userName);
@@ -142,8 +171,10 @@ class SideDrawer extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
           ),
-          title: const Text('设置昵称',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          title: const Text(
+            '设置昵称',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,

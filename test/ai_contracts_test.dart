@@ -86,22 +86,28 @@ void main() {
 
     test('项目凝练标题允许 2-16 字并拒绝更长标题', () {
       Map<String, Object?> assessment(String title) => {
-            'clarity': 0.8,
-            'feasibility': 0.8,
-            'challengeFit': 0.7,
-            'decomposability': 0.7,
-            'timeRealism': 0.6,
-            'motivationPotential': 0.5,
-            'resourceAccess': 0.9,
-            'measurability': 0.8,
-            'verdict': 'a',
-            'concerns': <String>[],
-            'suggestions': <String>[],
-            'goalSummary': title,
-          };
+        'clarity': 0.8,
+        'feasibility': 0.8,
+        'challengeFit': 0.7,
+        'decomposability': 0.7,
+        'timeRealism': 0.6,
+        'motivationPotential': 0.5,
+        'resourceAccess': 0.9,
+        'measurability': 0.8,
+        'verdict': 'a',
+        'concerns': <String>[],
+        'suggestions': <String>[],
+        'goalSummary': title,
+      };
 
-      expect(AiContracts.assessment(assessment('一二三四五六七八九十一二三四五六')).isValid, isTrue);
-      expect(AiContracts.assessment(assessment('一二三四五六七八九十一二三四五六七')).isValid, isFalse);
+      expect(
+        AiContracts.assessment(assessment('一二三四五六七八九十一二三四五六')).isValid,
+        isTrue,
+      );
+      expect(
+        AiContracts.assessment(assessment('一二三四五六七八九十一二三四五六七')).isValid,
+        isFalse,
+      );
     });
 
     test('建议需要 3-4 条、去重且长度合格', () {
@@ -110,6 +116,42 @@ void main() {
       });
       expect(result.isValid, isFalse);
       expect(result.errors, contains('建议不能重复'));
+    });
+  });
+
+  group('记忆提取契约', () {
+    test('只允许 ignore、save 和 replace 的严格结构', () {
+      expect(
+        AiContracts.memoryExtraction({'action': 'ignore'}).isValid,
+        isTrue,
+      );
+      expect(
+        AiContracts.memoryExtraction({
+          'action': 'save',
+          'category': 'preference',
+          'content': '偏好短时练习',
+          'quotedText': '我长期偏好短时练习',
+        }).isValid,
+        isTrue,
+      );
+      expect(
+        AiContracts.memoryExtraction({
+          'action': 'replace',
+          'category': 'constraint',
+          'content': '晚上不安排任务',
+          'quotedText': '以后晚上不要安排任务',
+        }).isValid,
+        isFalse,
+      );
+      expect(
+        AiContracts.memoryExtraction({
+          'action': 'save',
+          'category': 'current',
+          'content': '本周要考试',
+          'quotedText': '本周要考试',
+        }).isValid,
+        isFalse,
+      );
     });
   });
 

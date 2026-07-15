@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
 import 'ai_contracts.dart';
+import 'memory_extraction.dart';
 import 'prompt_context.dart';
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,8 @@ class PlanResult {
             .toList() ??
         [];
     return PlanResult(
-      projectTitle: (json['projectTitle'] as String?) ??
+      projectTitle:
+          (json['projectTitle'] as String?) ??
           (monthPlans.isEmpty ? '' : monthPlans.first.title),
       monthPlans: monthPlans,
       todayTodos:
@@ -92,12 +94,6 @@ class PlanResult {
           [],
     );
   }
-}
-
-/// 周度反思结果（07 轮新增）。
-class WeeklyReflectionResult {
-  final String updatedUserModel;
-  const WeeklyReflectionResult({required this.updatedUserModel});
 }
 
 class DailyTodoResult {
@@ -115,6 +111,21 @@ class DailyTodoResult {
           [],
     );
   }
+}
+
+class _MemoryExtractionPrompt {
+  static const system = '''你只负责判断一条用户消息是否值得保存为长期记忆。
+只输出 JSON，不要解释。每条消息最多选择一条。
+
+允许：用户明确说出的长期 preference、goal、constraint，或对已有长期记忆的明确纠正。
+忽略：一次性问题、临时计划、阶段性事项、情绪、闲聊、行为描述、他人信息、模糊陈述。
+不得根据推断补充信息。quotedText 必须逐字摘自用户消息。
+
+格式：
+{"action":"ignore"}
+或 {"action":"save","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话"}
+或 {"action":"replace","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话","replacesId":"候选 ID"}。
+replace 只能使用输入候选的 ID。''';
 }
 
 // ---------------------------------------------------------------------------
@@ -257,11 +268,11 @@ class AiTransport {
         '- 标题 2-16 字，可附带 body\n'
         '- 数量：1-2 条，考虑时间约束不超出用户能力\n'
         '\n'
-      '## 输出格式\n'
-      '严格 JSON，不要带任何额外文字：\n'
-      '{\n'
-      '  "projectTitle": "2-16字项目标题",\n'
-      '  "monthPlans": [\n'
+        '## 输出格式\n'
+        '严格 JSON，不要带任何额外文字：\n'
+        '{\n'
+        '  "projectTitle": "2-16字项目标题",\n'
+        '  "monthPlans": [\n'
         '    {"monthIndex": 0, "title": "月主题", "summary": "月计划摘要..."},\n'
         '    ...\n'
         '  ],\n'
@@ -323,31 +334,13 @@ class AiTransport {
       'type': 'function',
       'function': {
         'name': 'read_memory',
-        'description':
-            '读取 Sumi 对用户的理解（USER_MODEL.md）。返回当前实时状态摘要和核心记忆，用于快速了解用户。如需查询历史行为模式，使用 read_signals。',
-        'parameters': {'type': 'object', 'properties': {}},
-      },
-    },
-    {
-      'type': 'function',
-      'function': {
-        'name': 'write_memory',
-        'description':
-            '将重要信息写入 Sumi 的记忆（USER_MODEL.md）。用于记录用户的偏好、习惯、学习模式、重要决策等。系统会自动去重和合并。',
+        'description': '按当前问题查询少量相关的用户记忆。历史行为请使用 read_signals。',
         'parameters': {
           'type': 'object',
           'properties': {
-            'content': {
-              'type': 'string',
-              'description':
-                  '要写入的记忆内容。以"用户：xxx"格式记录关于用户的信息。简洁、独立、可检索的事实陈述。不要写对话流水账。',
-            },
-            'confidence': {
-              'type': 'string',
-              'description': '置信度：用户明确表述过的用"确信"，从行为推断的用"推断"。默认"推断"。',
-            },
+            'query': {'type': 'string'},
+            'projectId': {'type': 'string'},
           },
-          'required': ['content'],
         },
       },
     },
@@ -615,6 +608,52 @@ class AiTransport {
           '${validation.errors.join('；')}。请修正后重新输出完整 JSON。';
     }
     return null;
+  }
+
+  Future<MemoryExtractionDecision?> extractMemory({
+    required String message,
+    required List<MemoryExtractionCandidate> candidates,
+  }) async {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return null;
+    // Keep this background request small. Truncation deliberately fails closed:
+    // a fact outside the supplied excerpt is not extracted this round.
+    final boundedMessage = trimmed.length > 240
+        ? trimmed.substring(0, 240)
+        : trimmed;
+    final boundedCandidates = [
+      for (final item in candidates.take(3))
+        MemoryExtractionCandidate(
+          id: item.id,
+          category: item.category,
+          content: item.content.length > 40
+              ? item.content.substring(0, 40)
+              : item.content,
+        ),
+    ];
+    final result = await _callValidatedJsonApi(
+      systemPrompt: _MemoryExtractionPrompt.system,
+      userPrompt: jsonEncode({
+        'message': boundedMessage,
+        'candidates': boundedCandidates.map((item) => item.toJson()).toList(),
+      }),
+      model: _modelFlash,
+      validator: AiContracts.memoryExtraction,
+      thinking: false,
+      maxTokens: 120,
+      timeoutSeconds: 20,
+      maxAttempts: 1,
+    );
+    if (result == null) return null;
+    return MemoryExtractionDecision(
+      action: MemoryExtractionAction.values.firstWhere(
+        (item) => item.name == result['action'],
+      ),
+      category: result['category'] as String?,
+      content: result['content'] as String?,
+      quotedText: result['quotedText'] as String?,
+      replacesId: result['replacesId'] as String?,
+    );
   }
 
   /// 流式 JSON 调用 —— SSE 解析，累积内容，流结束后 parse JSON。
@@ -903,8 +942,7 @@ ${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: Prom
       onStage?.call(AiStructuredStage.repairing);
       final repaired = await _callValidatedJsonApi(
         systemPrompt: _buildPlanningPrompt(hasAssessment: true),
-        userPrompt:
-            '$userPrompt\n\n上一次流式输出不是有效 JSON，请重新输出完整 JSON。',
+        userPrompt: '$userPrompt\n\n上一次流式输出不是有效 JSON，请重新输出完整 JSON。',
         model: _modelPro,
         validator: (value) => AiContracts.plan(
           value,
@@ -1025,95 +1063,6 @@ ${PromptContext.dataBlock(kind: 'search_results', source: 'tavily', data: Prompt
   }
 
   // ---------------------------------------------------------------------------
-  // 07 轮新增：个性化建议 + 周度反思
-  // ---------------------------------------------------------------------------
-
-  static const _openingSuggestionsPrompt =
-      '你是 Sumi。根据用户当前状态和核心记忆，生成 3-4 条用户可能想让你执行的个性化建议。\n'
-      '\n'
-      '要求：\n'
-      '1. 每条是用户会对助手说的自然指令（如"帮我..."、"建议我..."、"总结..."）。\n'
-      '2. 必须反映用户当前状态（完成率、连续活跃天数等）和历史偏好。\n'
-      '3. 每条 8-20 字。\n'
-      '4. 每条建议应覆盖不同维度（规划/总结/学习/休息/探索），避免语义重复或高度相似。\n'
-      '5. 只输出 JSON，不要任何额外文字。\n'
-      '\n'
-      '输出格式：{"suggestions": ["建议1", "建议2", "建议3"]}';
-
-  /// 生成 App 打开时的个性化建议（Flash, ~300 token）。
-  Future<List<String>> generateOpeningSuggestions({
-    required String realtimeStats,
-    required String coreMemory,
-  }) async {
-    final userPrompt =
-        '''
-用户上下文数据：
-${PromptContext.dataBlock(kind: 'suggestion_context', source: 'local_sumi_data', data: {'realtimeStats': realtimeStats, 'coreMemory': coreMemory.trim().isEmpty ? '（暂无）' : coreMemory})}
-
-请基于以上信息生成 3-4 条个性化建议。''';
-
-    final result = await _callValidatedJsonApi(
-      systemPrompt: _openingSuggestionsPrompt,
-      userPrompt: userPrompt,
-      model: _modelFlash,
-      validator: AiContracts.suggestions,
-      thinking: false,
-      maxTokens: 400,
-      timeoutSeconds: 15,
-    );
-    if (result == null) return [];
-    final raw = result['suggestions'] as List<Object?>?;
-    if (raw == null) return [];
-    return raw
-        .map((e) => e.toString().trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-  }
-
-  /// 周度反思（Pro + thinking, ~1500 token）。仅传入 HOT + WARM 层 + 信号摘要。
-  Future<WeeklyReflectionResult?> generateWeeklyReflection({
-    required String hotPrompt,
-    required String warmPrefs,
-    required String weeklySignals,
-  }) async {
-    final userPrompt =
-        '''
-## 用户当前状态与核心记忆（HOT）
-$hotPrompt
-
-## 长期偏好（WARM）
-${warmPrefs.isEmpty ? '（暂无）' : warmPrefs}
-
-## 本周信号（7 天）
-$weeklySignals
-
-请基于以上信息进行周度反思，输出更新后的 USER_MODEL.md 全文：
-1. 领域画像 — 更新学习速度、薄弱维度
-2. 长期偏好 — 如本周行为改变了之前的推断，则更新
-3. 核心记忆 — 写入一条"本周洞察"，将超过 30 天的旧条目移入归档区
-
-重要约束：
-- 必须保留所有区段标题和 <!-- END ... --> 标记，包括 ## 核心记忆、## 领域画像、## 长期偏好、## 归档。
-- 如果本周信息不足以更新某区段，保持该区段原内容不变，不要删除或留空。
-- 不要输出任何区段之外的解释文字。
-
-输出 JSON：{"updatedUserModel": "完整的 USER_MODEL.md 内容（markdown 格式，保留所有区段结构）"}''';
-
-    final result = await _callJsonApi(
-      systemPrompt: '你是 Sumi。你正在进行每周反思，更新对用户的理解。只输出 JSON。',
-      userPrompt: userPrompt,
-      model: _modelPro,
-      thinking: true,
-      maxTokens: 4096,
-      timeoutSeconds: 120,
-    );
-    if (result == null) return null;
-    final content = (result['updatedUserModel'] as String?) ?? '';
-    if (content.isEmpty) return null;
-    return WeeklyReflectionResult(updatedUserModel: content);
-  }
-
-  // ---------------------------------------------------------------------------
   // Tavily 搜索（05 轮新增）
   // ---------------------------------------------------------------------------
 
@@ -1156,7 +1105,8 @@ $weeklySignals
         final m = r as Map<String, Object?>;
         final rawUrl = (m['url'] as String?) ?? '';
         final uri = Uri.tryParse(rawUrl);
-        final safeUrl = uri != null &&
+        final safeUrl =
+            uri != null &&
                 (uri.scheme == 'https' || uri.scheme == 'http') &&
                 uri.host.isNotEmpty
             ? uri.replace(fragment: '').toString()

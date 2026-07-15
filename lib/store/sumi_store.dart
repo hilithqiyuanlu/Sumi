@@ -7,19 +7,32 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/chat_database.dart';
+import '../data/embedding_document_store.dart';
 import '../data/local_database.dart';
 import '../data/signal_database.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../services/ai_runtime.dart';
 import '../services/chat_prompt_builder.dart';
+import '../services/prompt_context.dart';
 import '../services/daily_planning_policy.dart';
+import '../services/embedding_indexer.dart';
+import '../services/hybrid_retriever.dart';
+import '../services/local_embedding_runtime.dart';
+import '../services/local_embedding_service.dart';
+import '../services/local_retrieval_coordinator.dart';
+import '../services/local_retrieval_service.dart';
+import '../services/model_package_manager.dart';
+import '../services/model_router_metrics.dart';
+import '../services/model_router.dart';
 import '../services/project_generation.dart';
 import '../services/secure_settings_store.dart';
 import '../services/signal_service.dart';
 import '../services/snapshot_write_queue.dart';
 import '../services/tool_executor.dart';
 import '../services/user_model_service.dart';
+import '../services/memory_service.dart';
+import '../services/memory_extraction.dart';
 import '../services/voice_input_service.dart';
 import '../utils/utils.dart';
 part 'domain_controllers.dart';
@@ -35,16 +48,26 @@ class AppStore
   final SumiLocalDatabase? _database;
   final SecureSettingsStore _secureSettings;
   AiRuntime? _aiRuntime;
+  ModelRouter? _modelRouter;
+  late final EmbeddingDocumentStore _embeddingDocuments;
+  late final LocalEmbeddingRuntime _localEmbeddingRuntime;
+  late final LocalEmbeddingService _localEmbedding;
+  late final LocalRetrievalService _localRetrieval;
+  late final LocalRetrievalCoordinator _localRetrievalCoordinator;
   ChatDatabase? _chatDatabase;
   ToolExecutor? _toolExecutor;
   VoiceInputService? _voiceService;
   final DateTime Function() _now;
   late final SnapshotWriteQueue _snapshotWrites;
+  @override
+  late final ModelRouterMetricsStore modelRouterMetrics;
   bool _closed = false;
 
   // 07 轮新增
   SignalDatabase? _signalDb;
-  UserModelService? _userModelService;
+  UserModelService? _legacyUserModelService;
+  MemoryService? _memoryService;
+  MemoryExtractionService? _memoryExtractionService;
   SignalService? _signalService;
 
   /// 信号数据库（供 mixin 使用）。
@@ -53,32 +76,46 @@ class AppStore
 
   /// 用户模型服务。
   @override
-  UserModelService? get userModelService => _userModelService;
+  MemoryService? get memoryService => _memoryService;
+  @override
+  MemoryService? get memoryServiceForStore => _memoryService;
+  @override
+  MemoryExtractionService? get memoryExtractionService =>
+      _memoryExtractionService;
+
+  /// 首页建议可使用本地计数选模板，但这些统计不进入 Agent 记忆上下文。
+  Future<Map<String, String>> legacyRealtimeStats() async =>
+      _legacyUserModelService?.computeRealtimeStats() ?? const {};
 
   /// 信号发射服务（供 mixin 使用）。
   @override
   SignalService? get signalService => _signalService;
 
   // 07 轮：建议缓存状态
-  List<String> cachedSuggestions = [];
+  List<MemorySuggestion> cachedSuggestions = [];
   bool _suggestionsDirty = true;
   bool get suggestionsDirty => _suggestionsDirty;
   DateTime? lastForegroundTime;
   DateTime? lastSuggestionTime;
-
-  // 07 轮：周度反思状态
-  @override
-  DateTime? lastWeeklyReflection;
 
   /// todo 标题最大字数，超过触发 AI 凝练。
   static const todoTitleMaxLength = 16;
 
   /// 按职责暴露 AI Runtime 服务。
   AiRuntime? get aiRuntime => _aiRuntime;
+  ModelRouter? get modelRouter => _modelRouter;
   @override
-  StructuredAiService? get structuredAi => _aiRuntime?.structured;
+  LocalRetrievalService get localRetrieval => _localRetrieval;
+  LocalRetrievalState get localRetrievalState =>
+      _localRetrievalCoordinator.state;
   @override
-  ChatAgentService? get chatAgent => _aiRuntime?.chat;
+  StructuredGenerationCapability? get structuredAi => _modelRouter?.structured;
+  @override
+  ChatCapability? get chatAgent => _modelRouter?.chat;
+
+  void recordAiDegraded(ModelCapability capability) {
+    _modelRouter?.recordDegraded(capability: capability);
+  }
 
   /// 对话数据库。
   @override
@@ -153,6 +190,7 @@ class AppStore
     await flushPersistence();
     disposeChatView();
     _voiceService?.dispose();
+    await _localRetrievalCoordinator.close();
     _aiRuntime?.close();
     todoController.dispose();
     projectController.dispose();
@@ -179,14 +217,19 @@ class AppStore
       now: now ?? DateTime.now,
     );
     store._snapshotWrites = SnapshotWriteQueue(db.writeSnapshot);
+    store.modelRouterMetrics = ModelRouterMetricsStore(
+      onChanged: store._persist,
+    );
 
     // 初始化对话数据库
     store._chatDatabase = ChatDatabase(db);
 
     // 07 轮：初始化信号数据库和用户模型服务
     store._signalDb = signalDatabaseOverride ?? SignalDatabase(db);
-    store._userModelService =
+    store._legacyUserModelService =
         userModelServiceOverride ?? UserModelService(store._signalDb!);
+    store._memoryService = MemoryService(db, now: store._now);
+    await store._memoryService!.ensureTables();
     store._signalService = SignalService(
       store._signalDb!,
       projectForId: (projectId) {
@@ -196,8 +239,33 @@ class AppStore
         return null;
       },
     );
+    store._embeddingDocuments = EmbeddingDocumentStore(db);
+    store._localEmbeddingRuntime = LocalEmbeddingRuntime();
+    store._localEmbedding = LocalEmbeddingService(store._localEmbeddingRuntime);
+    final indexer = EmbeddingIndexer(
+      documents: store._embeddingDocuments,
+      embedding: store._localEmbedding,
+      chatDatabase: store._chatDatabase!,
+      signalDatabase: store._signalDb!,
+      memoryService: store._memoryService!,
+      projects: () => store.projectList,
+      todos: () => store.todoItems,
+      embeddingVersion: () => store._localEmbedding.embeddingVersion ?? '',
+    );
+    store._localRetrieval = LocalRetrievalService(
+      embedding: store._localEmbedding,
+      retriever: HybridRetriever(store._embeddingDocuments),
+    );
+    store._localRetrievalCoordinator = LocalRetrievalCoordinator(
+      packages: ModelPackageManager(),
+      runtime: store._localEmbeddingRuntime,
+      embedding: store._localEmbedding,
+      documents: store._embeddingDocuments,
+      indexer: indexer,
+      stateListener: (_) => store.settingsController.markChanged(),
+    );
 
-    // 07 轮：迁移旧 MEMORY.md → USER_MODEL.md
+    // Import legacy files once, then generate USER_MODEL.md only as export.
     await store._migrateLegacyMemory();
 
     // 从安全存储读取 API Key（并行读取，减少启动延迟）
@@ -218,6 +286,7 @@ class AppStore
     );
 
     store._initAiService(override: aiServiceOverride);
+    unawaited(store._localRetrievalCoordinator.restore());
 
     // 加载今天的会话
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
@@ -238,14 +307,27 @@ class AppStore
     if (override != null || key.isNotEmpty) {
       _aiRuntime = override != null
           ? AiRuntime.fromClient(override)
-          : AiRuntime(
-              apiKey: key,
-              tavilyApiKey: appSettings.tavilyApiKey,
-            );
+          : AiRuntime(apiKey: key, tavilyApiKey: appSettings.tavilyApiKey);
+      _modelRouter = ModelRouter.fromRuntime(
+        _aiRuntime!,
+        metrics: modelRouterMetrics,
+        embedding: _localEmbedding,
+      );
+      _memoryExtractionService = MemoryExtractionService(
+        memory: _memoryService!,
+        capability: _modelRouter!.memoryExtraction,
+        onMemoryChanged: _scheduleLocalIndex,
+      );
       _toolExecutor = ToolExecutor(
-        searchService: _aiRuntime!.search,
-        userModelService: _userModelService!,
+        searchService: _modelRouter!.search,
+        memoryService: _memoryService!,
         signalDatabase: _signalDb!,
+        currentUserMessage: () {
+          for (final message in currentMessages.reversed) {
+            if (message.role == 'user') return message.content;
+          }
+          return '';
+        },
         readTodos: ({String? filter}) => _readTodosForTool(filter: filter),
         writeTodo:
             ({
@@ -262,6 +344,8 @@ class AppStore
       );
     } else {
       _aiRuntime = null;
+      _modelRouter = null;
+      _memoryExtractionService = null;
       _toolExecutor = null;
     }
 
@@ -280,12 +364,14 @@ class AppStore
   Future<SplitResult?> splitAndAddTodo(String text) async {
     final ai = structuredAi;
     if (ai == null) {
+      recordAiDegraded(ModelCapability.structured);
       addUserTodo(text);
       return null;
     }
 
     final result = await ai.splitTodo(text);
     if (result == null) {
+      recordAiDegraded(ModelCapability.structured);
       // AI 调用失败 → 若超长尝试凝练，否则直接创建
       if (text.length > todoTitleMaxLength) {
         final condensed = await polishText(text);
@@ -388,6 +474,7 @@ class AppStore
   void afterTodoMutation() {
     _persist();
     todoController.markChanged();
+    _scheduleLocalIndex();
   }
 
   @override
@@ -395,11 +482,33 @@ class AppStore
     _persist();
     projectController.markChanged();
     todoController.markChanged();
+    _scheduleLocalIndex();
   }
 
   void afterSettingsMutation() {
     _persist();
     settingsController.markChanged();
+  }
+
+  Future<void> downloadLocalRetrievalModel() =>
+      _localRetrievalCoordinator.download();
+  Future<void> recheckLocalRetrievalModel() =>
+      _localRetrievalCoordinator.recheck();
+  @override
+  Future<void> deleteLocalRetrievalModel() =>
+      _localRetrievalCoordinator.deleteModel();
+  void cancelLocalRetrievalWork() => _localRetrievalCoordinator.cancel();
+
+  Timer? _localIndexTimer;
+  @override
+  void scheduleLocalIndex() => _scheduleLocalIndex();
+
+  void _scheduleLocalIndex() {
+    if (!_localEmbedding.isAvailable) return;
+    _localIndexTimer?.cancel();
+    _localIndexTimer = Timer(const Duration(seconds: 1), () {
+      unawaited(_localRetrievalCoordinator.rebuildIndex());
+    });
   }
 
   void afterSelectionMutation() {
@@ -426,73 +535,17 @@ class AppStore
       final dir = await getApplicationDocumentsDirectory();
       final legacyFile = io.File('${dir.path}/sumi/MEMORY.md');
       final newFile = io.File('${dir.path}/sumi/USER_MODEL.md');
-
-      // 如果 USER_MODEL.md 已存在，跳过
-      if (await newFile.exists()) return;
-
+      String? content;
       if (await legacyFile.exists()) {
-        final legacyContent = await legacyFile.readAsString();
-        final migrated = await _userModelService!.migrateFromLegacyMemory(
-          legacyContent,
-        );
-        await _userModelService!.writeUserModel(migrated);
-        // 不删除旧文件，保留备份
+        content = await legacyFile.readAsString();
+      } else if (await newFile.exists()) {
+        content = await newFile.readAsString();
       }
+      if (content != null) await _memoryService!.importLegacyMarkdown(content);
+      await _memoryService!.importLegacyHypotheses();
+      await _memoryService!.exportUserModel();
     } catch (_) {
       // 静默失败
-    }
-  }
-
-  /// 周期性检查并触发周度反思（由 HomePage 在回前台时调用）。
-  Future<void> checkAndRunWeeklyReflection() async {
-    final ai = structuredAi;
-    if (ai == null) return;
-
-    final now = _now();
-    final isSunday = now.weekday == DateTime.sunday;
-    final isMondayMorning = now.weekday == DateTime.monday && now.hour < 12;
-    if (!isSunday && !isMondayMorning) return;
-
-    if (lastWeeklyReflection != null) {
-      final daysSince = now.difference(lastWeeklyReflection!).inDays;
-      if (daysSince < 6) return;
-    }
-
-    try {
-      final model = await _userModelService!.readUserModel();
-      final stats = await _userModelService!.computeRealtimeStats();
-      final modelWithStats = _userModelService!.injectRealtimeStats(
-        model,
-        stats,
-      );
-      final hotPrompt = _userModelService!.buildHotPrompt(modelWithStats);
-      final warmPrefs = _userModelService!.buildWarmPrefsPrompt(modelWithStats);
-      final weekSignals = await _signalDb!.query(range: '7d', limit: 200);
-      final signalsText = SignalDatabase.formatForPrompt(weekSignals);
-
-      final result = await ai.generateWeeklyReflection(
-        hotPrompt: hotPrompt,
-        warmPrefs: warmPrefs,
-        weeklySignals: signalsText,
-      );
-      if (result == null) {
-        throw Exception('AI 返回空结果');
-      }
-
-      // 校验 AI 返回的模型结构，防止截断或格式错误覆盖掉完整模型。
-      if (!_userModelService!.isValidUserModel(result.updatedUserModel)) {
-        throw Exception('AI 返回的 USER_MODEL.md 缺少必要区段，拒绝覆盖');
-      }
-
-      // 覆盖前先备份，保留恢复可能。
-      await _userModelService!.backupUserModel();
-      await _userModelService!.writeUserModel(result.updatedUserModel);
-
-      // 只有成功写入后才记录本次反思时间，失败时下次仍可重试。
-      lastWeeklyReflection = now;
-      _persist();
-    } catch (e) {
-      debugPrint('Weekly reflection failed (non-blocking): $e');
     }
   }
 
@@ -543,11 +596,12 @@ class AppStore
     String? date,
     String? projectId,
     String? body,
-  }) {
+  }) async {
     if (projectId == null || projectId.isEmpty) {
-      return addUserTodo(title, date: date, body: body);
+      await addUserTodo(title, date: date, body: body);
+      return;
     }
-    return addSystemTodo(title, projectId, date: date, body: body);
+    await addSystemTodo(title, projectId, date: date, body: body);
   }
 }
 

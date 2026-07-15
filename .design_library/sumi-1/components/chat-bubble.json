@@ -4,7 +4,7 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "Conversation message bubbles for AI assistant chat, with user and AI distinct styles, role labels, streaming/reasoning/tool-call support. 时间戳显示在一轮对话的开始处，即用户气泡的正上方，水平居中",
+  "description": "Conversation message bubbles for AI assistant chat, with user and AI distinct styles, streaming/reasoning/tool-call support. 时间戳显示在一轮对话的开始处，即用户气泡的正上方，水平居中。无角色标签（代码中不存在'你'/'Sumi'标签）",
   "variants": [
     {
       "id": "greeting",
@@ -14,17 +14,17 @@
     {
       "id": "user-message",
       "name": "User Message",
-      "description": "User's question in primary-100 bubble aligned to the right, on-surface text color"
+      "description": "User's question in mint (primary-100) bubble aligned to the right, on-surface text color"
     },
     {
       "id": "ai-response",
       "name": "AI Response",
-      "description": "AI's reply in white bubble with outline-variant border and subtle shadow, aligned to the left"
+      "description": "AI's reply in paper (white) bubble with line@0.3 border and subtle shadow, aligned to the left"
     },
     {
       "id": "streaming",
       "name": "Streaming",
-      "description": "Streaming output state: shows 14x14 loading indicator when empty, blinking cursor at end when content is present"
+      "description": "Streaming output state: shows 14x14 CircularProgressIndicator(mintDeep) when empty, 2x16 blinking cursor (mintDeep) at end when content is present"
     },
     {
       "id": "reasoning",
@@ -44,40 +44,43 @@
   ],
   "states": [
     { "name": "default", "description": "Static message display" },
-    { "name": "long-press-copy", "description": "Long press to copy message content" }
+    { "name": "long-press-user", "description": "Long press on user bubble → delete dialog (radius-card corner)" },
+    { "name": "long-press-ai", "description": "Long press on AI bubble → copy + toast '已复制'" }
   ],
   "renderHints": {
     "userBg": "var(--color-primary-100)",
     "userText": "var(--color-on-surface)",
     "userAlign": "right",
-    "userRadius": "20px var(--radius-20) var(--radius-20) var(--radius-20)",
-    "aiBg": "var(--color-surface)",
+    "userRadius": "20px 4px 20px 20px",
+    "aiBg": "#FFFFFF",
     "aiText": "var(--color-on-surface)",
-    "aiBorder": "1px solid var(--color-outline-variant)",
+    "aiBorder": "1px solid var(--color-line) @0.3",
     "aiAlign": "left",
-    "aiRadius": "4px var(--radius-20) var(--radius-20) var(--radius-20)",
+    "aiRadius": "4px 20px 20px 20px",
+    "aiShadow": "0 1px 3px rgba(8,14,17,0.03)",
     "greetingAlign": "center",
     "greetingColor": "var(--color-on-surface-variant)",
     "fontSize": "var(--font-size-body)",
-    "roleLabelFontSize": "12px",
-    "roleLabelWeight": "600",
-    "roleLabelColor": "var(--color-muted-foreground)",
-    "roleLabelUser": "你",
-    "roleLabelAI": "Sumi",
-    "timestampFontSize": "var(--font-size-caption)",
-    "timestampColor": "var(--color-muted-foreground)",
+    "timestampFontSize": "11px",
+    "timestampWeight": "500",
+    "timestampColor": "var(--color-text-tertiary)",
     "timestampPosition": "above-user-bubble",
     "timestampAlignment": "center",
+    "timestampFormat": "M/D HH:MM",
     "timestampMarginBottom": "var(--space-3)",
-    "maxWidth": "78%",
-    "aiShadow": "0 1px 3px rgba(14,17,21,.03)",
-    "padding": "10px 14px"
+    "maxWidth": "72%",
+    "padding": "10px 12px",
+    "streamingIndicatorSize": "14px",
+    "streamingIndicatorColor": "var(--color-primary-500)",
+    "streamingCursorWidth": "2px",
+    "streamingCursorHeight": "16px",
+    "streamingCursorColor": "var(--color-primary-500)"
   },
   "uiCopySamples": {
     "greeting": "和 Sumi 聊聊学习计划吧",
     "userMessage": "建议以什么顺序开展我今天的待办",
     "aiResponse": "根据你的任务优先级，建议先从「看深度学习入门」开始...",
-    "timestamp": "07/14 19:21"
+    "timestamp": "7/14 19:21"
   },
   "unknowns": []
 }

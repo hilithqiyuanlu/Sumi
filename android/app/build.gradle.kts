@@ -6,6 +6,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+dependencies {
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+}
+
 android {
     namespace = "com.hellosumitech.sumi"
     compileSdk = flutter.compileSdkVersion

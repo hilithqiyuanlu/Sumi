@@ -8,7 +8,7 @@
   "variants": [
     {
       "name": "default",
-      "description": "默认样式"
+      "description": "默认样式：36x36 圆形，paper(#FFF) 背景，shadow2 阴影，keyboard_arrow_down 22px primary500 图标"
     }
   ],
   "states": [
@@ -17,10 +17,11 @@
   ],
   "renderHints": {
     "size": "36px",
-    "radius": "var(--radius-full)",
-    "bg": "var(--surface)",
-    "shadow": "var(--shadow-1)",
-    "iconColor": "var(--primary-500)",
+    "radius": "50%",
+    "bg": "#FFFFFF",
+    "shadow": "var(--shadow-2)",
+    "iconName": "keyboard_arrow_down",
+    "iconColor": "var(--color-primary-500)",
     "iconSize": "22px"
   },
   "uiCopySamples": {},

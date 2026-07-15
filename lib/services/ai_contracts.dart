@@ -92,8 +92,7 @@ class AiContracts {
       errors.add('月计划数量和索引必须完整覆盖 $cycleMonths 个月');
     }
     final rawProjectTitle = _text(value['projectTitle']);
-    if (rawProjectTitle.isNotEmpty &&
-        !_lengthBetween(rawProjectTitle, 2, 16)) {
+    if (rawProjectTitle.isNotEmpty && !_lengthBetween(rawProjectTitle, 2, 16)) {
       errors.add('项目标题必须为 2-16 字');
     }
     final projectTitle = rawProjectTitle.isNotEmpty
@@ -207,6 +206,48 @@ class AiContracts {
     return AiContractValidation.valid({'suggestions': items});
   }
 
+  static AiContractValidation<Map<String, Object?>> memoryExtraction(
+    Map<String, Object?> value,
+  ) {
+    final action = _text(value['action']).toLowerCase();
+    if (!const {'ignore', 'save', 'replace'}.contains(action)) {
+      return const AiContractValidation.invalid([
+        'action 必须是 ignore、save 或 replace',
+      ]);
+    }
+    if (action == 'ignore') {
+      return const AiContractValidation.valid({'action': 'ignore'});
+    }
+    final category = _text(value['category']);
+    final content = _text(value['content']);
+    final quotedText = _text(value['quotedText']);
+    final errors = <String>[];
+    if (!const {'preference', 'goal', 'constraint'}.contains(category)) {
+      errors.add('category 必须是 preference、goal 或 constraint');
+    }
+    if (!_lengthBetween(content, 2, 200)) {
+      errors.add('content 必须为 2-200 字');
+    }
+    if (!_lengthBetween(quotedText, 1, 500)) {
+      errors.add('quotedText 必须为 1-500 字');
+    }
+    final replacesId = _text(value['replacesId']);
+    if (action == 'replace' && replacesId.isEmpty) {
+      errors.add('replace 必须提供 replacesId');
+    }
+    if (action == 'save' && replacesId.isNotEmpty) {
+      errors.add('save 不能提供 replacesId');
+    }
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({
+      'action': action,
+      'category': category,
+      'content': content,
+      'quotedText': quotedText,
+      if (action == 'replace') 'replacesId': replacesId,
+    });
+  }
+
   static AiContractValidation<Map<String, Object?>> toolCall(
     String id,
     String name,
@@ -224,17 +265,14 @@ class AiContracts {
         }
         normalized['query'] = query;
       case 'read_memory':
+        final query = _text(args['query']);
+        if (query.length > 300) errors.add('query 不能超过 300 字');
+        normalized['query'] = query;
+        final memoryProjectId = args['projectId'];
+        if (memoryProjectId != null && _text(memoryProjectId).isNotEmpty) {
+          _validateProjectId(_text(memoryProjectId), validProjectIds, errors);
+        }
         break;
-      case 'write_memory':
-        final content = _text(args['content']);
-        if (content.isEmpty || content.length > 500) {
-          errors.add('content 必须为 1-500 字');
-        }
-        final confidence = args['confidence'];
-        if (confidence != null && confidence != '确信' && confidence != '推断') {
-          errors.add('confidence 只能是“确信”或“推断”');
-        }
-        normalized['content'] = content;
       case 'read_todos':
         final filter = _text(args['filter']).isEmpty
             ? 'today'

@@ -23,44 +23,44 @@
     {
       "id": "draggable-scroll",
       "whySelected": "Draggable sheet — conversation list, main pattern",
-      "traits": { "radius": "20px top", "dragHandle": "36x4, textTertiary@0.3", "initialChildSize": "0.6" },
+      "traits": { "radius": "20px top (radiusCardHeader)", "dragHandle": "36x4, textTertiary@0.3, radius2", "initialChildSize": "0.6" },
       "childrenDigest": "drag handle + title row + divider + scrollable list"
     },
     {
       "id": "fixed-content",
       "whySelected": "Edit sheet — todo edit, fixed controls",
-      "traits": { "radius": "20px top", "padding": "16px", "bg": "white" },
+      "traits": { "radius": "20px top (radiusCardHeader)", "padding": "16px", "bg": "white" },
       "childrenDigest": "drag handle + title input + body textarea + action chips + save/delete buttons"
     },
     {
       "id": "picker",
       "whySelected": "Confirm sheet — split confirm, simple list + buttons",
-      "traits": { "radius": "20px top", "padding": "16px", "bg": "white" },
+      "traits": { "radius": "20px top (radiusCardHeader)", "padding": "16px", "bg": "white" },
       "childrenDigest": "drag handle + title + subtitle + checkbox list + cancel/confirm buttons"
     },
     {
       "id": "time-picker",
       "name": "Time Picker",
       "whySelected": "Timer setting panel — modify and clear timer entries",
-      "traits": { "radius": "20px top", "padding": "16px", "bg": "white", "dismissOnTapOutside": true },
+      "traits": { "radius": "20px top (radiusCardHeader)", "padding": "16px", "bg": "white", "dismissOnTapOutside": true },
       "childrenDigest": "drag handle + modify-timer ListTile + clear-timer ListTile"
     },
     {
       "id": "month-view",
       "name": "Month View",
       "whySelected": "Full-screen month overlay — hand-tracking drag + spring snap animation",
-      "traits": { "radius": "20px top", "initialChildSize": "1.0", "snapPoints": ["0.0", "0.5", "1.0"], "animation": "spring-snap", "gesture": "hand-tracking-drag" },
+      "traits": { "radius": "20px top (radiusCardHeader)", "initialChildSize": "1.0", "snapPoints": ["0.0", "0.5", "1.0"], "animation": "spring-snap", "gesture": "hand-tracking-drag" },
       "childrenDigest": "drag handle + month calendar grid + date cells + navigation controls"
     }
   ],
   "anatomy": [
-    { "part": "drag-handle", "role": "grab indicator", "token": "width: 36px; height: 4px; background: textTertiary@0.3; radius: 2px" },
+    { "part": "drag-handle", "role": "grab indicator", "token": "width: 36px; height: 4px; background: textTertiary@0.3; radius: 2px (radius2)" },
     { "part": "content", "role": "children slot", "token": "padding: 0 var(--space-4)" },
     { "part": "sheet", "role": "root container", "token": "border-radius: var(--radius-card-header) var(--radius-card-header) 0 0" }
   ],
   "structurePatterns": ["drag-handle-header", "title-row", "action-row-footer"],
   "usageHints": [
-    "All bottom sheets share top-radius 20px, drag handle 36x4, and horizontal padding 16px",
+    "All bottom sheets share top-radius 20px (radiusCardHeader), drag handle 36x4 (textTertiary@0.3, radius2), and horizontal padding 16px",
     "Draggable sheets use DraggableScrollableSheet with initialChildSize ~0.6",
     "Picker and time-picker sheets are modal with dismiss-on-outside-tap",
     "Month-view is a full-screen overlay (initialChildSize 1.0) with spring snap animation"

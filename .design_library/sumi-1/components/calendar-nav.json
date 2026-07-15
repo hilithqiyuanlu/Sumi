@@ -4,7 +4,7 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "Horizontal full-month date strip with daysInMonth-day横向滚动, weekday labels, date numbers, and optional task indicator dots; each date cell is a rounded rectangle (not pill/circle); supports drag-handle to expand month view",
+  "description": "Horizontal full-month date strip with daysInMonth-day横向滚动, weekday labels, date numbers, and optional task indicator dots; each date cell is a rounded rectangle (radiusCard 18px); supports drag-handle to expand month view; container bg=surface, corner radius=radiusCardHeader(20px)",
   "variants": [
     {
       "id": "default",
@@ -14,39 +14,43 @@
     {
       "id": "month-view-toggle",
       "name": "Month View Toggle",
-      "description": "DateStrip 底部附带 DragHandle，下拉可展开为完整月历网格视图；收起时回到横向滚动条"
+      "description": "DateStrip 底部附带 DragHandle(36x4, textTertiary@30%, radius2)，点击可展开为完整月历网格视图；收起时回到横向滚动条"
     }
   ],
   "states": [
-    { "name": "selected", "description": "选中日期：var(--radius-12) 圆角矩形 + primary-600 背景色 + 白色文字" },
-    { "name": "today", "description": "今日标记：primary-100 背景 50% 透明度 + 原色文字，区别于 selected 的实心 + 白文字" },
-    { "name": "today-with-dot", "description": "今日且有日程：在 today 状态基础上，日期下方显示小圆点指示任务" },
-    { "name": "past", "description": "过去日期：文字使用 muted-foreground 色，视觉弱化" },
+    { "name": "selected", "description": "选中日期：radiusCard(18px) 圆角矩形 + mintDeep (primary-500) 背景色 + 白色文字" },
+    { "name": "today", "description": "今日标记：mint (primary-100) 背景 50% 透明度 + ink 原色文字，区别于 selected 的实心 + 白文字" },
+    { "name": "today-with-dot", "description": "今日且有日程：在 today 状态基础上，日期下方显示 4x4 primary500 圆点指示任务" },
+    { "name": "past", "description": "过去日期：文字使用 textTertiary 色，视觉弱化" },
     { "name": "inactive", "description": "非选中、非今日的普通日期默认态" },
     { "name": "drag-hover", "description": "拖拽悬停时浅 primary 背景反馈，用于拖拽任务到日期时的目标指示" }
   ],
   "renderHints": {
     "layout": "horizontal-scroll",
-    "radius": "var(--radius-12)",
-    "chipWidth": "48px",
-    "chipHeight": "68px",
-    "selectedBg": "var(--color-primary)",
-    "selectedText": "var(--color-on-primary)",
+    "containerBg": "var(--color-surface)",
+    "containerRadius": "var(--radius-card-header)",
+    "radius": "var(--radius-card)",
+    "chipWidth": "52px",
+    "chipHeight": "72px",
+    "selectedBg": "var(--color-primary-500)",
+    "selectedText": "#ffffff",
     "todayBg": "rgba(var(--color-primary-100), 0.5)",
-    "todayText": "var(--color-primary)",
+    "todayText": "var(--color-ink)",
     "inactiveText": "var(--color-on-surface)",
-    "pastText": "var(--color-muted-foreground)",
+    "pastText": "var(--color-text-tertiary)",
     "weekdayText": "var(--color-muted-foreground)",
     "dragHoverBg": "rgba(var(--color-primary), 0.08)",
-    "dotColor": "var(--task-dot)",
+    "dotColor": "var(--color-primary-500)",
     "dotSize": "4px",
     "weekdayFontSize": "13px",
     "weekdayFontWeight": "600",
-    "dateFontSize": "22px",
+    "dateFontSize": "20px",
     "dateFontWeight": "700",
     "chipSpacing": "4px",
-    "dragHandleHeight": "6px",
-    "dragHandleRadius": "3px"
+    "dragHandleWidth": "36px",
+    "dragHandleHeight": "4px",
+    "dragHandleColor": "rgba(var(--color-text-tertiary), 0.3)",
+    "dragHandleRadius": "var(--radius-2)"
   },
   "uiCopySamples": {
     "weekdays": ["一", "二", "三", "四", "五", "六", "日"],

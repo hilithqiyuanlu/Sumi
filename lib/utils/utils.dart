@@ -6,7 +6,6 @@ enum InputMode { chat, todo }
 const _toolNameMap = {
   'search_web': '搜索',
   'read_memory': '读取记忆',
-  'write_memory': '写入记忆',
   'read_todos': '查看事项',
   'write_todo': '创建事项',
   'read_signals': '查询信号',

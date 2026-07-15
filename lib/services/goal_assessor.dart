@@ -1,10 +1,10 @@
 import '../models/models.dart';
-import 'ai_runtime.dart';
+import 'model_router.dart';
 
 /// 目标评估编排器 —— 搜索 + AI 评估。
 class GoalAssessor {
-  final StructuredAiService ai;
-  final WebSearchService search;
+  final StructuredGenerationCapability ai;
+  final WebSearchCapability search;
 
   GoalAssessor({required this.ai, required this.search});
 

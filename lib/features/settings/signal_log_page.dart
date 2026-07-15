@@ -130,97 +130,88 @@ class _SignalLogPageState extends State<SignalLogPage> {
 
     return Scaffold(
       backgroundColor: paper,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(s16, s8, s16, s12),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  const Text('信号日志',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: ink)),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
-                    decoration: BoxDecoration(
-                      color: surfaceChip,
-                      borderRadius: BorderRadius.circular(radiusPill),
-                    ),
-                    child: Text('${_signals.length} 条',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textTertiary)),
-                  ),
-                ],
+      appBar: AppBar(
+        title: const Text('信号日志'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: s16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
+              decoration: BoxDecoration(
+                color: surfaceChip,
+                borderRadius: BorderRadius.circular(radiusPill),
               ),
+              child: Text('${_signals.length} 条',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textTertiary)),
             ),
-            // 时间范围 filter
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: s16),
-              child: Row(
-                children: ['7d', '30d', 'all'].map((r) {
-                  final active = _range == r;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: s6),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _range = r);
-                        _load();
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s6),
-                        decoration: BoxDecoration(
-                          color: active ? primary500 : surfaceChip,
-                          borderRadius: BorderRadius.circular(radiusPill),
-                        ),
-                        child: Text(
-                          r == 'all' ? '全部' : '${r == "30d" ? "30" : "7"} 天',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                            color: active ? Colors.white : textTertiary,
-                          ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 时间范围 filter
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: s16),
+            child: Row(
+              children: ['7d', '30d', 'all'].map((r) {
+                final active = _range == r;
+                return Padding(
+                  padding: const EdgeInsets.only(right: s6),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _range = r);
+                      _load();
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s6),
+                      decoration: BoxDecoration(
+                        color: active ? primary500 : surfaceChip,
+                        borderRadius: BorderRadius.circular(radiusPill),
+                      ),
+                      child: Text(
+                        r == 'all' ? '全部' : '${r == "30d" ? "30" : "7"} 天',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                          color: active ? Colors.white : textTertiary,
                         ),
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
+                  ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: s8),
-            // Signal list
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                  : _signals.isEmpty
-                      ? _buildEmpty()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(s16, s4, s16, s24),
-                          itemCount: items.length,
-                          separatorBuilder: (_, i) {
-                            if (items[i] is _SignalItem &&
-                                i + 1 < items.length &&
-                                items[i + 1] is _SignalItem) {
-                              return const Divider(height: 1, thickness: 0.5, indent: s20);
-                            }
-                            return const SizedBox.shrink();
-                          },
-                          itemBuilder: (_, i) {
-                            final item = items[i];
-                            if (item is _DateHeader) return _buildDateHeader(item.label);
-                            if (item is _SignalItem) return _buildSignalRow(item.signal);
-                            return const SizedBox.shrink();
-                          },
-                        ),
+          ),
+          const SizedBox(height: s8),
+          // Signal list
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : _signals.isEmpty
+                    ? _buildEmpty()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(s16, s4, s16, s24),
+                        itemCount: items.length,
+                        separatorBuilder: (_, i) {
+                          if (items[i] is _SignalItem &&
+                              i + 1 < items.length &&
+                              items[i + 1] is _SignalItem) {
+                            return const Divider(height: 1, thickness: 0.5, indent: s20);
+                          }
+                          return const SizedBox.shrink();
+                        },
+                        itemBuilder: (_, i) {
+                          final item = items[i];
+                          if (item is _DateHeader) return _buildDateHeader(item.label);
+                          if (item is _SignalItem) return _buildSignalRow(item.signal);
+                          return const SizedBox.shrink();
+                        },
+                      ),
             ),
           ],
         ),
-      ),
     );
   }
 

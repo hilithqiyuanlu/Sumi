@@ -4,57 +4,54 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "Pill-shaped task tags 用于主界面轻量展示待办摘要；完整 Todo 展示使用独立的 todo-card 组件。Pending 态显示浅色实心圆圈（outline-variant 背景，无边框，点击可标记完成），Completed 态带实心 checkmark + 划线 + muted 文字",
+  "description": "Pill-shaped task tags 用于主界面轻量展示待办摘要；完整 Todo 展示使用独立的 todo-card 组件。Pending 态显示 circle_outlined 18px primary500 图标 + ink 文字，Completed 态带 check_circle 18px textTertiary + textTertiary 文字（无 line-through），横向单行滚动",
   "variants": [
     {
       "id": "pending",
       "name": "Pending",
-      "description": "未完成任务 chip：浅色背景 + 深色文字 + 左侧浅色实心圆圈（outline-variant 填充，无边框，点击可标记完成），交互：点击圆圈 → 变为 completed"
+      "description": "未完成任务 chip：surfaceChip 背景 + ink 文字 + 左侧 circle_outlined 18px primary500 图标，交互：点击圆圈 → 变为 completed"
     },
     {
       "id": "completed",
       "name": "Completed",
-      "description": "已完成任务 chip：带蓝色实心 checkmark circle + 文字划线(line-through) + muted 文字色 + 0.5 透明度"
+      "description": "已完成任务 chip：neutral200 背景 + check_circle 18px textTertiary 图标 + textTertiary 文字色（无 line-through 划线）"
     },
     {
       "id": "project-colored",
       "name": "Project Colored",
-      "description": "项目色背景 chip：背景使用对应项目色的 25% 透明度版本，文字保持深色，用于区分不同项目来源"
+      "description": "项目色背景 chip：背景使用对应项目色的 25% 透明度版本，文字保持 ink 色，用于区分不同项目来源"
     }
   ],
   "states": [
     { "name": "default", "description": "正常静止态" },
-    { "name": "completed", "description": "已完成态：显示 checkmark，背景弱化，文字 muted" },
+    { "name": "completed", "description": "已完成态：显示 checkmark，背景 neutral200，文字 textTertiary，无 line-through" },
     { "name": "pressed", "description": "按下态：brightness(0.97) 轻微变暗反馈" },
-    { "name": "dragging", "description": "拖拽中：原位显示 0.3 透明度占位，拖拽副本附带 shadow-4" },
+    { "name": "dragging", "description": "拖拽中：原位 opacity 0.3 占位，拖拽反馈副本附带 primary500 border 1.5px + shadow2" },
     { "name": "dismissible", "description": "左滑删除态：chip 背景切换为 danger 色，提示即将删除" }
   ],
   "renderHints": {
-    "layout": "flex-wrap",
-    "radius": "var(--radius-full)",
-    "pendingBg": "var(--task-chip-bg)",
-    "completedBg": "var(--task-chip-done-bg)",
+    "layout": "horizontal-scroll-single-row",
+    "radius": "var(--radius-pill)",
+    "padding": "10px 14px",
+    "pendingBg": "var(--color-surface-chip)",
+    "completedBg": "var(--color-neutral-200)",
     "projectBg": "rgba(var(--project-color), 0.25)",
-    "textColor": "var(--color-on-surface)",
-    "completedTextColor": "var(--color-muted-foreground)",
-    "completedTextDecoration": "line-through",
-    "completedTextOpacity": "0.5",
-    "pendingCheckmark": "circle-outlined",
-    "pendingCheckmarkColor": "var(--color-on-surface-variant)",
-    "pendingCheckmarkBg": "var(--color-outline-variant)",
-    "pendingCheckmarkBorder": "none",
-    "pendingCheckmarkSize": "18px",
-    "checkColor": "var(--color-primary)",
-    "checkBg": "var(--color-primary-container)",
-    "dangerBg": "var(--color-error)",
-    "fontSize": "var(--font-size-body)",
-    "checkSize": "18px",
-    "padding": "6px 12px 6px 6px",
-    "pendingPadding": "6px 12px",
-    "gap": "6px",
+    "textColor": "var(--color-ink)",
+    "textFontSize": "15px",
+    "textFontWeight": "500",
+    "completedTextColor": "var(--color-text-tertiary)",
+    "pendingIcon": "circle_outlined",
+    "pendingIconSize": "18px",
+    "pendingIconColor": "var(--color-primary-500)",
+    "completedIcon": "check_circle",
+    "completedIconSize": "18px",
+    "completedIconColor": "var(--color-text-tertiary)",
+    "gap": "var(--space-8)",
     "pressedFilter": "brightness(0.97)",
     "draggingOpacity": "0.3",
-    "draggingShadow": "var(--shadow-4)"
+    "draggingBorderColor": "var(--color-primary-500)",
+    "draggingBorderWidth": "1.5px",
+    "draggingShadow": "var(--shadow-2)"
   },
   "uiCopySamples": {
     "pendingTasks": [

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import '../../models/models.dart';
+import '../../services/memory_service.dart';
 
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
@@ -16,6 +17,7 @@ import '../chat/chat_bubble.dart';
 import '../chat/chat_input.dart';
 import '../todos/todo_chip_carousel.dart';
 import 'settings_panel.dart';
+import '../memory/memory_center_page.dart';
 import 'side_drawer.dart';
 import 'suggestion_strip.dart';
 
@@ -38,8 +40,7 @@ class _HomePageState extends State<HomePage>
     damping: 22,
   );
   InputMode _inputMode = InputMode.todo;
-  List<String> _suggestions = [];
-  bool _isGeneratingSuggestions = false;
+  List<MemorySuggestion> _suggestions = [];
   final _scrollController = ScrollController();
   bool _showScrollToBottom = false;
   DateTime? _lastSelectedDate;
@@ -114,9 +115,6 @@ class _HomePageState extends State<HomePage>
       }
       store.lastForegroundTime = now;
 
-      // 检查周度反思
-      store.checkAndRunWeeklyReflection();
-
       _generateSuggestions();
     }
   }
@@ -133,65 +131,31 @@ class _HomePageState extends State<HomePage>
     setState(() => _inputMode = mode);
   }
 
-  /// 07 轮：缓存策略。UI 立即展示缓存/规则预设，后台异步 AI 替换。
+  /// 可校正理解：建议全部由本地规则立即生成，不产生首页模型调用。
   Future<void> _generateSuggestions() async {
     final store = SumiScope.read(context);
 
-    // 规则预设：立即展示
-    final presets = _rulePresetSuggestions(store);
-    // 优先使用缓存
     final cached = store.cachedSuggestions;
-    if (!mounted) return;
-    setState(() {
-      _suggestions = cached.isNotEmpty ? cached : presets;
-    });
-
-    // 后台 AI 生成（如果缓存脏或首次）
-    if (!store.suggestionsDirty && cached.isNotEmpty) return;
-    if (_isGeneratingSuggestions) return;
-
-    final ai = store.structuredAi;
-    if (ai == null) return;
-
-    _isGeneratingSuggestions = true;
-
+    if (!store.suggestionsDirty && cached.isNotEmpty) {
+      if (mounted) setState(() => _suggestions = cached);
+      return;
+    }
     try {
-      final ums = store.userModelService;
-      if (ums == null) return;
-      final model = await ums.readUserModel();
-      final stats = await ums.computeRealtimeStats();
-      final modelWithStats = ums.injectRealtimeStats(model, stats);
-      final coreMemory = ums.buildHotPrompt(modelWithStats);
-
-      final aiSuggestions = await ai.generateOpeningSuggestions(
-        realtimeStats: stats.entries
-            .map((e) => '${e.key}: ${e.value}')
-            .join('\n'),
-        coreMemory: coreMemory,
+      final memory = store.memoryService;
+      if (memory == null) return;
+      final stats = await store.legacyRealtimeStats();
+      final generated = await memory.createSuggestions(
+        realtimeStats: stats,
       );
-
-      if (aiSuggestions.isNotEmpty && mounted) {
-        store.cachedSuggestions = aiSuggestions;
+      if (generated.isNotEmpty && mounted) {
+        store.cachedSuggestions = generated;
         store.lastSuggestionTime = DateTime.now();
         store.setSuggestionsDirty(false);
-        // 去重合并：AI 结果优先，与当前显示的预设做去重
-        setState(() {
-          if (_suggestions == presets || _suggestions == cached) {
-            _suggestions = _mergeAndDedup(aiSuggestions, _suggestions);
-          }
-        });
+        setState(() => _suggestions = generated);
       }
     } catch (_) {
-      // 失败保持当前展示
-    } finally {
-      _isGeneratingSuggestions = false;
+      if (mounted && cached.isNotEmpty) setState(() => _suggestions = cached);
     }
-  }
-
-  /// 规则预设建议：随机池不放回抽取 3-4 条，作为 AI 结果回来前的瞬时展示。
-  List<String> _rulePresetSuggestions(SumiStore store) {
-    final pool = List<String>.from(_suggestionPool)..shuffle();
-    return pool.take(4).toList();
   }
 
   void _onScroll() {
@@ -228,50 +192,6 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  static const _suggestionPool = [
-    // 规划向
-    '帮我制定今天的学习计划',
-    '建议我今天优先完成什么',
-    // 总结向
-    '帮我回顾一下最近学了什么',
-    '帮我分析一下学习进度',
-    '帮我总结一下最近的学习进展',
-    // 探索向
-    '最近有什么值得学的',
-    '推荐一个学习方法',
-    '推荐相关学习资源',
-    // 调整向
-    '帮我调整今天的学习计划',
-    '帮我看看还有什么没完成的',
-    // 效率向
-    '如何提高学习效率',
-    '给我一些学习建议',
-    // 灵感向
-    '最近有什么值得关注的学习趋势',
-    '有没有适合我的学习技巧',
-  ];
-
-  /// 合并 AI 建议与现有建议，去重，AI 结果优先，最多 4 条。
-  List<String> _mergeAndDedup(List<String> ai, List<String> existing) {
-    final result = <String>[];
-    final seen = <String>{};
-    for (final s in [...ai, ...existing]) {
-      if (result.length >= 4) break;
-      // 精确去重
-      if (seen.contains(s)) continue;
-      // 近似去重：任一已有条目是当前条目的子串（≥4 字），或反之
-      final isSimilar = result.any((r) {
-        final shorter = r.length < s.length ? r : s;
-        final longer = r.length < s.length ? s : r;
-        return shorter.length >= 4 && longer.contains(shorter);
-      });
-      if (isSimilar) continue;
-      result.add(s);
-      seen.add(s);
-    }
-    return result;
-  }
-
   void _closeDrawer() {
     setState(() => _drawerOpen = false);
   }
@@ -281,8 +201,37 @@ class _HomePageState extends State<HomePage>
     SettingsPanel.show(context);
   }
 
-  void _handleSuggestionSelect(String suggestion) {
-    _handleChatSend(suggestion);
+  void _openMemory() {
+    _closeDrawer();
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const MemoryCenterPage()));
+  }
+
+  void _handleSuggestionSelect(MemorySuggestion suggestion) {
+    final result = _handleChatSend(suggestion.text);
+    if (result == ChatSendResult.accepted) {
+      final store = SumiScope.read(context);
+      store.memoryService?.recordSelected(suggestion).then((_) => store.scheduleLocalIndex());
+    }
+  }
+
+  Future<void> _handleSuggestionFeedback(
+    MemorySuggestion suggestion,
+    bool disableTopic,
+  ) async {
+    final store = SumiScope.read(context);
+    await store.memoryService?.recordFeedback(
+      suggestion,
+      disableTopic: disableTopic,
+    );
+    store.scheduleLocalIndex();
+    if (!mounted) return;
+    setState(
+      () => _suggestions.removeWhere(
+        (item) => item.eventId == suggestion.eventId,
+      ),
+    );
+    store.setSuggestionsDirty(true);
+    _generateSuggestions();
   }
 
   ChatSendResult _handleChatSend(String content) {
@@ -307,8 +256,10 @@ class _HomePageState extends State<HomePage>
     final store = SumiScope.read(context);
     if (title.length > SumiStore.todoTitleMaxLength) {
       await store.splitAndAddTodo(title);
+      return;
     } else {
-      store.addUserTodo(title);
+      final todo = await store.addUserTodo(title);
+      if (todo == null || !mounted) return;
     }
   }
 
@@ -453,24 +404,27 @@ class _HomePageState extends State<HomePage>
                             _buildEmptyState(store, userName)
                           else
                             _buildMessageList(chat, store),
-                        // 顶部渐变遮罩 —— 衔接日历导航栏
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          height: 24,
-                          child: IgnorePointer(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [paper, paper.withValues(alpha: 0.0)],
+                          // 顶部渐变遮罩 —— 衔接日历导航栏
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 24,
+                            child: IgnorePointer(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      paper,
+                                      paper.withValues(alpha: 0.0),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
                         ],
                       ),
                     ),
@@ -494,6 +448,7 @@ class _HomePageState extends State<HomePage>
                             SuggestionStrip(
                               suggestions: _suggestions,
                               onSelect: _handleSuggestionSelect,
+                              onFeedback: _handleSuggestionFeedback,
                               enabled: !chat.isStreaming,
                             ),
                             ChatInput(
@@ -549,6 +504,7 @@ class _HomePageState extends State<HomePage>
             isOpen: _drawerOpen,
             onClose: _closeDrawer,
             onOpenSettings: _openSettings,
+            onOpenMemory: _openMemory,
           ),
           // 左边缘手势区：仅覆盖内容区域，避开顶部 DateStrip 和底部输入栏
           _buildGestureArea(topPadding, bottomPadding),

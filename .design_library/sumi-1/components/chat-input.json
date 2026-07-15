@@ -4,46 +4,61 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "Floating capsule input bar: pill-shaped container with send button embedded inside the capsule on the right side, no leading icon, long-press voice input support. Liquid glass aesthetic with soft shadow elevation.",
+  "description": "Floating capsule input bar: left mode-switch button (44x44 circle) + pill-shaped text field + right send button (44x44 circle) embedded inside the capsule, long-press voice input support. Liquid glass aesthetic with soft shadow elevation and BackdropFilter blur(24).",
   "variants": [
     {
-      "id": "default",
-      "name": "Default",
-      "description": "Capsule container with placeholder text, send button hidden when empty"
+      "id": "mode-todo",
+      "name": "Todo Mode",
+      "description": "模式切换按钮显示 todo 模式：mintDeep (primary-500) 背景 + 白色 swap_horiz 图标"
+    },
+    {
+      "id": "mode-chat",
+      "name": "Chat Mode",
+      "description": "模式切换按钮显示 chat 模式：primary-50 背景 + primary-500 swap_horiz 图标"
     },
     {
       "id": "recording",
       "name": "Recording",
-      "description": "Long-press triggered voice recording state: primary@8% background, primary@50% border, placeholder '正在收听…'"
+      "description": "Long-press triggered voice recording state: border 变 mintDeep@60%，背景无变化，录音提示 8x8 圆点 + 13px w500 文字（cancel=textTertiary, listening=danger）"
     }
   ],
   "states": [
-    { "name": "default", "description": "Empty input with placeholder, no send button" },
-    { "name": "has-text", "description": "Text entered, send button appears inside capsule on the right" },
-    { "name": "focused", "description": "Capsule with subtle glow/shadow enhancement" },
+    { "name": "default", "description": "Empty input with placeholder, send button hidden (scale 0.6)" },
+    { "name": "has-text", "description": "Text entered, send button visible (AnimatedScale to 1.0) inside capsule on the right" },
+    { "name": "pressed", "description": "Mode-switch button pressed: scale(0.88) 缩放效果" },
     { "name": "loading", "description": "AI processing, input field disabled, send button hidden" }
   ],
   "renderHints": {
-    "radius": "var(--radius-full)",
-    "bg": "var(--color-surface)",
-    "bgOpacity": "0.85",
-    "backdropFilter": "blur(20px) saturate(180%)",
-    "border": "1px solid rgba(255,255,255,0.3)",
-    "shadow": "0 2px 16px rgba(0,0,0,0.08), 0 0 1px rgba(0,0,0,0.04)",
-    "shadowFocused": "0 4px 24px rgba(75,63,227,0.12), 0 0 1px rgba(75,63,227,0.2)",
+    "radius": "var(--radius-pill)",
+    "bg": "rgba(255,255,255,0.82)",
+    "border": "0.5px solid rgba(255,255,255,0.50)",
+    "backdropFilter": "blur(24px)",
+    "shadow": "0 2px 20px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.03)",
     "textColor": "var(--color-on-surface)",
     "placeholderColor": "var(--color-muted-foreground)",
-    "fontSize": "var(--font-size-body)",
+    "fontSize": "16px",
     "minHeight": "48px",
-    "maxHeight": "120px",
+    "maxHeight": "200px",
     "maxLines": 4,
     "padding": "var(--space-5) var(--space-6) var(--space-5) var(--space-7)",
     "gap": "8px",
-    "sendButtonSize": "32px",
+    "modeButtonSize": "44px",
+    "modeButtonRadius": "50%",
+    "modeButtonPressedScale": "0.88",
+    "sendButtonSize": "44px",
     "sendButtonRadius": "50%",
-    "sendButtonBg": "var(--color-primary)",
+    "sendButtonBg": "var(--color-primary-500)",
     "sendButtonIconColor": "#ffffff",
-    "sendButtonPosition": "inside-capsule-right"
+    "sendButtonIconSize": "22px",
+    "sendButtonPosition": "inside-capsule-right",
+    "sendButtonHiddenScale": "0.6",
+    "sendButtonVisibleScale": "1.0",
+    "recordingBorderColor": "rgba(var(--color-primary-500), 0.6)",
+    "recordingDotSize": "8px",
+    "recordingDotCancelColor": "var(--color-text-tertiary)",
+    "recordingDotListeningColor": "var(--color-danger)",
+    "recordingTextFontSize": "13px",
+    "recordingTextWeight": "500"
   },
   "features": [
     {

@@ -83,7 +83,6 @@ class ProjectTabs extends StatelessWidget {
   static void _openEditor(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        fullscreenDialog: true,
         builder: (_) => const ProjectEditorPage(),
       ),
     );
@@ -125,7 +124,7 @@ class ProjectTabs extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed == true) store.deleteProject(project.id);
+    if (confirmed == true) await store.deleteProject(project.id);
   }
 }
 

@@ -329,13 +329,27 @@ class AppTheme {
         ),
       ),
 
+      // AppBar — 二级页面统一样式
+      appBarTheme: const AppBarTheme(
+        backgroundColor: paper,
+        surfaceTintColor: paper,
+        elevation: 0,
+        scrolledUnderElevation: 2,
+        centerTitle: false,
+        titleTextStyle: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: ink,
+        ),
+      ),
+
       // SnackBar — floating with design spec radius
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius12),
         ),
-        backgroundColor: primary800,
+        backgroundColor: neutral800,
       ),
 
       // Switch — iOS style: white thumb + solid track (Material3 compatible)

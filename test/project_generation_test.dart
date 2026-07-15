@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sumi/models/models.dart';
 import 'package:sumi/services/ai_runtime.dart';
+import 'package:sumi/services/model_router.dart';
 import 'package:sumi/services/project_generation.dart';
 
 http.Response _assessmentResponse() => http.Response(
@@ -87,7 +88,7 @@ void main() {
     );
     final coordinator = ProjectGenerationCoordinator(
       request: _request(),
-      runtime: runtime,
+      router: ModelRouter.fromRuntime(runtime),
       commit: (_, assessment, plan) async {
         commits++;
         expect(assessment?.goalSummary, '学习测试');
@@ -136,7 +137,7 @@ void main() {
     );
     final coordinator = ProjectGenerationCoordinator(
       request: _request(),
-      runtime: runtime,
+      router: ModelRouter.fromRuntime(runtime),
       commit: (_, _, _) async {},
     );
     addTearDown(coordinator.dispose);
@@ -160,7 +161,7 @@ void main() {
     );
     final coordinator = ProjectGenerationCoordinator(
       request: _request(),
-      runtime: runtime,
+      router: ModelRouter.fromRuntime(runtime),
       commit: (_, _, _) async => commits++,
     );
     addTearDown(coordinator.dispose);
@@ -181,7 +182,7 @@ void main() {
     );
     final coordinator = ProjectGenerationCoordinator(
       request: _request(),
-      runtime: runtime,
+      router: ModelRouter.fromRuntime(runtime),
       commit: (_, _, _) async {},
     );
     addTearDown(coordinator.dispose);

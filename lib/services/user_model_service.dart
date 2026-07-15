@@ -85,7 +85,10 @@ class UserModelService {
       try {
         final backups = await file.parent
             .list()
-            .where((entry) => entry is io.File && entry.path.startsWith('$path.bak.'))
+            .where(
+              (entry) =>
+                  entry is io.File && entry.path.startsWith('$path.bak.'),
+            )
             .cast<io.File>()
             .toList();
         backups.sort((a, b) => b.path.compareTo(a.path));
@@ -150,10 +153,14 @@ class UserModelService {
     var migrated = '$before\n\n## 历史迁移（来自 MEMORY.md）\n$memories\n\n$after';
 
     // 确保不超过 8 条核心记忆的硬限制——其余移到归档区
-    final coreCount = '---'.allMatches(migrated.substring(
-      migrated.indexOf('## 核心记忆'),
-      migrated.indexOf('<!-- END CORE MEMORY -->'),
-    )).length;
+    final coreCount = '---'
+        .allMatches(
+          migrated.substring(
+            migrated.indexOf('## 核心记忆'),
+            migrated.indexOf('<!-- END CORE MEMORY -->'),
+          ),
+        )
+        .length;
     if (coreCount > 8) {
       migrated = _moveExcessToArchive(migrated, 8);
     }
@@ -169,9 +176,15 @@ class UserModelService {
   Future<Map<String, String>> computeRealtimeStats() async {
     // 一次查询本周信号，内存中分类统计
     final weekSignals = await _signalDb.query(range: '7d', limit: 1000);
-    final completed = weekSignals.where((s) => s.signal == SignalType.todoCompleted).length;
-    final created = weekSignals.where((s) => s.signal == SignalType.todoCreated).length;
-    final moved = weekSignals.where((s) => s.signal == SignalType.todoMovedDate).length;
+    final completed = weekSignals
+        .where((s) => s.signal == SignalType.todoCompleted)
+        .length;
+    final created = weekSignals
+        .where((s) => s.signal == SignalType.todoCreated)
+        .length;
+    final moved = weekSignals
+        .where((s) => s.signal == SignalType.todoMovedDate)
+        .length;
     final total = created > 0 ? created : 1;
     final rate = (completed * 100.0 / total).round();
 
@@ -184,7 +197,8 @@ class UserModelService {
     if (hourly.length >= 2) {
       final h1 = hourly[0]['hour']!;
       final h2 = hourly[1]['hour']!;
-      primeTime = '${h1.toString().padLeft(2, '0')}:00-${h2.toString().padLeft(2, '0')}:00';
+      primeTime =
+          '${h1.toString().padLeft(2, '0')}:00-${h2.toString().padLeft(2, '0')}:00';
     }
 
     // 活跃项目数（从本周信号中提取，复用 weekSignals）
@@ -211,12 +225,15 @@ class UserModelService {
     final signals = await _signalDb.query(range: 'all', limit: 2000);
     final activeDays = <String>{};
     for (final s in signals) {
-      activeDays.add('${s.time.year}-${s.time.month.toString().padLeft(2, '0')}-${s.time.day.toString().padLeft(2, '0')}');
+      activeDays.add(
+        '${s.time.year}-${s.time.month.toString().padLeft(2, '0')}-${s.time.day.toString().padLeft(2, '0')}',
+      );
     }
     var streak = 0;
     for (var d = 0; d < 365; d++) {
       final day = DateTime.now().subtract(Duration(days: d));
-      final dayStr = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      final dayStr =
+          '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
       if (activeDays.contains(dayStr)) {
         streak++;
       } else if (d > 0) {
@@ -254,9 +271,15 @@ class UserModelService {
       return fullContent.replaceAll(pattern, newSection);
     }
     // 如果模板中没有该区块，在文件头部（# Sumi 对你的理解 之后）插入
-    final titleMatch = RegExp(r'^# .*$', multiLine: true).firstMatch(fullContent);
+    final titleMatch = RegExp(
+      r'^# .*$',
+      multiLine: true,
+    ).firstMatch(fullContent);
     if (titleMatch != null) {
-      return fullContent.replaceFirst(titleMatch.group(0)!, '${titleMatch.group(0)!}\n\n$newSection');
+      return fullContent.replaceFirst(
+        titleMatch.group(0)!,
+        '${titleMatch.group(0)!}\n\n$newSection',
+      );
     }
     return '$newSection\n\n$fullContent';
   }
@@ -265,14 +288,14 @@ class UserModelService {
   // 按层 prompt 拼接
   // ---------------------------------------------------------------------------
 
-  /// HOT 层：实时状态（系统拼接） + 核心记忆 ≤ 8 条。
-  /// token 预算 ~350。
+  /// HOT 层：实时状态 + 最多 4 条用户明确的核心记忆。
+  /// 行为推断存于本地假设表，不写入 Markdown。
   String buildHotPrompt(String fullContent) {
     final statsSection = _extractSection(fullContent, '实时状态');
     final coreSection = _extractSection(fullContent, '核心记忆');
 
     // 限制核心记忆条目数
-    final trimmedCore = _trimCoreMemory(coreSection, 8);
+    final trimmedCore = _trimCoreMemory(coreSection, 4);
 
     final buf = StringBuffer();
     buf.writeln(statsSection);
@@ -282,8 +305,7 @@ class UserModelService {
     return buf.toString();
   }
 
-  /// WARM 层：长期偏好。
-  /// token 预算 ~100。
+  /// 仅供显式 read_memory 或规划使用，不在普通对话自动注入。
   String buildWarmPrefsPrompt(String fullContent) {
     return _extractSection(fullContent, '长期偏好');
   }
@@ -321,8 +343,10 @@ class UserModelService {
     for (final entry in entries) {
       // 去掉置信度标记再比较
       final normalizedEntry = entry.replaceFirst(RegExp(r'^-\s*'), '');
-      final strippedEntry =
-          normalizedEntry.replaceFirst(RegExp(r'^\[.*?\]\s*'), '');
+      final strippedEntry = normalizedEntry.replaceFirst(
+        RegExp(r'^\[.*?\]\s*'),
+        '',
+      );
       final sim = _diceCoefficient(newEntry, strippedEntry);
       if (sim > maxSim) {
         maxSim = sim;
@@ -420,7 +444,9 @@ $_systemManagedSection
   String _extractSection(String content, String sectionTitle) {
     final start = content.indexOf('## $sectionTitle');
     if (start == -1) return '';
-    final nextSection = RegExp(r'\n## \S').firstMatch(content.substring(start + 3));
+    final nextSection = RegExp(
+      r'\n## \S',
+    ).firstMatch(content.substring(start + 3));
     if (nextSection != null) {
       return content.substring(start, start + 3 + nextSection.start).trim();
     }
@@ -477,11 +503,16 @@ $_systemManagedSection
     final positiveIndicators = ['喜欢', '偏好', '习惯', '适合', '高效'];
 
     final newHasNegative = negativeIndicators.any((w) => newEntry.contains(w));
-    final existingHasPositive = positiveIndicators.any((w) => existing.contains(w));
+    final existingHasPositive = positiveIndicators.any(
+      (w) => existing.contains(w),
+    );
     final newHasPositive = positiveIndicators.any((w) => newEntry.contains(w));
-    final existingHasNegative = negativeIndicators.any((w) => existing.contains(w));
+    final existingHasNegative = negativeIndicators.any(
+      (w) => existing.contains(w),
+    );
 
-    return (newHasNegative && existingHasPositive) || (newHasPositive && existingHasNegative);
+    return (newHasNegative && existingHasPositive) ||
+        (newHasPositive && existingHasNegative);
   }
 
   /// 将超出限额的条目从核心记忆移到归档区。

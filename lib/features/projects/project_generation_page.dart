@@ -26,7 +26,7 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
     final store = SumiScope.read(context);
     _coordinator = ProjectGenerationCoordinator(
       request: widget.request,
-      runtime: store.aiRuntime!,
+      router: store.modelRouter!,
       commit: store.commitProjectPlan,
     );
     _coordinator.start();

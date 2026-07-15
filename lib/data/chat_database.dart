@@ -93,6 +93,22 @@ class ChatDatabase {
     )).toList();
   }
 
+  /// Loads persisted messages for rebuilding the local semantic index.
+  Future<List<ChatMessage>> loadAllMessages() async {
+    final db = await _db;
+    final rows = await db.query('messages', orderBy: 'created_at ASC');
+    return rows.map((row) => ChatMessage(
+      id: row['id'] as String,
+      conversationId: (row['conversation_id'] as String?) ?? '',
+      role: (row['role'] as String?) ?? 'user',
+      content: (row['content'] as String?) ?? '',
+      createdAt: DateTime.tryParse((row['created_at'] as String?) ?? '') ?? DateTime.now(),
+      reasoningContent: row['reasoning_content'] as String?,
+      toolCallsJson: row['tool_calls_json'] as String?,
+      toolCallId: row['tool_call_id'] as String?,
+    )).toList(growable: false);
+  }
+
   /// 保存单条消息。
   Future<void> saveMessage(ChatMessage message) async {
     final db = await _db;

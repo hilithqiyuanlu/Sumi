@@ -8,16 +8,19 @@ enum ChatSendResult { accepted, empty, busy, missingApiKey }
 
 mixin SumiStoreChat {
   ChatDatabase? get chatDatabase;
-  ChatAgentService? get chatAgent;
+  ChatCapability? get chatAgent;
   ToolExecutor? get toolExecutor;
   bool get thinkingEnabled;
   DateTime get selectedDate;
   set selectedDate(DateTime d);
   void triggerNavigateToToday();
-  UserModelService? get userModelService; // 07 轮
+  MemoryService? get memoryService;
+  MemoryExtractionService? get memoryExtractionService;
   AppSettings get appSettings;
   List<Project> get projectList;
   ChatController get chatController;
+  LocalRetrievalService get localRetrieval;
+  void scheduleLocalIndex();
 
   // --- 状态 ---
   String? _currentConversationId;
@@ -29,8 +32,13 @@ mixin SumiStoreChat {
 
   String? _currentToolCallLabel;
   ChatFailure? _chatFailure;
+  String? _chatFailureConversationId;
   int _messageSentSequence = 0;
   Timer? _chatPublishTimer;
+
+  // 流式请求必须绑定到创建它的会话和占位消息，不能依赖当前列表的位置。
+  String? _streamConversationId;
+  String? _streamAssistantMessageId;
 
   /// 用户发起对话时的首页问候语（仅首条消息注入一次上下文）
   String? _activeGreeting;
@@ -59,16 +67,84 @@ mixin SumiStoreChat {
 
   void _emitChatViewState() {
     _chatPublishTimer = null;
+    final isShowingStream =
+        _isStreaming && _streamConversationId == _currentConversationId;
     chatController.view.value = ChatViewState(
       conversationId: _currentConversationId,
       messages: List.unmodifiable(_currentMessages),
-      isStreaming: _isStreaming,
+      isStreaming: isShowingStream,
       isLoadingConversation: _isLoadingConversation,
       isTemporaryConversation: _isTemporaryConversation,
-      activityLabel: _currentToolCallLabel,
+      activityLabel: isShowingStream ? _currentToolCallLabel : null,
       messageSentSequence: _messageSentSequence,
-      failure: _chatFailure,
+      failure: _chatFailureConversationId == _currentConversationId
+          ? _chatFailure
+          : null,
     );
+  }
+
+  bool _isCurrentConversation(String conversationId) =>
+      _currentConversationId == conversationId;
+
+  void _startStreaming(String conversationId, String assistantMessageId) {
+    _isStreaming = true;
+    _streamConversationId = conversationId;
+    _streamAssistantMessageId = assistantMessageId;
+  }
+
+  void _finishStreaming(String assistantMessageId) {
+    if (_streamAssistantMessageId != assistantMessageId) return;
+    _isStreaming = false;
+    _streamConversationId = null;
+    _streamAssistantMessageId = null;
+    _currentToolCallLabel = null;
+  }
+
+  void _updateCurrentAssistantMessage({
+    required String conversationId,
+    required String assistantMessageId,
+    required String content,
+    String? toolCallsJson,
+    bool insertIfMissing = false,
+  }) {
+    if (!_isCurrentConversation(conversationId)) return;
+    final index = _currentMessages.indexWhere(
+      (message) =>
+          message.id == assistantMessageId &&
+          message.conversationId == conversationId &&
+          message.role == 'assistant',
+    );
+    if (index >= 0) {
+      _currentMessages[index] = _currentMessages[index].copyWith(
+        content: content,
+        toolCallsJson: toolCallsJson,
+      );
+    } else if (insertIfMissing) {
+      _currentMessages = [
+        ..._currentMessages,
+        ChatMessage(
+          id: assistantMessageId,
+          conversationId: conversationId,
+          role: 'assistant',
+          content: content,
+          createdAt: DateTime.now(),
+          toolCallsJson: toolCallsJson,
+        ),
+      ];
+    }
+  }
+
+  void _removeCurrentMessage(String conversationId, String messageId) {
+    if (!_isCurrentConversation(conversationId)) return;
+    _currentMessages.removeWhere(
+      (message) =>
+          message.id == messageId && message.conversationId == conversationId,
+    );
+  }
+
+  void _setChatFailure(String conversationId, ChatFailure failure) {
+    _chatFailureConversationId = conversationId;
+    _chatFailure = failure;
   }
 
   void disposeChatView() {
@@ -146,6 +222,7 @@ mixin SumiStoreChat {
       await db.deleteMessagesByIds(idsToDelete);
     }
     _currentMessages.removeRange(userMsgIndex, endIndex + 1);
+    scheduleLocalIndex();
     _publishChatState();
   }
 
@@ -158,7 +235,9 @@ mixin SumiStoreChat {
     _currentConversationId = null;
     _currentDateKey = null;
     _currentMessages.clear();
+    scheduleLocalIndex();
     _chatFailure = null;
+    _chatFailureConversationId = null;
     _publishChatState();
   }
 
@@ -181,7 +260,10 @@ mixin SumiStoreChat {
     }
 
     _isStreaming = true;
+    _streamConversationId = _currentConversationId;
+    _streamAssistantMessageId = null;
     _chatFailure = null;
+    _chatFailureConversationId = null;
     _currentToolCallLabel = '正在生成回复';
     _publishChatState();
     unawaited(
@@ -200,7 +282,7 @@ mixin SumiStoreChat {
     String content, {
     required String? currentGreeting,
     required ChatDatabase? db,
-    required ChatAgentService svc,
+    required ChatCapability svc,
     required ToolExecutor exec,
   }) async {
     // 记录问候语上下文（仅用于新会话首条消息）
@@ -212,6 +294,7 @@ mixin SumiStoreChat {
 
     String? userMessageId;
     String? assistantMessageId;
+    String? conversationId;
     try {
       if (isFuture) {
         // 未来日期：留在当前日期，使用临时会话
@@ -225,6 +308,7 @@ mixin SumiStoreChat {
         }
       }
       final convId = _currentConversationId!;
+      conversationId = convId;
       if (convId.isEmpty) return;
       final isTemporary = _isTemporaryConversation;
 
@@ -242,6 +326,18 @@ mixin SumiStoreChat {
         await db.touchConversation(convId);
       }
       _currentMessages = [..._currentMessages, userMsg];
+      if (!isTemporary) scheduleLocalIndex();
+      if (!isTemporary) {
+        final extractor = memoryExtractionService;
+        if (extractor != null) {
+          unawaited(
+            extractor.process(
+              messageId: userMessageId,
+              message: userMsg.content,
+            ),
+          );
+        }
+      }
       _messageSentSequence++;
       _publishChatState();
 
@@ -257,6 +353,7 @@ mixin SumiStoreChat {
           createdAt: DateTime.now(),
         ),
       ];
+      _startStreaming(convId, assistantMessageId);
       _publishChatState();
 
       final messages = await _buildMessagesContextForAgent(
@@ -281,18 +378,27 @@ mixin SumiStoreChat {
       }
     } catch (e) {
       debugPrint('[sendMessage] 异常: $e');
-      _isStreaming = false;
-      _currentToolCallLabel = null;
       if (assistantMessageId != null) {
-        _currentMessages.removeWhere((m) => m.id == assistantMessageId);
+        _finishStreaming(assistantMessageId);
+        if (conversationId != null) {
+          _removeCurrentMessage(conversationId, assistantMessageId);
+        }
       }
       if (userMessageId != null) {
-        _chatFailure = ChatFailure(
-          userMessageId: userMessageId,
-          message: '准备回复时遇到错误，请重试。',
-          retryable: true,
-        );
+        final failureConversationId = conversationId ?? _currentConversationId;
+        if (failureConversationId != null) {
+          _setChatFailure(
+            failureConversationId,
+            ChatFailure(
+              userMessageId: userMessageId,
+              message: '准备回复时遇到错误，请重试。',
+              retryable: true,
+            ),
+          );
+        }
       }
+      _isStreaming = false;
+      _currentToolCallLabel = null;
       _publishChatState();
     }
     _publishChatState();
@@ -306,11 +412,13 @@ mixin SumiStoreChat {
     if (failure == null || !failure.retryable || _isStreaming) return;
     if (svc == null || exec == null || convId == null) return;
     final userExists = _currentMessages.any(
-      (message) => message.id == failure.userMessageId && message.role == 'user',
+      (message) =>
+          message.id == failure.userMessageId && message.role == 'user',
     );
     if (!userExists) return;
 
     _chatFailure = null;
+    _chatFailureConversationId = null;
     _isStreaming = true;
     _currentToolCallLabel = '正在准备回复';
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
@@ -324,6 +432,7 @@ mixin SumiStoreChat {
         createdAt: DateTime.now(),
       ),
     ];
+    _startStreaming(convId, assistantMsgId);
     _publishChatState();
 
     try {
@@ -343,13 +452,15 @@ mixin SumiStoreChat {
       );
     } catch (e) {
       debugPrint('[retryLastFailedMessage] 异常: $e');
-      _currentMessages.removeWhere((message) => message.id == assistantMsgId);
-      _isStreaming = false;
-      _currentToolCallLabel = null;
-      _chatFailure = ChatFailure(
-        userMessageId: failure.userMessageId,
-        message: '准备回复时遇到错误，请重试。',
-        retryable: true,
+      _removeCurrentMessage(convId, assistantMsgId);
+      _finishStreaming(assistantMsgId);
+      _setChatFailure(
+        convId,
+        ChatFailure(
+          userMessageId: failure.userMessageId,
+          message: '准备回复时遇到错误，请重试。',
+          retryable: true,
+        ),
       );
       _publishChatState();
     }
@@ -412,7 +523,7 @@ mixin SumiStoreChat {
         createdAt: DateTime.now(),
       ),
     ];
-    _isStreaming = true;
+    _startStreaming(convId, assistantMsgId);
     _publishChatState();
 
     await _streamAndPersistReply(
@@ -448,7 +559,7 @@ mixin SumiStoreChat {
     required String userMessageId,
     required String convId,
     required ChatDatabase? db,
-    required ChatAgentService svc,
+    required ChatCapability svc,
     required ToolExecutor exec,
     bool isTemporary = false,
   }) async {
@@ -479,12 +590,11 @@ mixin SumiStoreChat {
         switch (event) {
           case ContentDelta(text: final t):
             contentBuf.write(t);
-            final lastIdx = _currentMessages.length - 1;
-            if (lastIdx >= 0) {
-              _currentMessages[lastIdx] = _currentMessages[lastIdx].copyWith(
-                content: contentBuf.toString(),
-              );
-            }
+            _updateCurrentAssistantMessage(
+              conversationId: convId,
+              assistantMessageId: assistantMsgId,
+              content: contentBuf.toString(),
+            );
             _currentToolCallLabel = null;
             _publishChatState(throttled: true);
           case ReasoningDelta():
@@ -506,20 +616,19 @@ mixin SumiStoreChat {
     }
 
     if (agentError != null) {
-      _isStreaming = false;
-      _currentToolCallLabel = null;
-      _currentMessages.removeWhere((message) => message.id == assistantMsgId);
-      _chatFailure = ChatFailure(
-        userMessageId: userMessageId,
-        message: agentError,
-        retryable: toolCallsList.isEmpty,
+      _removeCurrentMessage(convId, assistantMsgId);
+      _finishStreaming(assistantMsgId);
+      _setChatFailure(
+        convId,
+        ChatFailure(
+          userMessageId: userMessageId,
+          message: agentError,
+          retryable: toolCallsList.isEmpty,
+        ),
       );
       _publishChatState();
       return;
     }
-
-    _isStreaming = false;
-    _currentToolCallLabel = null;
 
     // 持久化 AI 回复（临时会话仅内存）
     final finalContent = contentBuf.toString();
@@ -528,13 +637,13 @@ mixin SumiStoreChat {
           ? jsonEncode(toolCallsList)
           : null;
 
-      final lastIdx = _currentMessages.length - 1;
-      if (lastIdx >= 0) {
-        _currentMessages[lastIdx] = _currentMessages[lastIdx].copyWith(
-          content: finalContent,
-          toolCallsJson: finalToolCallsJson,
-        );
-      }
+      _updateCurrentAssistantMessage(
+        conversationId: convId,
+        assistantMessageId: assistantMsgId,
+        content: finalContent,
+        toolCallsJson: finalToolCallsJson,
+        insertIfMissing: true,
+      );
 
       if (!isTemporary && db != null) {
         await db.saveMessage(
@@ -547,9 +656,10 @@ mixin SumiStoreChat {
             toolCallsJson: finalToolCallsJson,
           ),
         );
+        scheduleLocalIndex();
       }
     } else {
-      _currentMessages.removeLast();
+      _removeCurrentMessage(convId, assistantMsgId);
     }
 
     // 持久化本轮新增的 tool 结果消息（临时会话仅内存）
@@ -567,9 +677,12 @@ mixin SumiStoreChat {
         if (!isTemporary && db != null) {
           await db.saveMessage(toolMsg);
         }
-        _currentMessages = [..._currentMessages, toolMsg];
+        if (_isCurrentConversation(convId)) {
+          _currentMessages = [..._currentMessages, toolMsg];
+        }
       }
     }
+    _finishStreaming(assistantMsgId);
     _publishChatState();
   }
 
@@ -578,32 +691,25 @@ mixin SumiStoreChat {
   // ---------------------------------------------------------------------------
 
   Future<String> _buildSystemPrompt({String? greeting}) async {
-    final ums = userModelService;
     var hotPrompt = '';
-    var warmPrefs = '';
-    if (ums != null) {
+    final query =
+        _currentMessages
+            .where((message) => message.role == 'user')
+            .cast<ChatMessage?>()
+            .lastWhere((message) => message != null, orElse: () => null)
+            ?.content ??
+        '';
+    if (memoryService != null && query.isNotEmpty) {
       try {
-        final model = await ums.readUserModel();
-        var modelWithStats = model;
-        try {
-          final stats = await ums.computeRealtimeStats();
-          stats['userName'] = appSettings.userName.isNotEmpty
-              ? appSettings.userName
-              : '未设置';
-          modelWithStats = ums.injectRealtimeStats(model, stats);
-        } catch (e) {
-          debugPrint('[chatContext] 行为统计不可用，已跳过: $e');
-        }
-        hotPrompt = ums.buildHotPrompt(modelWithStats);
-        warmPrefs = ums.buildWarmPrefsPrompt(modelWithStats);
+        final memories = await memoryService!.hotForAgent(query);
+        hotPrompt = memories.map((item) => '- ${item.content}').join('\n');
       } catch (e) {
-        debugPrint('[chatContext] 用户模型不可用，已跳过: $e');
+        debugPrint('[chatContext] 记忆不可用，已跳过: $e');
       }
     }
 
     return ChatPromptBuilder.build(
       hotMemory: hotPrompt,
-      warmPreferences: warmPrefs,
       projects: projectList
           .map(
             (project) => {
@@ -632,6 +738,34 @@ mixin SumiStoreChat {
     final messages = <Map<String, Object?>>[
       {'role': 'system', 'content': systemPrompt},
     ];
+
+    final userQuery = _currentMessages
+        .where((message) => message.role == 'user')
+        .cast<ChatMessage?>()
+        .lastWhere((message) => message != null, orElse: () => null)
+        ?.content;
+    if (userQuery != null && localRetrieval.shouldRetrieve(userQuery)) {
+      try {
+        _currentToolCallLabel = '正在查找你的学习记录';
+        _publishChatState();
+        final retrieved = await localRetrieval.retrieve(userQuery);
+        if (retrieved.isNotEmpty) {
+          messages.add({
+            'role': 'system',
+            'content': PromptContext.dataBlock(
+              kind: 'local_retrieval',
+              source: 'on_device_embedding',
+              data: LocalRetrievalService.promptData(retrieved),
+            ),
+          });
+        }
+      } catch (error) {
+        debugPrint('[localRetrieval] 已跳过: $error');
+      } finally {
+        _currentToolCallLabel = '正在生成回复';
+        _publishChatState();
+      }
+    }
 
     final contextMessages = _selectCompleteTurns(
       excludeMessageId == null

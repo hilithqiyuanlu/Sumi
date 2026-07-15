@@ -5,12 +5,17 @@
   "confidence": "high",
   "intentKind": "simple",
   "category": "navigation",
-  "description": "Scaffold 顶部导航栏。leading 为 menu 图标，trailing 为 tune 图标。title 区域动态显示 AI 状态",
+  "description": "Scaffold 顶部导航栏，包含主页面和二级页面两种变体",
   "variants": [
     {
-      "id": "chat-bar",
-      "name": "Chat Bar",
-      "description": "左侧 menu + 右侧 tune，标题区显示 AI 状态"
+      "id": "primary-bar",
+      "name": "Primary Bar",
+      "description": "主页面 AppBar：左侧 menu + 右侧 tune，标题区显示 AI 状态"
+    },
+    {
+      "id": "secondary-bar",
+      "name": "Secondary Bar",
+      "description": "二级页面 AppBar：左侧 arrow_back + 居左标题，滚动时出现微阴影"
     }
   ],
   "states": [
@@ -25,6 +30,10 @@
     {
       "name": "tool-calling",
       "description": "标题区显示工具名称+省略号"
+    },
+    {
+      "name": "scrolled",
+      "description": "内容滚动超过 AppBar 底部时，出现 scrolledUnderElevation 阴影"
     }
   ],
   "renderHints": {
@@ -33,13 +42,26 @@
     "iconColor": "var(--on-surface-variant)",
     "statusFontSize": "var(--font-size-body-md)",
     "statusColor": "var(--on-surface-variant)",
-    "iconSize": "var(--size-icon-md)"
+    "iconSize": "var(--size-icon-md)",
+    "secondary": {
+      "bgColor": "var(--bg)",
+      "surfaceTintColor": "var(--bg)",
+      "elevation": 0,
+      "scrolledUnderElevation": 2,
+      "centerTitle": false,
+      "titleFontSize": "16px",
+      "titleFontWeight": 600,
+      "titleColor": "var(--fg)",
+      "leadingIcon": "arrow_back",
+      "surfaceTintColor": "transparent"
+    }
   },
   "uiCopySamples": {
     "thinkingStatus": "思考中...",
     "toolCallingStatus": "正在调用日历...",
     "leadingIcon": "menu",
-    "trailingIcon": "tune"
+    "trailingIcon": "tune",
+    "secondaryLeadingIcon": "arrow_back"
   },
   "unknowns": []
 }

@@ -11,28 +11,35 @@
       padding: 0;
       background: var(--neutral-100);
       font-family: var(--font-body);
-      color: var(--on-surface);
+      color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
     .preview-container {
       max-width: 390px;
       margin: 0 auto;
       padding: 16px;
-      background: var(--surface);
+      background: var(--paper);
       min-height: 100vh;
     }
 
-    /* Variant title */
     .variant-title {
-      font-size: var(--font-size-body-sm);
+      font-size: 10px;
       font-weight: 600;
-      color: var(--on-surface-variant);
+      color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-bottom: var(--space-6);
     }
     .variant-section + .variant-section {
       margin-top: var(--space-9);
+    }
+
+    /* Calendar nav wrapper — white bg + radiusCardHeader */
+    .calendar-wrapper {
+      background: var(--paper);
+      border-radius: var(--radius-card-header);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-1);
     }
 
     /* Calendar nav horizontal scroll */
@@ -43,12 +50,12 @@
       padding-bottom: var(--space-2);
     }
 
-    /* Date chip */
+    /* Date chip — 52x72, radiusCard */
     .date-chip {
       flex-shrink: 0;
-      width: 48px;
-      height: 68px;
-      border-radius: var(--radius-12);
+      width: 52px;
+      height: 72px;
+      border-radius: var(--radius-card);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -58,51 +65,60 @@
     }
 
     .date-chip .weekday {
-      font-size: var(--font-size-body-sm);
+      font-size: 13px;
       font-weight: 600;
-      color: var(--on-surface-variant);
+      color: var(--text-tertiary);
       line-height: 1;
     }
 
     .date-chip .day {
       font-size: 20px;
       font-weight: 700;
-      color: var(--on-surface);
+      color: var(--ink);
       line-height: 1;
     }
 
     .date-chip .task-dot-wrapper {
-      width: var(--space-4);
-      height: var(--space-4);
+      width: 4px;
+      height: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .date-chip .task-dot {
-      width: var(--space-4);
-      height: var(--space-4);
+      width: 4px;
+      height: 4px;
       border-radius: 50%;
-      background: var(--primary-400);
+      background: var(--task-dot);
     }
 
-    /* Today state */
+    /* Today state — primary100@50% bg */
     .date-chip.today {
-      background: rgba(229, 234, 255, 0.5);
+      background: rgba(217, 226, 252, 0.5);
     }
 
-    /* Selected state */
+    /* Selected state — primary500 bg + white text */
     .date-chip.selected {
-      background: var(--primary-600);
+      background: var(--primary-500);
     }
     .date-chip.selected .weekday {
       color: rgba(255, 255, 255, 0.8);
     }
     .date-chip.selected .day {
-      color: var(--on-primary);
+      color: #ffffff;
     }
     .date-chip.selected .task-dot {
-      background: var(--primary-200);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Drag Handle — 36x4 */
+    .drag-handle {
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--neutral-200);
+      margin: var(--space-5) auto 0;
     }
   </style>
 </head>
@@ -112,84 +128,90 @@
     <!-- DEFAULT variant -->
     <div class="variant-section">
       <div class="variant-title">DEFAULT</div>
-      <div class="calendar-nav">
-        <div class="date-chip">
-          <span class="weekday">一</span>
-          <span class="day">11</span>
-          <span class="task-dot-wrapper"></span>
+      <div class="calendar-wrapper">
+        <div class="calendar-nav">
+          <div class="date-chip">
+            <span class="weekday">一</span>
+            <span class="day">11</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">二</span>
+            <span class="day">12</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip today">
+            <span class="weekday">三</span>
+            <span class="day">13</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip selected">
+            <span class="weekday">四</span>
+            <span class="day">14</span>
+            <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">五</span>
+            <span class="day">15</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">六</span>
+            <span class="day">16</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">日</span>
+            <span class="day">17</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
         </div>
-        <div class="date-chip">
-          <span class="weekday">二</span>
-          <span class="day">12</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
-        <div class="date-chip today">
-          <span class="weekday">三</span>
-          <span class="day">13</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
-        <div class="date-chip selected">
-          <span class="weekday">四</span>
-          <span class="day">14</span>
-          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
-        </div>
-        <div class="date-chip">
-          <span class="weekday">五</span>
-          <span class="day">15</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
-        <div class="date-chip">
-          <span class="weekday">六</span>
-          <span class="day">16</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
-        <div class="date-chip">
-          <span class="weekday">日</span>
-          <span class="day">17</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
+        <div class="drag-handle"></div>
       </div>
     </div>
 
     <!-- WITH TASK DOTS variant -->
     <div class="variant-section">
       <div class="variant-title">WITH TASK DOTS</div>
-      <div class="calendar-nav">
-        <div class="date-chip">
-          <span class="weekday">一</span>
-          <span class="day">11</span>
-          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+      <div class="calendar-wrapper">
+        <div class="calendar-nav">
+          <div class="date-chip">
+            <span class="weekday">一</span>
+            <span class="day">11</span>
+            <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">二</span>
+            <span class="day">12</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip today">
+            <span class="weekday">三</span>
+            <span class="day">13</span>
+            <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+          </div>
+          <div class="date-chip selected">
+            <span class="weekday">四</span>
+            <span class="day">14</span>
+            <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">五</span>
+            <span class="day">15</span>
+            <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">六</span>
+            <span class="day">16</span>
+            <span class="task-dot-wrapper"></span>
+          </div>
+          <div class="date-chip">
+            <span class="weekday">日</span>
+            <span class="day">17</span>
+            <span class="task-dot-wrapper"><span class="task-dot"></span></span>
+          </div>
         </div>
-        <div class="date-chip">
-          <span class="weekday">二</span>
-          <span class="day">12</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
-        <div class="date-chip today">
-          <span class="weekday">三</span>
-          <span class="day">13</span>
-          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
-        </div>
-        <div class="date-chip selected">
-          <span class="weekday">四</span>
-          <span class="day">14</span>
-          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
-        </div>
-        <div class="date-chip">
-          <span class="weekday">五</span>
-          <span class="day">15</span>
-          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
-        </div>
-        <div class="date-chip">
-          <span class="weekday">六</span>
-          <span class="day">16</span>
-          <span class="task-dot-wrapper"></span>
-        </div>
-        <div class="date-chip">
-          <span class="weekday">日</span>
-          <span class="day">17</span>
-          <span class="task-dot-wrapper"><span class="task-dot"></span></span>
-        </div>
+        <div class="drag-handle"></div>
       </div>
     </div>
 

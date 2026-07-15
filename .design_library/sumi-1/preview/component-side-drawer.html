@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Side Drawer — Sumi Design System</title>
+  <link rel="stylesheet" href="../colors_and_type.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--neutral-100);
+      font-family: var(--font-body);
+      color: var(--on-surface);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .preview-container {
+      max-width: 390px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--surface);
+      min-height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .variant-title {
+      font-size: var(--font-size-body-sm);
+      font-weight: 600;
+      color: var(--color-text-tertiary);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-4);
+    }
+
+    /* Scrim overlay */
+    .scrim {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(14, 17, 21, 0.4);
+      z-index: 10;
+    }
+
+    /* Side drawer panel */
+    .side-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 280px;
+      height: 100%;
+      background: var(--color-surface-alt, #F7F8FA);
+      border-radius: 0 var(--radius-card, 18px) var(--radius-card, 18px) 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      padding: 0 var(--space-4, 16px);
+      box-shadow: var(--shadow-1);
+    }
+
+    /* User header */
+    .drawer-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: var(--space-11, 32px);
+      padding-bottom: var(--space-5, 10px);
+    }
+
+    .drawer-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--primary-100, #E8E9F6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--primary-600, #3740C7);
+    }
+
+    .drawer-username {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--on-surface, #0E1115);
+      margin-top: var(--space-2, 4px);
+    }
+
+    /* Divider */
+    .drawer-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--color-line, #EBEBEB);
+      margin: var(--space-2, 4px) 0;
+    }
+
+    /* Section title */
+    .drawer-section-title {
+      font-size: var(--font-size-body-sm, 11px);
+      font-weight: 500;
+      color: var(--color-text-tertiary, #7F8D9F);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      padding: var(--space-3, 6px) 0;
+    }
+
+    /* Project list */
+    .project-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2, 4px);
+    }
+
+    .project-pill {
+      display: flex;
+      align-items: center;
+      height: 36px;
+      border-radius: var(--radius-pill, 9999px);
+      padding: 0 var(--space-3, 6px);
+      cursor: pointer;
+      transition: background-color 150ms ease;
+    }
+
+    .project-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: var(--space-2, 4px);
+      flex-shrink: 0;
+    }
+
+    .project-pill-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--on-surface, #0E1115);
+    }
+
+    /* Settings entry card */
+    .drawer-settings-card {
+      margin-top: auto;
+      margin-bottom: var(--space-8, 16px);
+      background: var(--surface, #FFFFFF);
+      border-radius: var(--radius-12, 12px);
+      padding: var(--space-3, 6px) var(--space-4, 8px);
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .drawer-settings-card svg {
+      width: 20px;
+      height: 20px;
+      color: var(--color-text-tertiary, #7F8D9F);
+      margin-right: var(--space-3, 6px);
+      flex-shrink: 0;
+    }
+
+    .drawer-settings-card span {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--neutral-500, #7F8D9F);
+    }
+
+    /* Project colors */
+    .project-lemon .project-dot { background: #E8D44D; }
+    .project-lemon { background: rgba(232, 212, 77, 0.15); }
+    .project-mint .project-dot { background: #5EC4A0; }
+    .project-mint { background: rgba(94, 196, 160, 0.15); }
+    .project-lilac .project-dot { background: #B088D4; }
+    .project-lilac { background: rgba(176, 136, 212, 0.15); }
+    .project-cherry .project-dot { background: #E06060; }
+    .project-cherry { background: rgba(224, 96, 96, 0.15); }
+    .project-sky .project-dot { background: #5292D4; }
+    .project-sky { background: rgba(82, 146, 212, 0.15); }
+    .project-peach .project-dot { background: #E8A070; }
+    .project-peach { background: rgba(232, 160, 112, 0.15); }
+    .project-sage .project-dot { background: #8BA88C; }
+    .project-sage { background: rgba(139, 168, 140, 0.15); }
+  </style>
+</head>
+<body>
+
+  <!-- Scrim -->
+  <div class="scrim"></div>
+
+  <!-- Side Drawer -->
+  <div class="side-drawer">
+
+    <!-- User header -->
+    <div class="drawer-header">
+      <div class="drawer-avatar">H</div>
+      <div class="drawer-username">Hilith</div>
+    </div>
+
+    <div class="drawer-divider"></div>
+
+    <!-- Project section -->
+    <div class="drawer-section-title" style="margin-top: var(--space-3, 6px);">项目</div>
+    <div class="project-list">
+      <div class="project-pill project-lemon">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">每日计划</span>
+      </div>
+      <div class="project-pill project-mint">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">读书笔记</span>
+      </div>
+      <div class="project-pill project-lilac">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">学习目标</span>
+      </div>
+      <div class="project-pill project-cherry">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">健身打卡</span>
+      </div>
+      <div class="project-pill project-sky">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">旅行计划</span>
+      </div>
+      <div class="project-pill project-peach">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">灵感收集</span>
+      </div>
+      <div class="project-pill project-sage">
+        <span class="project-dot"></span>
+        <span class="project-pill-text">家务清单</span>
+      </div>
+    </div>
+
+    <!-- Settings entry -->
+    <div class="drawer-settings-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      <span>设置</span>
+    </div>
+
+  </div>
+
+</body>
+</html>

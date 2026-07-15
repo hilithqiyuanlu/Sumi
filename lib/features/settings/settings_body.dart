@@ -5,7 +5,8 @@ import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
 import 'signal_log_page.dart';
-import 'user_model_editor_page.dart';
+import 'model_router_metrics_page.dart';
+import 'local_retrieval_page.dart';
 
 class SettingsBody extends StatefulWidget {
   const SettingsBody({super.key});
@@ -24,16 +25,15 @@ class _SettingsBodyState extends State<SettingsBody> {
   Widget build(BuildContext context) {
     final store = SumiScope.watchSettings(context);
 
-    final topPadding = MediaQuery.of(context).padding.top;
     return ListView(
-      padding: EdgeInsets.fromLTRB(s16, topPadding + 56, s16, s8),
+      padding: const EdgeInsets.fromLTRB(s16, s16, s16, s8),
       children: [
+        _sectionHeader('API 密钥'),
+        const SizedBox(height: s12),
         _buildCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionHeader('API 密钥'),
-              const SizedBox(height: s12),
               _apiKeyTile(
                 label: 'DeepSeek API Key',
                 currentValue: store.appSettings.deepseekApiKey,
@@ -55,40 +55,17 @@ class _SettingsBodyState extends State<SettingsBody> {
           ),
         ),
         const SizedBox(height: s24),
-        // 用户名片
-        _sectionHeader('用户名片'),
+        _sectionHeader('本地智能'),
         const SizedBox(height: s12),
         _buildCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text(
-              '昵称',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            subtitle: Text(
-              store.appSettings.userName.isEmpty
-                  ? '未设置'
-                  : store.appSettings.userName,
-              style: const TextStyle(fontSize: 12),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.edit, size: iconSmall),
-              onPressed: () => _editUserName(context, store),
-            ),
-          ),
-        ),
-        const SizedBox(height: s24),
-        _sectionHeader('用户模型（USER_MODEL.md）'),
-        const SizedBox(height: s12),
-        _buildCard(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              '编辑记忆',
+              '本地检索',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
             subtitle: const Text(
-              '查看和编辑 Sumi 对你的理解',
+              '在设备上查找你的学习记录',
               style: TextStyle(fontSize: 12),
             ),
             trailing: const Icon(
@@ -100,7 +77,7 @@ class _SettingsBodyState extends State<SettingsBody> {
               H.light();
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const UserModelEditorPage()),
+                MaterialPageRoute(builder: (_) => const LocalRetrievalPage()),
               );
             },
           ),
@@ -151,6 +128,32 @@ class _SettingsBodyState extends State<SettingsBody> {
                     store.setShowAllMonthCards(v);
                   },
                 ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  '模型路由诊断',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '查看近 7 天的本地调用汇总，不包含对话内容',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  size: iconSection,
+                  color: textTertiary,
+                ),
+                onTap: () {
+                  H.light();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ModelRouterMetricsPage(),
+                    ),
+                  );
+                },
               ),
               const Divider(height: 1),
               ListTile(
@@ -229,42 +232,6 @@ class _SettingsBodyState extends State<SettingsBody> {
       ),
       child: child,
     );
-  }
-
-  void _editUserName(BuildContext context, SumiStore store) {
-    final controller = TextEditingController(text: store.appSettings.userName);
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
-          ),
-          title: const Text(
-            '设置昵称',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: '输入你的昵称'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                store.updateUserName(controller.text);
-                Navigator.pop(ctx);
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
-    ).then((_) => controller.dispose());
   }
 
   Widget _sectionHeader(String title) {

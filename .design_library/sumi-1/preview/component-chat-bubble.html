@@ -11,21 +11,21 @@
       padding: 0;
       background: var(--neutral-100);
       font-family: var(--font-body);
-      color: var(--on-surface);
+      color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
     .preview-container {
       max-width: 390px;
       margin: 0 auto;
       padding: 16px;
-      background: var(--surface);
+      background: var(--paper);
       min-height: 100vh;
     }
 
     .variant-title {
-      font-size: var(--font-size-body-sm);
+      font-size: 10px;
       font-weight: 600;
-      color: var(--on-surface-variant);
+      color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       margin-bottom: var(--space-6);
@@ -53,45 +53,37 @@
       align-items: flex-start;
     }
 
-    /* Role label */
-    .role-label {
-      font-size: var(--font-size-body-sm);
-      font-weight: 400;
-      color: var(--neutral-500);
-      margin-bottom: var(--space-3);
-      padding: 0 var(--space-5);
-    }
-
-    /* Timestamp */
+    /* Timestamp — centered above user bubble */
     .timestamp {
-      font-size: var(--font-size-body-xs);
+      font-size: 10px;
       font-weight: 400;
-      color: var(--neutral-500);
+      color: var(--text-tertiary);
       text-align: center;
-      margin-bottom: var(--space-6);
+      margin-bottom: var(--space-4);
     }
 
-    /* Bubble */
+    /* Bubble — shared */
     .bubble {
-      max-width: 78%;
-      padding: var(--space-5) var(--space-7);
-      font-size: var(--font-size-body-base);
+      max-width: 72%;
+      padding: 12px 10px;
+      font-size: 15px;
       line-height: 1.5;
       word-break: break-word;
     }
 
     /* User bubble */
     .message-row.user .bubble {
-      background: var(--primary-100);
-      color: var(--on-surface);
+      background: var(--mint);
+      color: var(--ink);
       border-radius: 20px 4px 20px 20px;
     }
 
     /* AI bubble */
     .message-row.ai .bubble {
-      background: var(--surface);
-      color: var(--on-surface);
-      border: 1px solid var(--outline-variant);
+      background: var(--paper);
+      color: var(--ink);
+      border: 0.5px var(--chat-ai-border);
+      box-shadow: var(--shadow-2);
       border-radius: 4px 20px 20px 20px;
     }
   </style>
@@ -102,24 +94,20 @@
     <!-- Chat conversation -->
     <div class="chat-flow">
 
-      <!-- Timestamp -->
-      <div class="timestamp">今天 14:32</div>
-
-      <!-- User message -->
+      <!-- User message with timestamp -->
       <div class="message-row user">
-        <span class="role-label">你</span>
+        <div class="timestamp">7/15 14:30</div>
         <div class="bubble">建议以什么顺序开展我今天的待办</div>
       </div>
 
       <!-- AI message -->
       <div class="message-row ai">
-        <span class="role-label">Sumi</span>
         <div class="bubble">根据你今天的待办列表，建议按以下顺序：先看深度学习入门打基础，然后是线性代数与统计，下午去B站看知识图谱导论课，最后撰写微积分课程手册第6章。</div>
       </div>
 
-      <!-- User message -->
+      <!-- User message with timestamp -->
       <div class="message-row user">
-        <span class="role-label">你</span>
+        <div class="timestamp">7/15 14:31</div>
         <div class="bubble">推荐些深度学习的配套资源</div>
       </div>
 

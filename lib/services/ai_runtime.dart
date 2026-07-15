@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 import 'ai_contracts.dart';
 import 'ai_service.dart';
+import 'memory_extraction.dart';
 import 'prompt_context.dart';
 
 class StructuredAiService {
@@ -58,12 +59,12 @@ class StructuredAiService {
     required int timeConstraint,
     required int scheduledHours,
   }) => _client.generateDailyTodos(
-        monthPlanTitle: monthPlanTitle,
-        monthPlanSummary: monthPlanSummary,
-        date: date,
-        timeConstraint: timeConstraint,
-        scheduledHours: scheduledHours,
-      );
+    monthPlanTitle: monthPlanTitle,
+    monthPlanSummary: monthPlanSummary,
+    date: date,
+    timeConstraint: timeConstraint,
+    scheduledHours: scheduledHours,
+  );
 
   Future<GoalAssessment?> assessGoal({
     required String goal,
@@ -72,30 +73,12 @@ class StructuredAiService {
     required int timeConstraint,
     required String domainContext,
   }) => _client.assessGoal(
-        goal: goal,
-        level: level,
-        cycleMonths: cycleMonths,
-        timeConstraint: timeConstraint,
-        domainContext: domainContext,
-      );
-
-  Future<List<String>> generateOpeningSuggestions({
-    required String realtimeStats,
-    required String coreMemory,
-  }) => _client.generateOpeningSuggestions(
-        realtimeStats: realtimeStats,
-        coreMemory: coreMemory,
-      );
-
-  Future<WeeklyReflectionResult?> generateWeeklyReflection({
-    required String hotPrompt,
-    required String warmPrefs,
-    required String weeklySignals,
-  }) => _client.generateWeeklyReflection(
-        hotPrompt: hotPrompt,
-        warmPrefs: warmPrefs,
-        weeklySignals: weeklySignals,
-      );
+    goal: goal,
+    level: level,
+    cycleMonths: cycleMonths,
+    timeConstraint: timeConstraint,
+    domainContext: domainContext,
+  );
 }
 
 class ChatAgentService {
@@ -198,7 +181,6 @@ class ChatAgentService {
     return switch (name) {
       'search_web' => '正在搜索',
       'read_memory' => '正在读取记忆',
-      'write_memory' => '正在更新记忆',
       'read_todos' => '正在读取事项',
       'write_todo' => '正在创建事项',
       'read_signals' => '正在分析行为记录',
@@ -218,21 +200,32 @@ class WebSearchService {
       _client.searchWeb(query);
 }
 
+class MemoryExtractionAiService {
+  final AiTransport _client;
+  const MemoryExtractionAiService(this._client);
+
+  Future<MemoryExtractionDecision?> extractMemory({
+    required String message,
+    required List<MemoryExtractionCandidate> candidates,
+  }) => _client.extractMemory(message: message, candidates: candidates);
+}
+
 class AiRuntime {
   final AiTransport transport;
   late final StructuredAiService structured;
   late final ChatAgentService chat;
   late final WebSearchService search;
+  late final MemoryExtractionAiService memoryExtraction;
 
   AiRuntime({
     required String apiKey,
     String? tavilyApiKey,
     http.Client? httpClient,
   }) : transport = AiTransport(
-          apiKey: apiKey,
-          tavilyApiKey: tavilyApiKey,
-          client: httpClient,
-        ) {
+         apiKey: apiKey,
+         tavilyApiKey: tavilyApiKey,
+         client: httpClient,
+       ) {
     _bindServices();
   }
 
@@ -244,6 +237,7 @@ class AiRuntime {
     structured = StructuredAiService(transport);
     chat = ChatAgentService(transport);
     search = WebSearchService(transport);
+    memoryExtraction = MemoryExtractionAiService(transport);
   }
 
   void close() => transport.close();

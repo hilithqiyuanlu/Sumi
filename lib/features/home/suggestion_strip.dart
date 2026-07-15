@@ -2,16 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
+import '../../services/memory_service.dart';
 
 class SuggestionStrip extends StatelessWidget {
-  final List<String> suggestions;
-  final ValueChanged<String> onSelect;
+  final List<MemorySuggestion> suggestions;
+  final ValueChanged<MemorySuggestion> onSelect;
+  final Future<void> Function(
+    MemorySuggestion suggestion,
+    bool disableTopic,
+  )
+  onFeedback;
   final bool enabled;
 
   const SuggestionStrip({
     super.key,
     required this.suggestions,
     required this.onSelect,
+    required this.onFeedback,
     this.enabled = true,
   });
 
@@ -29,23 +36,61 @@ class SuggestionStrip extends StatelessWidget {
         return FadeTransition(opacity: animation, child: child);
       },
       child: Padding(
-        key: ValueKey(suggestions.join(',')),
+        key: ValueKey(suggestions.map((s) => s.eventId).join(',')),
         padding: const EdgeInsets.only(left: s16, right: s16, top: s4),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           physics: const BouncingScrollPhysics(),
           child: Row(
             children: suggestions
-                .map((s) => Padding(
-                      padding: const EdgeInsets.only(right: s8),
-                      child: _SuggestionChip(
-                        text: s,
-                        onTap: enabled ? () { H.light(); onSelect(s); } : null,
-                        enabled: enabled,
-                      ),
-                    ))
+                .map(
+                  (s) => Padding(
+                    padding: const EdgeInsets.only(right: s8),
+                    child: _SuggestionChip(
+                      text: s.text,
+                      onTap: enabled
+                          ? () {
+                              H.light();
+                              onSelect(s);
+                            }
+                          : null,
+                      onLongPress: enabled
+                          ? () => _showFeedback(context, s)
+                          : null,
+                      enabled: enabled,
+                    ),
+                  ),
+                )
                 .toList(),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showFeedback(BuildContext context, MemorySuggestion suggestion) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.thumb_down_outlined),
+              title: const Text('不适合'),
+              onTap: () async {
+                Navigator.pop(context);
+                await onFeedback(suggestion, false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.block_outlined),
+              title: const Text('不再推荐此类'),
+              onTap: () async {
+                Navigator.pop(context);
+                await onFeedback(suggestion, true);
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -55,11 +100,13 @@ class SuggestionStrip extends StatelessWidget {
 class _SuggestionChip extends StatelessWidget {
   final String text;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool enabled;
 
   const _SuggestionChip({
     required this.text,
     required this.onTap,
+    this.onLongPress,
     this.enabled = true,
   });
 
@@ -70,8 +117,11 @@ class _SuggestionChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(radiusPill),
       child: InkWell(
         borderRadius: BorderRadius.circular(radiusPill),
-        overlayColor: WidgetStatePropertyAll(primary500.withValues(alpha: 0.08)),
+        overlayColor: WidgetStatePropertyAll(
+          primary500.withValues(alpha: 0.08),
+        ),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s8),
           child: Text(

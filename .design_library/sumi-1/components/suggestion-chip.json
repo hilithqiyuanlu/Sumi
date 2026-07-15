@@ -4,28 +4,27 @@
   "sourceKind": "inferred",
   "confidence": "high",
   "intentKind": "simple",
-  "description": "Contextual prompt suggestion buttons displayed below the chat area, with light primary-tinted background. This component is inferred/planned and awaits actual implementation for verification.",
+  "description": "Contextual prompt suggestion buttons displayed below the chat area, with surfaceChip background and primary600 text,横向滚动布局",
   "variants": [
     {
       "id": "default",
       "name": "Default",
-      "description": "Tappable suggestion with primary-tinted text on light tinted background"
+      "description": "Tappable suggestion with primary-600 (#3740C7) text on surfaceChip background"
     }
   ],
   "states": [
-    { "name": "default", "description": "Resting state with light tinted background" },
-    { "name": "pressed", "description": "iOS-style tactile press feedback — brightness(0.95) or iOS highlight overlay on touch" },
-    { "name": "active", "description": "iOS-style active touch feedback state — system highlight effect during touch-down" }
+    { "name": "default", "description": "Resting state with surfaceChip background" },
+    { "name": "pressed", "description": "Tap overlay: primary500@8% 背景反馈" }
   ],
   "renderHints": {
-    "radius": "var(--radius-full)",
-    "bg": "var(--suggestion-bg)",
-    "textColor": "var(--suggestion-text)",
-    "pressedBg": "var(--primary-100)",
-    "fontSize": "13-14px",
-    "fontSizeNote": "14px default; long text may use 13px for fit",
+    "radius": "var(--radius-pill)",
+    "bg": "var(--color-surface-chip)",
+    "textColor": "var(--color-primary-600)",
+    "pressedOverlay": "rgba(var(--color-primary-500), 0.08)",
+    "fontSize": "14px",
+    "fontWeight": "500",
     "padding": "8px 16px",
-    "layout": "flex-wrap",
+    "layout": "horizontal-scroll",
     "gap": "8px"
   },
   "uiCopySamples": {

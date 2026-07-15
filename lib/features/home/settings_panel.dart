@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_theme.dart';
 import '../settings/settings_body.dart';
 
 class SettingsPanel extends StatefulWidget {
@@ -83,67 +82,15 @@ class _SettingsPanelState extends State<SettingsPanel>
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
     return GestureDetector(
       onHorizontalDragStart: _onDragStart,
       onHorizontalDragUpdate: _onDragUpdate,
       onHorizontalDragEnd: _onDragEnd,
       child: Transform.translate(
         offset: Offset(_swipeOffset, 0),
-        child: Stack(
-          children: [
-            Scaffold(
-              body: Stack(
-                children: [
-                  const SettingsBody(),
-                  // 顶部渐变遮罩
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: topPadding + 56,
-                    child: IgnorePointer(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white,
-                              Colors.white.withValues(alpha: 0.92),
-                              Colors.white.withValues(alpha: 0),
-                            ],
-                            stops: const [0.0, 0.55, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // 返回 + 标题
-                  Positioned(
-                    top: topPadding,
-                    left: 4,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        const Text(
-                          '设置',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        child: Scaffold(
+          appBar: AppBar(title: const Text('设置')),
+          body: const SettingsBody(),
         ),
       ),
     );

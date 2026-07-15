@@ -23,56 +23,72 @@ class SignalService {
   // ---------------------------------------------------------------------------
 
   Future<void> emitTodoCreated(TodoItem todo) async {
-    debugPrint('[SignalService] emitTodoCreated 被调用: "${todo.title}" date=${todo.date}');
-    if (isPastDate(todo.date)) { debugPrint('[SignalService] 过去日期，跳过'); return; }
-    await _insert(UserSignal(
-      signal: SignalType.todoCreated,
-      time: DateTime.now(),
-      contextJson: _ctx(todo: todo),
-      projectId: todo.projectId,
-      todoId: todo.id,
-      domain: _inferDomain(todo),
-      createdAt: DateTime.now(),
-    ));
+    debugPrint(
+      '[SignalService] emitTodoCreated 被调用: "${todo.title}" date=${todo.date}',
+    );
+    if (isPastDate(todo.date)) {
+      debugPrint('[SignalService] 过去日期，跳过');
+      return;
+    }
+    await _insert(
+      UserSignal(
+        signal: SignalType.todoCreated,
+        time: DateTime.now(),
+        contextJson: _ctx(todo: todo),
+        projectId: todo.projectId,
+        todoId: todo.id,
+        domain: _inferDomain(todo),
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitTodoCompleted(TodoItem todo) async {
     if (isPastDate(todo.date)) return;
-    await _insert(UserSignal(
-      signal: SignalType.todoCompleted,
-      time: DateTime.now(),
-      contextJson: _ctx(todo: todo, completedOnTime: true),
-      projectId: todo.projectId,
-      todoId: todo.id,
-      domain: _inferDomain(todo),
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.todoCompleted,
+        time: DateTime.now(),
+        contextJson: _ctx(todo: todo, completedOnTime: true),
+        projectId: todo.projectId,
+        todoId: todo.id,
+        domain: _inferDomain(todo),
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitTodoUncompleted(TodoItem todo) async {
     if (isPastDate(todo.date)) return;
-    await _insert(UserSignal(
-      signal: SignalType.todoUncompleted,
-      time: DateTime.now(),
-      contextJson: _ctx(todo: todo, completedOnTime: false),
-      projectId: todo.projectId,
-      todoId: todo.id,
-      domain: _inferDomain(todo),
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.todoUncompleted,
+        time: DateTime.now(),
+        contextJson: _ctx(todo: todo, completedOnTime: false),
+        projectId: todo.projectId,
+        todoId: todo.id,
+        domain: _inferDomain(todo),
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitTodoDeleted(TodoItem todo, {String? reason}) async {
     if (isPastDate(todo.date)) return;
-    await _insert(UserSignal(
-      signal: SignalType.todoDeleted,
-      time: DateTime.now(),
-      contextJson: _ctx(todo: todo, extra: reason == null ? null : {'reason': reason}),
-      projectId: todo.projectId,
-      todoId: todo.id,
-      domain: _inferDomain(todo),
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.todoDeleted,
+        time: DateTime.now(),
+        contextJson: _ctx(
+          todo: todo,
+          extra: reason == null ? null : {'reason': reason},
+        ),
+        projectId: todo.projectId,
+        todoId: todo.id,
+        domain: _inferDomain(todo),
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitTodoEdited(
@@ -81,46 +97,59 @@ class SignalService {
     String newTitle, {
     bool projectChanged = false,
   }) async {
-    debugPrint('[SignalService] emitTodoEdited: "$oldTitle" → "$newTitle" date=${todo.date}');
-    if (isPastDate(todo.date)) { debugPrint('[SignalService] 过去日期，跳过'); return; }
+    debugPrint(
+      '[SignalService] emitTodoEdited: "$oldTitle" → "$newTitle" date=${todo.date}',
+    );
+    if (isPastDate(todo.date)) {
+      debugPrint('[SignalService] 过去日期，跳过');
+      return;
+    }
     final changePercent = _changePercent(oldTitle, newTitle);
-    await _insert(UserSignal(
-      signal: SignalType.todoEdited,
-      time: DateTime.now(),
-      contextJson: _ctx(
-        todo: todo,
-        extra: {
-          'oldTitle': oldTitle,
-          'newTitle': newTitle,
-          'changePercent': changePercent,
-          'projectChanged': projectChanged,
-        },
+    await _insert(
+      UserSignal(
+        signal: SignalType.todoEdited,
+        time: DateTime.now(),
+        contextJson: _ctx(
+          todo: todo,
+          extra: {
+            'oldTitle': oldTitle,
+            'newTitle': newTitle,
+            'changePercent': changePercent,
+            'projectChanged': projectChanged,
+          },
+        ),
+        projectId: todo.projectId,
+        todoId: todo.id,
+        domain: _inferDomain(todo),
+        createdAt: DateTime.now(),
       ),
-      projectId: todo.projectId,
-      todoId: todo.id,
-      domain: _inferDomain(todo),
-      createdAt: DateTime.now(),
-    ));
+    );
   }
 
-  Future<void> emitTodoMovedDate(TodoItem todo, String oldDate, String newDate) async {
+  Future<void> emitTodoMovedDate(
+    TodoItem todo,
+    String oldDate,
+    String newDate,
+  ) async {
     // 过去日期的 todo 不能拖拽，但允许从今天移回今天（无变化）
     if (oldDate == newDate) return;
     final today = dateKey(dateOnly(DateTime.now()));
     // 仅当目标日期是今天或未来时才产生信号
     if (newDate.compareTo(today) < 0) return;
-    await _insert(UserSignal(
-      signal: SignalType.todoMovedDate,
-      time: DateTime.now(),
-      contextJson: _ctx(
-        todo: todo,
-        extra: {'oldDate': oldDate, 'newDate': newDate},
+    await _insert(
+      UserSignal(
+        signal: SignalType.todoMovedDate,
+        time: DateTime.now(),
+        contextJson: _ctx(
+          todo: todo,
+          extra: {'oldDate': oldDate, 'newDate': newDate},
+        ),
+        projectId: todo.projectId,
+        todoId: todo.id,
+        domain: _inferDomain(todo),
+        createdAt: DateTime.now(),
       ),
-      projectId: todo.projectId,
-      todoId: todo.id,
-      domain: _inferDomain(todo),
-      createdAt: DateTime.now(),
-    ));
+    );
   }
 
   // --- 项目信号 ---
@@ -129,58 +158,66 @@ class SignalService {
     if (oldGoal == project.goal) return;
     final goalExtra = <String, dynamic>{'newGoal': project.goal};
     if (oldGoal != null) goalExtra['oldGoal'] = oldGoal;
-    await _insert(UserSignal(
-      signal: SignalType.projectGoalSet,
-      time: DateTime.now(),
-      contextJson: _projectCtx(project, extra: goalExtra),
-      projectId: project.id,
-      domain: project.goal,
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.projectGoalSet,
+        time: DateTime.now(),
+        contextJson: _projectCtx(project, extra: goalExtra),
+        projectId: project.id,
+        domain: project.goal,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitProjectLevelSet(Project project, String? oldLevel) async {
     if (oldLevel == project.level) return;
     final levelExtra = <String, dynamic>{'newLevel': project.level};
     if (oldLevel != null) levelExtra['oldLevel'] = oldLevel;
-    await _insert(UserSignal(
-      signal: SignalType.projectLevelSet,
-      time: DateTime.now(),
-      contextJson: _projectCtx(project, extra: levelExtra),
-      projectId: project.id,
-      domain: project.goal,
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.projectLevelSet,
+        time: DateTime.now(),
+        contextJson: _projectCtx(project, extra: levelExtra),
+        projectId: project.id,
+        domain: project.goal,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitProjectCycleSet(Project project, int? oldCycle) async {
     if (oldCycle == project.cycleMonths) return;
-    await _insert(UserSignal(
-      signal: SignalType.projectCycleSet,
-      time: DateTime.now(),
-      contextJson: _projectCtx(project, extra: {
-        'oldCycle': oldCycle ?? 0,
-        'newCycle': project.cycleMonths,
-      }),
-      projectId: project.id,
-      domain: project.goal,
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.projectCycleSet,
+        time: DateTime.now(),
+        contextJson: _projectCtx(
+          project,
+          extra: {'oldCycle': oldCycle ?? 0, 'newCycle': project.cycleMonths},
+        ),
+        projectId: project.id,
+        domain: project.goal,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> emitProjectTimeSet(Project project, int? oldTime) async {
     if (oldTime == project.timeConstraint) return;
-    await _insert(UserSignal(
-      signal: SignalType.projectTimeSet,
-      time: DateTime.now(),
-      contextJson: _projectCtx(project, extra: {
-        'oldTime': oldTime ?? 0,
-        'newTime': project.timeConstraint,
-      }),
-      projectId: project.id,
-      domain: project.goal,
-      createdAt: DateTime.now(),
-    ));
+    await _insert(
+      UserSignal(
+        signal: SignalType.projectTimeSet,
+        time: DateTime.now(),
+        contextJson: _projectCtx(
+          project,
+          extra: {'oldTime': oldTime ?? 0, 'newTime': project.timeConstraint},
+        ),
+        projectId: project.id,
+        domain: project.goal,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -192,7 +229,11 @@ class SignalService {
   /// - cleared: 用户清空文本 → todoDeleted
   /// - minor: Levenshtein 距离 < 50% → todoEdited
   /// - major: Levenshtein 距离 ≥ 50% → todoDeleted + todoCreated
-  EditClassification classifyEdit(String oldText, String newText, {String? condensedFrom}) {
+  EditClassification classifyEdit(
+    String oldText,
+    String newText, {
+    String? condensedFrom,
+  }) {
     final oldTrimmed = oldText.trim();
     final newTrimmed = newText.trim();
 
@@ -237,6 +278,7 @@ class SignalService {
     final map = <String, dynamic>{
       'title': todo.title,
       'hourOfDay': now.hour,
+      'source': todo.source.name,
     };
     if (todo.projectId != null) {
       map['projectId'] = todo.projectId;

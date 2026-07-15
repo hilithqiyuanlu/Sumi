@@ -8,7 +8,7 @@ mixin SumiStoreTodos {
   List<TodoItem> get todoItems;
   List<Project> get projectList;
   DateTime get selectedDate;
-  StructuredAiService? get structuredAi;
+  StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
   void afterTodoMutation();
 
@@ -17,13 +17,13 @@ mixin SumiStoreTodos {
   // ---------------------------------------------------------------------------
 
   /// 添加用户 todo —— 自动赋值 date（当前选中日期）和 sortOrder。
-  Future<void> addUserTodo(
+  Future<TodoItem?> addUserTodo(
     String title, {
     String? condensedFrom,
     String? date,
     String? body,
   }) async {
-    if (title.trim().isEmpty) return;
+    if (title.trim().isEmpty) return null;
     final nextOrder = _nextSortOrder();
     final todo = TodoItem(
       id: newSumiId('todo'),
@@ -38,11 +38,17 @@ mixin SumiStoreTodos {
     todoItems.add(todo);
     afterTodoMutation();
     await signalService?.emitTodoCreated(todo);
+    return todo;
   }
 
   /// 添加系统 todo。
-  Future<void> addSystemTodo(String title, String projectId, {String? date, String? body}) async {
-    if (title.trim().isEmpty) return;
+  Future<TodoItem?> addSystemTodo(
+    String title,
+    String projectId, {
+    String? date,
+    String? body,
+  }) async {
+    if (title.trim().isEmpty) return null;
     final nextOrder = _nextSortOrder();
     final todo = TodoItem(
       id: newSumiId('todo'),
@@ -57,6 +63,7 @@ mixin SumiStoreTodos {
     todoItems.add(todo);
     afterTodoMutation();
     await signalService?.emitTodoCreated(todo);
+    return todo;
   }
 
   int _nextSortOrder() {
@@ -109,11 +116,13 @@ mixin SumiStoreTodos {
     final todo = todoItems[i];
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可编辑
 
-    final classification = signalService?.classifyEdit(
-      todo.title,
-      newTitle.trim(),
-      condensedFrom: todo.condensedFrom,
-    ) ?? EditClassification.minor;
+    final classification =
+        signalService?.classifyEdit(
+          todo.title,
+          newTitle.trim(),
+          condensedFrom: todo.condensedFrom,
+        ) ??
+        EditClassification.minor;
 
     switch (classification) {
       case EditClassification.condensedRestore:
@@ -186,7 +195,12 @@ mixin SumiStoreTodos {
     if (i == -1) return;
     final todo = todoItems[i];
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可操作
-    await signalService?.emitTodoEdited(todo, todo.title, todo.title, projectChanged: true);
+    await signalService?.emitTodoEdited(
+      todo,
+      todo.title,
+      todo.title,
+      projectChanged: true,
+    );
     todoItems[i] = todo.copyWith(projectId: projectId);
     afterTodoMutation();
   }
@@ -204,8 +218,7 @@ mixin SumiStoreTodos {
     final dragOrder = todoItems[dragIdx].sortOrder;
     final targetOrder = todoItems[targetIdx].sortOrder;
     todoItems[dragIdx] = todoItems[dragIdx].copyWith(sortOrder: targetOrder);
-    todoItems[targetIdx] =
-        todoItems[targetIdx].copyWith(sortOrder: dragOrder);
+    todoItems[targetIdx] = todoItems[targetIdx].copyWith(sortOrder: dragOrder);
     afterTodoMutation();
     // 排序不产生信号
   }
@@ -247,11 +260,13 @@ mixin SumiStoreTodos {
 
     // 标题变更使用编辑区分
     if (title != null && title.trim() != todo.title) {
-      final classification = signalService?.classifyEdit(
-        todo.title,
-        title.trim(),
-        condensedFrom: todo.condensedFrom,
-      ) ?? EditClassification.minor;
+      final classification =
+          signalService?.classifyEdit(
+            todo.title,
+            title.trim(),
+            condensedFrom: todo.condensedFrom,
+          ) ??
+          EditClassification.minor;
 
       switch (classification) {
         case EditClassification.condensedRestore:
@@ -269,10 +284,17 @@ mixin SumiStoreTodos {
         case EditClassification.major:
           await signalService?.emitTodoDeleted(todo, reason: 'largeEdit');
           final newTodo = TodoItem(
-            id: id, source: todo.source, projectId: todo.projectId, date: todo.date,
-            title: title.trim(), body: body ?? todo.body, done: todo.done,
-            pinned: todo.pinned, sortOrder: todo.sortOrder,
-            reminderTime: reminderTime ?? todo.reminderTime, createdAt: todo.createdAt,
+            id: id,
+            source: todo.source,
+            projectId: todo.projectId,
+            date: todo.date,
+            title: title.trim(),
+            body: body ?? todo.body,
+            done: todo.done,
+            pinned: todo.pinned,
+            sortOrder: todo.sortOrder,
+            reminderTime: reminderTime ?? todo.reminderTime,
+            createdAt: todo.createdAt,
           );
           todoItems[i] = newTodo;
           await signalService?.emitTodoCreated(newTodo);
@@ -328,5 +350,4 @@ mixin SumiStoreTodos {
     if (a.done && !b.done) return 1;
     return a.sortOrder.compareTo(b.sortOrder);
   }
-
 }

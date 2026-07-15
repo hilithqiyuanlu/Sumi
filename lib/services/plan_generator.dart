@@ -1,11 +1,11 @@
 import 'ai_service.dart';
-import 'ai_runtime.dart';
+import 'model_router.dart';
 
 enum PlanGenerationProgress { receiving, validating, repairing }
 
 /// 规划编排器。只转发真实的网络与校验阶段，不制造定时进度。
 class PlanGenerator {
-  final StructuredAiService ai;
+  final StructuredGenerationCapability ai;
 
   PlanGenerator({required this.ai});
 

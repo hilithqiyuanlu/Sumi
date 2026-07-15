@@ -19,10 +19,10 @@ mixin SumiStorePersist {
   Future<void> clearChatData(); // 由 SumiStoreChat mixin 提供
   // 07 轮新增
   SignalDatabase? get signalDb;
-  UserModelService? get userModelService;
-  DateTime? get lastWeeklyReflection;
-  set lastWeeklyReflection(DateTime? v);
+  MemoryService? get memoryServiceForStore;
   Future<void> persistSnapshotNow(Map<String, Object?> snapshot);
+  ModelRouterMetricsStore get modelRouterMetrics;
+  Future<void> deleteLocalRetrievalModel();
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -58,8 +58,16 @@ mixin SumiStorePersist {
     }
 
     // Projects / MonthCards / Todos
-    _restoreList(map['projects'] as List<Object?>?, projectList, Project.fromJson);
-    _restoreList(map['monthCards'] as List<Object?>?, monthCardList, MonthCard.fromJson);
+    _restoreList(
+      map['projects'] as List<Object?>?,
+      projectList,
+      Project.fromJson,
+    );
+    _restoreList(
+      map['monthCards'] as List<Object?>?,
+      monthCardList,
+      MonthCard.fromJson,
+    );
     _restoreList(map['todos'] as List<Object?>?, todoItems, TodoItem.fromJson);
 
     // UI state
@@ -69,11 +77,8 @@ mixin SumiStorePersist {
       final d = DateTime.tryParse(dateStr);
       if (d != null) selectedDate = dateOnly(d);
     }
-    // 07 轮：恢复周度反思时间
-    final rDateStr = map['lastWeeklyReflection'] as String?;
-    if (rDateStr != null) {
-      lastWeeklyReflection = DateTime.tryParse(rDateStr);
-    }
+    final metrics = map['modelRouterMetrics'] as Map<String, Object?>?;
+    modelRouterMetrics.restore(metrics);
     // monthViewExpanded 已由 AnimationController 管理，不再持久化
   }
 
@@ -87,8 +92,7 @@ mixin SumiStorePersist {
       'currentProjectId': currentProjectId,
       'selectedDate': selectedDate.toIso8601String(),
       'thinkingEnabled': appSettings.thinkingEnabled,
-      if (lastWeeklyReflection != null)
-        'lastWeeklyReflection': lastWeeklyReflection!.toIso8601String(),
+      'modelRouterMetrics': modelRouterMetrics.toJson(),
     };
   }
 
@@ -117,8 +121,12 @@ mixin SumiStorePersist {
 
     // 07 轮：清除信号和用户模型
     await signalDb?.clearAll();
-    // 重置用户模型时保留模板结构，否则后续 AI 无法定位区段标记。
-    await userModelService?.resetUserModel();
+    await memoryServiceForStore?.clearAll();
+    modelRouterMetrics.clear();
+    // 本地检索是可选组件；平台通道不可用时不应阻断用户数据清除。
+    try {
+      await deleteLocalRetrievalModel();
+    } catch (_) {}
 
     await writeToDb();
     notifyAllDomains();

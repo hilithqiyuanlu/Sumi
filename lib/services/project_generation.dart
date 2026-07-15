@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
 import 'ai_service.dart';
-import 'ai_runtime.dart';
+import 'model_router.dart';
 import 'goal_assessor.dart';
 import 'plan_generator.dart';
 
@@ -111,7 +111,7 @@ typedef ProjectPlanCommit = Future<void> Function(
 
 class ProjectGenerationCoordinator {
   final ProjectGenerationRequest request;
-  final AiRuntime runtime;
+  final ModelRouter router;
   final ProjectPlanCommit commit;
   final GenerationCancellationToken cancellation;
   final ValueNotifier<ProjectGenerationState> state;
@@ -124,7 +124,7 @@ class ProjectGenerationCoordinator {
 
   ProjectGenerationCoordinator({
     required this.request,
-    required this.runtime,
+    required this.router,
     required this.commit,
     GenerationCancellationToken? cancellation,
   })  : cancellation = cancellation ?? GenerationCancellationToken(),
@@ -144,14 +144,14 @@ class ProjectGenerationCoordinator {
     _startClock();
     _emit(ProjectGenerationState(
       stage: ProjectGenerationStage.searching,
-      status: runtime.search.isConfigured ? '正在检索参考资料' : '未配置搜索服务，已跳过外部资料',
+      status: router.search.isConfigured ? '正在检索参考资料' : '未配置搜索服务，已跳过外部资料',
       elapsed: _stopwatch.elapsed,
-      searchTotal: runtime.search.isConfigured ? 3 : 0,
-      searchSkipped: !runtime.search.isConfigured,
+      searchTotal: router.search.isConfigured ? 3 : 0,
+      searchSkipped: !router.search.isConfigured,
     ));
 
     try {
-      final assessor = GoalAssessor(ai: runtime.structured, search: runtime.search);
+      final assessor = GoalAssessor(ai: router.structured, search: router.search);
       final result = await assessor.assess(
         goal: request.goal,
         level: request.level,
@@ -210,7 +210,7 @@ class ProjectGenerationCoordinator {
     ));
 
     try {
-      final generator = PlanGenerator(ai: runtime.structured);
+      final generator = PlanGenerator(ai: router.structured);
       final now = DateTime.now();
       final startDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       final plan = await generator.generate(
@@ -279,7 +279,7 @@ class ProjectGenerationCoordinator {
   }
 
   String _aiFailureMessage(String operation) {
-    final error = runtime.structured.lastError ?? '';
+    final error = router.structured.lastError ?? '';
     if (error.startsWith('HTTP 401') || error.startsWith('HTTP 403')) {
       return 'API Key 无效或没有访问权限，请到设置中检查。';
     }
