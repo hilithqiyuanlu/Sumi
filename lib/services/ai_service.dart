@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'ai_contracts.dart';
+import 'prompt_context.dart';
 
 // ---------------------------------------------------------------------------
 // 结果类型
@@ -17,14 +19,10 @@ class SplitResult {
   const SplitResult({required this.split, required this.items});
 
   factory SplitResult.fromJson(Map<String, Object?> json) {
-    final items = (json['items'] as List<Object?>?)
-            ?.map((e) => e.toString())
-            .toList() ??
+    final items =
+        (json['items'] as List<Object?>?)?.map((e) => e.toString()).toList() ??
         [];
-    return SplitResult(
-      split: (json['split'] as bool?) ?? false,
-      items: items,
-    );
+    return SplitResult(split: (json['split'] as bool?) ?? false, items: items);
   }
 }
 
@@ -44,10 +42,10 @@ class MonthPlanItem {
   });
 
   factory MonthPlanItem.fromJson(Map<String, Object?> json) => MonthPlanItem(
-        monthIndex: (json['monthIndex'] as num?)?.toInt() ?? 0,
-        title: (json['title'] as String?) ?? '',
-        summary: (json['summary'] as String?) ?? '',
-      );
+    monthIndex: (json['monthIndex'] as num?)?.toInt() ?? 0,
+    title: (json['title'] as String?) ?? '',
+    summary: (json['summary'] as String?) ?? '',
+  );
 }
 
 class TodoSeed {
@@ -55,24 +53,22 @@ class TodoSeed {
   final String? body;
   final String date; // "YYYY-MM-DD"
 
-  const TodoSeed({
-    required this.title,
-    this.body,
-    required this.date,
-  });
+  const TodoSeed({required this.title, this.body, required this.date});
 
   factory TodoSeed.fromJson(Map<String, Object?> json) => TodoSeed(
-        title: (json['title'] as String?) ?? '',
-        body: json['body'] as String?,
-        date: (json['date'] as String?) ?? '',
-      );
+    title: (json['title'] as String?) ?? '',
+    body: json['body'] as String?,
+    date: (json['date'] as String?) ?? '',
+  );
 }
 
 class PlanResult {
+  final String projectTitle;
   final List<MonthPlanItem> monthPlans;
   final List<TodoSeed> todayTodos;
 
   const PlanResult({
+    this.projectTitle = '',
     required this.monthPlans,
     required this.todayTodos,
   });
@@ -80,13 +76,17 @@ class PlanResult {
   factory PlanResult.fromJson(Map<String, Object?> json) {
     final monthPlansRaw = json['monthPlans'] as List<Object?>?;
     final todayTodosRaw = json['todayTodos'] as List<Object?>?;
+    final monthPlans =
+        monthPlansRaw
+            ?.map((e) => MonthPlanItem.fromJson(e as Map<String, Object?>))
+            .toList() ??
+        [];
     return PlanResult(
-      monthPlans: monthPlansRaw
-              ?.map(
-                  (e) => MonthPlanItem.fromJson(e as Map<String, Object?>))
-              .toList() ??
-          [],
-      todayTodos: todayTodosRaw
+      projectTitle: (json['projectTitle'] as String?) ??
+          (monthPlans.isEmpty ? '' : monthPlans.first.title),
+      monthPlans: monthPlans,
+      todayTodos:
+          todayTodosRaw
               ?.map((e) => TodoSeed.fromJson(e as Map<String, Object?>))
               .toList() ??
           [],
@@ -108,7 +108,8 @@ class DailyTodoResult {
   factory DailyTodoResult.fromJson(Map<String, Object?> json) {
     final todosRaw = json['todos'] as List<Object?>?;
     return DailyTodoResult(
-      todos: todosRaw
+      todos:
+          todosRaw
               ?.map((e) => TodoSeed.fromJson(e as Map<String, Object?>))
               .toList() ??
           [],
@@ -132,12 +133,24 @@ class ReasoningDelta extends StreamEvent {
   ReasoningDelta(this.text);
 }
 
+enum AiStructuredStage { validating, repairing }
+
 class ToolCallsComplete extends StreamEvent {
   final List<ToolCall> calls;
   ToolCallsComplete(this.calls);
 }
 
 class StreamDone extends StreamEvent {}
+
+class AgentActivityEvent extends StreamEvent {
+  final String label;
+  AgentActivityEvent(this.label);
+}
+
+class AgentErrorEvent extends StreamEvent {
+  final String message;
+  AgentErrorEvent(this.message);
+}
 
 // ---------------------------------------------------------------------------
 // ToolCall
@@ -160,8 +173,9 @@ class ToolCall {
     Map<String, Object?> args;
     if (rawArgs is String) {
       try {
-        args = (jsonDecode(rawArgs) as Map<String, Object?>)
-            .map((k, v) => MapEntry(k, v));
+        args = (jsonDecode(rawArgs) as Map<String, Object?>).map(
+          (k, v) => MapEntry(k, v),
+        );
       } catch (_) {
         args = {};
       }
@@ -182,7 +196,7 @@ class ToolCall {
 // AiService
 // ---------------------------------------------------------------------------
 
-class AiService {
+class AiTransport {
   static const _baseUrl = 'https://api.deepseek.com/v1/chat/completions';
 
   // V4 系列模型
@@ -193,7 +207,8 @@ class AiService {
   // System prompts
   // ---------------------------------------------------------------------------
 
-  static const _splitSystemPrompt = '你是 Sumi，一个自学个人助手的 AI 引擎。\n'
+  static const _splitSystemPrompt =
+      '你是 Sumi，一个自学个人助手的 AI 引擎。\n'
       '你的任务是将用户输入的长文本智能拆分为独立可执行的 todo 事项。\n'
       '\n'
       '规则：\n'
@@ -242,10 +257,11 @@ class AiService {
         '- 标题 2-16 字，可附带 body\n'
         '- 数量：1-2 条，考虑时间约束不超出用户能力\n'
         '\n'
-        '## 输出格式\n'
-        '严格 JSON，不要带任何额外文字：\n'
-        '{\n'
-        '  "monthPlans": [\n'
+      '## 输出格式\n'
+      '严格 JSON，不要带任何额外文字：\n'
+      '{\n'
+      '  "projectTitle": "2-16字项目标题",\n'
+      '  "monthPlans": [\n'
         '    {"monthIndex": 0, "title": "月主题", "summary": "月计划摘要..."},\n'
         '    ...\n'
         '  ],\n'
@@ -257,83 +273,32 @@ class AiService {
 
   static const _dailyTodoSystemPrompt =
       '你是 Sumi。根据月计划为指定日期生成 1-3 条待办。\n'
-          '\n'
-          '要求：\n'
-          '- 标题 2-16 字，是可执行的具体动作（不是抽象描述）\n'
-          '- 如果当天已有足够的待办，可以返回空列表\n'
-          '- 可附带 body 作为补充说明\n'
-          '- 输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
+      '\n'
+      '要求：\n'
+      '- 标题 2-16 字，是可执行的具体动作（不是抽象描述）\n'
+      '- 如果当天已有足够的待办，可以返回空列表\n'
+      '- 可附带 body 作为补充说明\n'
+      '- 输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
 
   static const _assessmentSystemPrompt =
-      '你是 Sumi，一个专业的自学规划评估师。\n'
-          '\n'
-          '你的任务是对用户的学习目标进行多维度评估，给出 A/B/C/D 综合评定。\n'
-          '评估必须基于提供的搜索结果，不要凭空判断。\n'
-          '\n'
-          '## 评估维度（每个 0.0-1.0 评分）\n'
-          '\n'
-          '1. clarity（清晰度）：目标是否具体、可衡量？\n'
-          '   0.0-0.3: 极度模糊（"学好XX"）\n'
-          '   0.4-0.6: 有方向但不具体（"提升英语水平"）\n'
-          '   0.7-1.0: 具体可衡量（"6个月IELTS从5.5到6.5"）\n'
-          '\n'
-          '2. feasibility（可行性）：物理/逻辑上是否可能？\n'
-          '   D 级红线：物理不可能、无学习价值、极端困难、高度不确定\n'
-          '   给出具体理由\n'
-          '\n'
-          '3. challengeFit（挑战匹配度）：目标难度 vs 当前能力\n'
-          '   参考心流理论：挑战略高于能力时最优（0.7-0.9）\n'
-          '   差距过大 → 低分（焦虑区），太简单 → 中低分（厌倦区）\n'
-          '\n'
-          '4. decomposability（可分解性）：能否拆为递进子目标？\n'
-          '   有清晰知识体系的学科 → 高分\n'
-          '   "提升品味"类模糊目标 → 低分\n'
-          '\n'
-          '5. timeRealism（时间合理性）：周期 × 投入时间是否足够？\n'
-          '   用搜索结果中的行业共识作为基准\n'
-          '   可用小时 < 行业共识最低时间的 20% → D 级 extreme\n'
-          '\n'
-          '6. motivationPotential（动机可持续性）：\n'
-          '   目标是否与用户的身份/长期发展关联？\n'
-          '   无明确线索时给 0.5\n'
-          '\n'
-          '7. resourceAccess（资源可达性）：\n'
-          '   是否需要特殊设备/导师/环境？\n'
-          '   只需要一台电脑和网络 → 高分\n'
-          '\n'
-          '8. measurability（进展可测性）：\n'
-          '   有客观标准判断进度吗？\n'
-          '   有证书/作品/量化指标 → 高分\n'
-          '\n'
-          '## D 级判定（不可通过，verdict: "d"）\n'
-          '\n'
-          '以下任一命中 → d，给出具体 subType：\n'
-          '  impossible: 物理上不可能（"造永动机"）\n'
-          '  meaningless: 无学习价值/过于简单（"学好呼吸"）\n'
-          '  extreme: 能力极弱 + 目标极高 + 时间极短（小学数学 → 1个月物理竞赛省一）\n'
-          '  too_uncertain: 目标不可预测/不可控（"拿诺贝尔奖"）\n'
-          '\n'
-          '## C 级判定\n'
-          '至少 3 个维度 < 0.4，或 timeRealism < 0.3\n'
-          '\n'
-          '## 输出格式\n'
-          '严格 JSON：\n'
-          '{\n'
-          '  "clarity": 0.8,\n'
-          '  "feasibility": 0.7,\n'
-          '  "challengeFit": 0.6,\n'
-          '  "decomposability": 0.8,\n'
-          '  "timeRealism": 0.5,\n'
-          '  "motivationPotential": 0.5,\n'
-          '  "resourceAccess": 0.9,\n'
-          '  "measurability": 0.7,\n'
-          '  "verdict": "a",\n'
-          '  "concerns": ["具体问题1"],\n'
-          '  "suggestions": ["可操作的调整建议"],\n'
-          '  "estimatedHours": "约 200-300 小时",\n'
-          '  "domainSummary": "该领域的概述",\n'
-          '  "goalSummary": "2-10字目标凝练，用于卡片标题展示"\n'
-          '}';
+      '你是 Sumi，一个专业的自学规划评估师。基于搜索结果对用户的学习目标进行多维度评估，给出 A/B/C/D 综合评定。\n'
+      '\n'
+      '## 维度（每项 0.0-1.0）\n'
+      '1. clarity 清晰度：0-0.3=模糊/0.4-0.6=有方向/0.7-1.0=具体可衡量\n'
+      '2. feasibility 可行性：物理/逻辑上是否可能，D 级红线\n'
+      '3. challengeFit 挑战匹配：略高于能力最优(0.7-0.9)，过大→焦虑区，过小→厌倦区\n'
+      '4. decomposability 可分解性：有清晰知识体系→高分，模糊目标→低分\n'
+      '5. timeRealism 时间合理：用行业共识作基准，可用小时<最低20%→D级\n'
+      '6. motivationPotential 动机可持续：与用户身份/长期发展关联，无线索给0.5\n'
+      '7. resourceAccess 资源可达：仅需电脑网络→高分，需特殊设备→低分\n'
+      '8. measurability 可测性：有证书/作品/量化指标→高分\n'
+      '\n'
+      '## 判定\n'
+      'D 级（任一命中→d）：impossible（物理不可能）/ meaningless（无学习价值）/ extreme（能力极弱+目标极高+时间极短）/ too_uncertain（不可预测）\n'
+      'C 级：≥3 个维度<0.4 或 timeRealism<0.3\n'
+      '\n'
+      '## 输出\n'
+      '{"clarity":0.8,"feasibility":0.7,"challengeFit":0.6,"decomposability":0.8,"timeRealism":0.5,"motivationPotential":0.5,"resourceAccess":0.9,"measurability":0.7,"verdict":"a","concerns":["问题"],"suggestions":["建议"],"estimatedHours":"约200-300小时","domainSummary":"领域概述","goalSummary":"2-16字目标凝练"}';
 
   // ---------------------------------------------------------------------------
   // 工具定义（05 轮新增）
@@ -348,10 +313,7 @@ class AiService {
         'parameters': {
           'type': 'object',
           'properties': {
-            'query': {
-              'type': 'string',
-              'description': '搜索关键词',
-            },
+            'query': {'type': 'string', 'description': '搜索关键词'},
           },
           'required': ['query'],
         },
@@ -361,7 +323,8 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'read_memory',
-        'description': '读取 Sumi 对用户的理解（USER_MODEL.md）。返回当前实时状态摘要和核心记忆，用于快速了解用户。如需查询历史行为模式，使用 read_signals。',
+        'description':
+            '读取 Sumi 对用户的理解（USER_MODEL.md）。返回当前实时状态摘要和核心记忆，用于快速了解用户。如需查询历史行为模式，使用 read_signals。',
         'parameters': {'type': 'object', 'properties': {}},
       },
     },
@@ -369,13 +332,15 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'write_memory',
-        'description': '将重要信息写入 Sumi 的记忆（USER_MODEL.md）。用于记录用户的偏好、习惯、学习模式、重要决策等。系统会自动去重和合并。',
+        'description':
+            '将重要信息写入 Sumi 的记忆（USER_MODEL.md）。用于记录用户的偏好、习惯、学习模式、重要决策等。系统会自动去重和合并。',
         'parameters': {
           'type': 'object',
           'properties': {
             'content': {
               'type': 'string',
-              'description': '要写入的记忆内容。以"用户：xxx"格式记录关于用户的信息。简洁、独立、可检索的事实陈述。不要写对话流水账。',
+              'description':
+                  '要写入的记忆内容。以"用户：xxx"格式记录关于用户的信息。简洁、独立、可检索的事实陈述。不要写对话流水账。',
             },
             'confidence': {
               'type': 'string',
@@ -390,13 +355,15 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'read_todos',
-        'description': '查询待办事项列表。默认优先查今天的待办；当用户明确提到"所有待办""全部事项""之前的任务""历史待办""某个项目"等跨日期/跨范围语义时，再查全部或指定项目。',
+        'description':
+            '查询待办事项列表。默认优先查今天的待办；当用户明确提到"所有待办""全部事项""之前的任务""历史待办""某个项目"等跨日期/跨范围语义时，再查全部或指定项目。',
         'parameters': {
           'type': 'object',
           'properties': {
             'filter': {
               'type': 'string',
-              'description': '筛选条件：today（今天的待办，默认首选）、all（全部待办，用户明确提及时才用）、或 project:xxx（指定项目的待办）',
+              'description':
+                  '筛选条件：today（今天的待办，默认首选）、all（全部待办，用户明确提及时才用）、或 project:xxx（指定项目的待办）',
             },
           },
         },
@@ -410,22 +377,10 @@ class AiService {
         'parameters': {
           'type': 'object',
           'properties': {
-            'title': {
-              'type': 'string',
-              'description': '事项标题（2-16 字）',
-            },
-            'date': {
-              'type': 'string',
-              'description': '日期，格式 YYYY-MM-DD，可选',
-            },
-            'projectId': {
-              'type': 'string',
-              'description': '归属项目 ID，可选',
-            },
-            'body': {
-              'type': 'string',
-              'description': '详细说明，可选',
-            },
+            'title': {'type': 'string', 'description': '事项标题（2-16 字）'},
+            'date': {'type': 'string', 'description': '日期，格式 YYYY-MM-DD，可选'},
+            'projectId': {'type': 'string', 'description': '归属项目 ID，可选'},
+            'body': {'type': 'string', 'description': '详细说明，可选'},
           },
           'required': ['title'],
         },
@@ -435,26 +390,22 @@ class AiService {
       'type': 'function',
       'function': {
         'name': 'read_signals',
-        'description': '查询用户的历史行为信号（操作日志）。用于发现用户的行为模式、偏好变化、学习节奏等。当你需要理解用户长期行为模式时，优先调用此工具。',
+        'description':
+            '查询用户的历史行为信号（操作日志）。用于发现用户的行为模式、偏好变化、学习节奏等。当你需要理解用户长期行为模式时，优先调用此工具。',
         'parameters': {
           'type': 'object',
           'properties': {
             'type': {
               'type': 'string',
-              'description': '信号类型筛选。可选值：todoCreated, todoCompleted, todoUncompleted, todoDeleted, todoEdited, todoMovedDate, projectGoalSet, projectLevelSet, projectCycleSet, projectTimeSet',
+              'description':
+                  '信号类型筛选。可选值：todoCreated, todoCompleted, todoUncompleted, todoDeleted, todoEdited, todoMovedDate, projectGoalSet, projectLevelSet, projectCycleSet, projectTimeSet',
             },
-            'projectId': {
-              'type': 'string',
-              'description': '按项目ID筛选，可选',
-            },
+            'projectId': {'type': 'string', 'description': '按项目ID筛选，可选'},
             'range': {
               'type': 'string',
               'description': '时间范围：7d（最近7天）、30d（最近30天）、all（全部），默认7d',
             },
-            'limit': {
-              'type': 'integer',
-              'description': '最多返回条数，默认20',
-            },
+            'limit': {'type': 'integer', 'description': '最多返回条数，默认20'},
           },
         },
       },
@@ -464,15 +415,19 @@ class AiService {
   final String apiKey;
   final String? tavilyApiKey;
   final http.Client _client;
+  final bool _ownsClient;
 
   /// 最近一次 API 调用的错误详情（用于 UI 诊断）。
   String? lastApiError;
+  bool _lastFailureWasInvalidResponse = false;
 
-  AiService({
-    required this.apiKey,
-    this.tavilyApiKey,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  AiTransport({required this.apiKey, this.tavilyApiKey, http.Client? client})
+    : _client = client ?? http.Client(),
+      _ownsClient = client == null;
+
+  void close() {
+    if (_ownsClient) _client.close();
+  }
 
   // ---------------------------------------------------------------------------
   // 底层调用
@@ -487,11 +442,12 @@ class AiService {
     List<Map<String, Object?>>? tools,
     String? responseFormat, // 'json_object' 或 null
     int maxTokens = 2000,
+    double temperature = 0.7,
   }) {
     final body = <String, Object?>{
       'model': model,
       'messages': messages,
-      'temperature': 1.0,
+      'temperature': temperature,
       'top_p': 1.0,
       'max_tokens': maxTokens,
     };
@@ -518,7 +474,11 @@ class AiService {
     bool thinking = false,
     int maxTokens = 4000,
     int timeoutSeconds = 60,
+    double temperature = 0.2,
+    bool useResponseFormat = true,
   }) async {
+    _lastFailureWasInvalidResponse = false;
+    lastApiError = null;
     try {
       final response = await _client
           .post(
@@ -527,16 +487,19 @@ class AiService {
               'Authorization': 'Bearer $apiKey',
               'Content-Type': 'application/json',
             },
-            body: jsonEncode(_buildRequestParams(
-              model: model,
-              messages: [
-                {'role': 'system', 'content': systemPrompt},
-                {'role': 'user', 'content': userPrompt},
-              ],
-              thinking: thinking,
-              responseFormat: 'json_object',
-              maxTokens: maxTokens,
-            )),
+            body: jsonEncode(
+              _buildRequestParams(
+                model: model,
+                messages: [
+                  {'role': 'system', 'content': systemPrompt},
+                  {'role': 'user', 'content': userPrompt},
+                ],
+                thinking: thinking,
+                responseFormat: useResponseFormat ? 'json_object' : null,
+                maxTokens: maxTokens,
+                temperature: temperature,
+              ),
+            ),
           )
           .timeout(Duration(seconds: timeoutSeconds));
 
@@ -554,17 +517,32 @@ class AiService {
         return null;
       }
 
-      final body = jsonDecode(response.body) as Map<String, Object?>;
+      late final Map<String, Object?> body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is! Map<String, Object?>) {
+          throw const FormatException('响应顶层必须是 JSON 对象');
+        }
+        body = decoded;
+      } catch (e) {
+        _lastFailureWasInvalidResponse = true;
+        lastApiError = '响应 JSON 解析失败: $e';
+        debugPrint('[callJsonApi] $lastApiError');
+        return null;
+      }
       final choices = body['choices'] as List<Object?>?;
       if (choices == null || choices.isEmpty) {
+        _lastFailureWasInvalidResponse = true;
         lastApiError = '响应无 choices';
         debugPrint('[callJsonApi] $lastApiError');
         return null;
       }
 
-      final message = (choices.first as Map<String, Object?>?)?['message']
-          as Map<String, Object?>?;
+      final message =
+          (choices.first as Map<String, Object?>?)?['message']
+              as Map<String, Object?>?;
       if (message == null) {
+        _lastFailureWasInvalidResponse = true;
         lastApiError = '响应无 message';
         debugPrint('[callJsonApi] $lastApiError');
         return null;
@@ -572,6 +550,7 @@ class AiService {
 
       final content = message['content'] as String?;
       if (content == null) {
+        _lastFailureWasInvalidResponse = true;
         lastApiError = 'message 无 content';
         debugPrint('[callJsonApi] $lastApiError');
         return null;
@@ -585,6 +564,7 @@ class AiService {
         }
         return jsonDecode(cleaned) as Map<String, Object?>;
       } catch (e) {
+        _lastFailureWasInvalidResponse = true;
         lastApiError = 'JSON 解析失败: $e';
         debugPrint('[callJsonApi] $lastApiError: $content');
         return null;
@@ -594,6 +574,47 @@ class AiService {
       debugPrint('[callJsonApi] $lastApiError');
       return null;
     }
+  }
+
+  Future<Map<String, Object?>?> _callValidatedJsonApi({
+    required String systemPrompt,
+    required String userPrompt,
+    required String model,
+    required AiMapValidator validator,
+    bool thinking = false,
+    int maxTokens = 4000,
+    int timeoutSeconds = 60,
+    int maxAttempts = 2,
+    bool useResponseFormat = true,
+  }) async {
+    var prompt = userPrompt;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final result = await _callJsonApi(
+        systemPrompt: systemPrompt,
+        userPrompt: prompt,
+        model: model,
+        thinking: thinking,
+        maxTokens: maxTokens,
+        timeoutSeconds: timeoutSeconds,
+        temperature: 0.2,
+        useResponseFormat: useResponseFormat,
+      );
+      if (result == null) {
+        if (!_lastFailureWasInvalidResponse || attempt == maxAttempts - 1) {
+          return null;
+        }
+        prompt = '$userPrompt\n\n上一次输出不是有效 JSON。请严格按要求重新输出。';
+        continue;
+      }
+      final validation = validator(result);
+      if (validation.isValid) return validation.value;
+      lastApiError = '结构校验失败: ${validation.errors.join('；')}';
+      if (attempt == maxAttempts - 1) return null;
+      prompt =
+          '$userPrompt\n\n上一次输出未通过校验：'
+          '${validation.errors.join('；')}。请修正后重新输出完整 JSON。';
+    }
+    return null;
   }
 
   /// 流式 JSON 调用 —— SSE 解析，累积内容，流结束后 parse JSON。
@@ -607,44 +628,59 @@ class AiService {
     int timeoutSeconds = 120,
     void Function(String chunk)? onProgress,
   }) async {
+    _lastFailureWasInvalidResponse = false;
+    lastApiError = null;
     try {
       // 在 system prompt 末尾追加 JSON 输出要求（streaming 不能使用 response_format）
-      final augmentedSystem = '$systemPrompt\n\n[重要] 只输出 JSON，不要 markdown 代码块，不要任何额外文字。';
+      // 如果 prompt 已包含 JSON 输出约束则跳过，避免重复
+      final hasJsonHint =
+          systemPrompt.contains('只输出 JSON') ||
+          systemPrompt.contains('严格 JSON') ||
+          systemPrompt.contains('不要任何额外文字');
+      final augmentedSystem = hasJsonHint
+          ? systemPrompt
+          : '$systemPrompt\n\n[重要] 只输出 JSON，不要 markdown 代码块，不要任何额外文字。';
 
       final request = http.Request('POST', Uri.parse(_baseUrl));
       request.headers.addAll({
         'Authorization': 'Bearer $apiKey',
         'Content-Type': 'application/json',
       });
-      request.body = jsonEncode(_buildRequestParams(
-        model: model,
-        messages: [
-          {'role': 'system', 'content': augmentedSystem},
-          {'role': 'user', 'content': userPrompt},
-        ],
-        thinking: thinking,
-        stream: true,
-        maxTokens: maxTokens,
-      ));
+      request.body = jsonEncode(
+        _buildRequestParams(
+          model: model,
+          messages: [
+            {'role': 'system', 'content': augmentedSystem},
+            {'role': 'user', 'content': userPrompt},
+          ],
+          thinking: thinking,
+          stream: true,
+          maxTokens: maxTokens,
+          temperature: 0.2,
+        ),
+      );
 
-      final streamedResponse =
-          await _client.send(request).timeout(Duration(seconds: timeoutSeconds));
+      final streamedResponse = await _client
+          .send(request)
+          .timeout(Duration(seconds: timeoutSeconds));
 
       if (streamedResponse.statusCode != 200) {
         final errorBody = await streamedResponse.stream.bytesToString();
         debugPrint(
-            '[_callStreamingJsonApi] HTTP ${streamedResponse.statusCode}: $errorBody');
+          '[_callStreamingJsonApi] HTTP ${streamedResponse.statusCode}: $errorBody',
+        );
         return null;
       }
 
       final contentBuf = StringBuffer();
-      await for (final chunk in streamedResponse.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
+      await for (final chunk
+          in streamedResponse.stream
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())) {
         final trimmed = chunk.trim();
-        if (!trimmed.startsWith('data: ')) continue;
+        if (!trimmed.startsWith('data:')) continue;
 
-        final data = trimmed.substring(6);
+        final data = trimmed.substring(5).trimLeft();
         if (data == '[DONE]') break;
 
         try {
@@ -652,8 +688,9 @@ class AiService {
           final choices = json['choices'] as List<Object?>?;
           if (choices == null || choices.isEmpty) continue;
 
-          final delta = (choices.first as Map<String, Object?>?)?['delta']
-              as Map<String, Object?>?;
+          final delta =
+              (choices.first as Map<String, Object?>?)?['delta']
+                  as Map<String, Object?>?;
           if (delta == null) continue;
 
           final content = delta['content'] as String?;
@@ -668,6 +705,7 @@ class AiService {
 
       final fullContent = contentBuf.toString().trim();
       if (fullContent.isEmpty) {
+        _lastFailureWasInvalidResponse = true;
         lastApiError = '流式响应无内容';
         debugPrint('[_callStreamingJsonApi] $lastApiError');
         return null;
@@ -679,7 +717,16 @@ class AiService {
         cleaned = cleaned.replaceFirst(RegExp(r'^```\w*\n?'), '');
         cleaned = cleaned.replaceFirst(RegExp(r'\n?```$'), '');
       }
-      return jsonDecode(cleaned) as Map<String, Object?>;
+      final decoded = jsonDecode(cleaned);
+      if (decoded is! Map<String, Object?>) {
+        throw const FormatException('响应顶层必须是 JSON 对象');
+      }
+      return decoded;
+    } on FormatException catch (e) {
+      _lastFailureWasInvalidResponse = true;
+      lastApiError = '流式 JSON 解析失败: $e';
+      debugPrint('[_callStreamingJsonApi] $lastApiError');
+      return null;
     } catch (e) {
       lastApiError = '流式调用异常: $e';
       debugPrint('[_callStreamingJsonApi] $lastApiError');
@@ -692,10 +739,11 @@ class AiService {
   // ---------------------------------------------------------------------------
 
   Future<SplitResult?> splitTodo(String text) async {
-    final result = await _callJsonApi(
+    var result = await _callValidatedJsonApi(
       systemPrompt: _splitSystemPrompt,
       userPrompt: text,
       model: _modelFlash,
+      validator: AiContracts.split,
       thinking: false,
       maxTokens: 500,
       timeoutSeconds: 15,
@@ -709,103 +757,59 @@ class AiService {
   // ---------------------------------------------------------------------------
 
   Future<String?> polishTodo(String text) async {
-    try {
-      debugPrint('[polishTodo] 开始润色: "$text"');
-      final response = await _client
-          .post(
-            Uri.parse(_baseUrl),
-            headers: {
-              'Authorization': 'Bearer $apiKey',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'model': _modelFlash,
-              'messages': [
-                {
-                  'role': 'system',
-                  'content': '你是 Sumi，一个个人助手。优化用户提供的 todo 标题。\n'
-                      '要求：凝练清晰、保留原意、2-16 字。\n'
-                      '只返回优化后的文本，不要加引号或额外文字。',
-                },
-                {'role': 'user', 'content': text},
-              ],
-              'temperature': 1.0,
-              'top_p': 1.0,
-              'max_tokens': 200,
-            }),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode != 200) {
-        debugPrint('[polishTodo] HTTP ${response.statusCode}: ${response.body}');
-        return null;
-      }
-
-      final body = jsonDecode(response.body) as Map<String, Object?>;
-      final choices = body['choices'] as List<Object?>?;
-      if (choices == null || choices.isEmpty) {
-        debugPrint('[polishTodo] 无 choices: ${response.body}');
-        return null;
-      }
-
-      final message = (choices.first as Map<String, Object?>?)?['message']
-          as Map<String, Object?>?;
-      final content = message?['content'] as String?;
-      final result = content?.trim();
-      String? cleaned = result;
-      if (cleaned != null && cleaned.isNotEmpty) {
-        if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
-            (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
-          cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+    var userPrompt = text;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse(_baseUrl),
+              headers: {
+                'Authorization': 'Bearer $apiKey',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(
+                _buildRequestParams(
+                  model: _modelFlash,
+                  messages: [
+                    {
+                      'role': 'system',
+                      'content':
+                          '优化用户提供的 todo 标题。保留原意，输出 2-16 字的单行纯文本，不加引号或解释。',
+                    },
+                    {'role': 'user', 'content': userPrompt},
+                  ],
+                  maxTokens: 200,
+                  temperature: 0.2,
+                ),
+              ),
+            )
+            .timeout(const Duration(seconds: 15));
+        if (response.statusCode != 200) return null;
+        final body = jsonDecode(response.body) as Map<String, Object?>;
+        final choices = body['choices'] as List<Object?>?;
+        if (choices == null || choices.isEmpty) return null;
+        final firstChoice = choices.first as Map<String, Object?>?;
+        final message = firstChoice?['message'] as Map<String, Object?>?;
+        final content = message?['content'] as String?;
+        if (content == null) return null;
+        final validation = AiContracts.polishedText(content);
+        if (validation.isValid) return validation.value;
+        if (attempt == 1) {
+          lastApiError = '润色结果校验失败: ${validation.errors.join('；')}';
+          return null;
         }
+        userPrompt = '$text\n\n上一次结果不合格：${validation.errors.join('；')}。请重新输出。';
+      } catch (e) {
+        lastApiError = '润色调用失败: $e';
+        return null;
       }
-      debugPrint('[polishTodo] 结果: "$cleaned"');
-      return (cleaned != null && cleaned.isNotEmpty) ? cleaned : null;
-    } catch (e) {
-      debugPrint('[polishTodo] 异常: $e');
-      return null;
     }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
   // 项目规划（05 轮：切到 pro + thinking）
   // ---------------------------------------------------------------------------
-
-  Future<PlanResult?> generateProjectPlan({
-    required String goal,
-    required String level,
-    required int cycleMonths,
-    required int timeConstraint,
-    required String startDate,
-    String? searchContext,
-  }) async {
-    final searchSection = searchContext != null && searchContext.isNotEmpty
-        ? '\n## 联网搜索结果（Tavily）\n以下是最新网络信息，请参考其内容来制定更准确的学习计划：\n$searchContext\n'
-        : '';
-    final userPrompt = '''
-## 输入信息
-- 项目目标：$goal
-- 当前水平：$level
-- 规划周期：$cycleMonths 个月
-- 每周投入时间：$timeConstraint 小时
-- 起始日期：$startDate
-$searchSection
-请生成 $cycleMonths 个月的月计划卡和第一天的 todo。''';
-
-    // 注意：thinking 与 response_format: json_object 冲突，不可同时使用
-    final result = await _callJsonApi(
-      systemPrompt: _buildPlanningPrompt(),
-      userPrompt: userPrompt,
-      model: _modelPro,
-      thinking: false,
-      maxTokens: 8192,
-      timeoutSeconds: 90,
-    );
-    if (result == null) {
-      throw Exception('AI 规划 API 无响应${lastApiError != null ? '（$lastApiError）' : ''}');
-    }
-    return PlanResult.fromJson(result);
-  }
 
   /// 增强版项目规划（06 轮新增）—— 结合评估报告 + 领域知识。
   Future<PlanResult?> generatePlanEnhanced({
@@ -817,7 +821,8 @@ $searchSection
     required String assessmentReport,
     required String domainKnowledge,
   }) async {
-    final userPrompt = '''
+    final userPrompt =
+        '''
 ## 项目信息
 - 目标：$goal
 - 当前水平：$level
@@ -825,25 +830,32 @@ $searchSection
 - 每周投入：$timeConstraint 小时
 - 起始日期：$startDate
 
-## 评估报告
-$assessmentReport
+## 评估报告数据
+${PromptContext.dataBlock(kind: 'assessment', source: 'sumi_assessor', data: assessmentReport)}
 
-## 领域知识（网络搜索结果）
-$domainKnowledge
+## 领域知识数据
+${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: PromptContext.truncate(domainKnowledge, 4000))}
 
 请基于以上全部信息，生成 $cycleMonths 个月的月计划卡和第一天的 todo。''';
 
     // 注意：thinking 与 response_format: json_object 冲突，不可同时使用
-    final result = await _callJsonApi(
+    final result = await _callValidatedJsonApi(
       systemPrompt: _buildPlanningPrompt(hasAssessment: true),
       userPrompt: userPrompt,
       model: _modelPro,
+      validator: (value) => AiContracts.plan(
+        value,
+        cycleMonths: cycleMonths,
+        startDate: startDate,
+      ),
       thinking: false,
       maxTokens: 8192,
       timeoutSeconds: 120,
     );
     if (result == null) {
-      throw Exception('AI 规划 API 无响应${lastApiError != null ? '（$lastApiError）' : ''}');
+      throw Exception(
+        'AI 规划 API 无响应${lastApiError != null ? '（$lastApiError）' : ''}',
+      );
     }
     return PlanResult.fromJson(result);
   }
@@ -858,8 +870,10 @@ $domainKnowledge
     required String assessmentReport,
     required String domainKnowledge,
     void Function(String chunk)? onProgress,
+    void Function(AiStructuredStage stage)? onStage,
   }) async {
-    final userPrompt = '''
+    final userPrompt =
+        '''
 ## 项目信息
 - 目标：$goal
 - 当前水平：$level
@@ -867,11 +881,11 @@ $domainKnowledge
 - 每周投入：$timeConstraint 小时
 - 起始日期：$startDate
 
-## 评估报告
-$assessmentReport
+## 评估报告数据
+${PromptContext.dataBlock(kind: 'assessment', source: 'sumi_assessor', data: assessmentReport)}
 
-## 领域知识（网络搜索结果）
-$domainKnowledge
+## 领域知识数据
+${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: PromptContext.truncate(domainKnowledge, 4000))}
 
 请基于以上全部信息，生成 $cycleMonths 个月的月计划卡和第一天的 todo。''';
 
@@ -884,8 +898,51 @@ $domainKnowledge
       timeoutSeconds: 120,
       onProgress: onProgress,
     );
-    if (result == null) return null;
-    return PlanResult.fromJson(result);
+    if (result == null) {
+      if (!_lastFailureWasInvalidResponse) return null;
+      onStage?.call(AiStructuredStage.repairing);
+      final repaired = await _callValidatedJsonApi(
+        systemPrompt: _buildPlanningPrompt(hasAssessment: true),
+        userPrompt:
+            '$userPrompt\n\n上一次流式输出不是有效 JSON，请重新输出完整 JSON。',
+        model: _modelPro,
+        validator: (value) => AiContracts.plan(
+          value,
+          cycleMonths: cycleMonths,
+          startDate: startDate,
+        ),
+        maxTokens: 8192,
+        timeoutSeconds: 120,
+        maxAttempts: 1,
+      );
+      return repaired == null ? null : PlanResult.fromJson(repaired);
+    }
+    onStage?.call(AiStructuredStage.validating);
+    final validation = AiContracts.plan(
+      result,
+      cycleMonths: cycleMonths,
+      startDate: startDate,
+    );
+    if (!validation.isValid) {
+      lastApiError = '流式规划校验失败: ${validation.errors.join('；')}';
+      onStage?.call(AiStructuredStage.repairing);
+      final repaired = await _callValidatedJsonApi(
+        systemPrompt: _buildPlanningPrompt(hasAssessment: true),
+        userPrompt:
+            '$userPrompt\n\n上一次输出未通过校验：${validation.errors.join('；')}。请重新输出完整 JSON。',
+        model: _modelPro,
+        validator: (value) => AiContracts.plan(
+          value,
+          cycleMonths: cycleMonths,
+          startDate: startDate,
+        ),
+        maxTokens: 8192,
+        timeoutSeconds: 120,
+        maxAttempts: 1,
+      );
+      return repaired == null ? null : PlanResult.fromJson(repaired);
+    }
+    return PlanResult.fromJson(validation.value!);
   }
 
   // ---------------------------------------------------------------------------
@@ -897,15 +954,17 @@ $domainKnowledge
     required int timeConstraint,
     required int scheduledHours,
   }) async {
-    final userPrompt = '''
+    final userPrompt =
+        '''
 月计划：$monthPlanTitle — $monthPlanSummary
 日期：$date
 本周已安排的小时数：$scheduledHours / $timeConstraint''';
 
-    final result = await _callJsonApi(
+    final result = await _callValidatedJsonApi(
       systemPrompt: _dailyTodoSystemPrompt,
       userPrompt: userPrompt,
       model: _modelFlash,
+      validator: (value) => AiContracts.dailyTodos(value, date: date),
       thinking: false,
       maxTokens: 1000,
       timeoutSeconds: 30,
@@ -927,26 +986,40 @@ $domainKnowledge
     required int timeConstraint,
     required String domainContext,
   }) async {
-    final userPrompt = '''
+    final userPrompt =
+        '''
 ## 用户输入
 - 目标：$goal
 - 当前水平：$level
 - 规划周期：$cycleMonths 个月
 - 每周投入：$timeConstraint 小时
 
-## 搜索结果（领域知识参考）
-$domainContext
+## 搜索结果数据
+${PromptContext.dataBlock(kind: 'search_results', source: 'tavily', data: PromptContext.truncate(domainContext, 4000))}
 
 请基于以上信息进行多维度评估，给出 A/B/C/D 综合评定。''';
 
-    final result = await _callJsonApi(
+    var result = await _callValidatedJsonApi(
       systemPrompt: _assessmentSystemPrompt,
       userPrompt: userPrompt,
       model: _modelFlash,
+      validator: AiContracts.assessment,
       thinking: false,
       maxTokens: 8000,
       timeoutSeconds: 60,
     );
+    if (result == null && (lastApiError?.startsWith('HTTP 400') ?? false)) {
+      result = await _callValidatedJsonApi(
+        systemPrompt: _assessmentSystemPrompt,
+        userPrompt: userPrompt,
+        model: _modelFlash,
+        validator: AiContracts.assessment,
+        thinking: false,
+        maxTokens: 8000,
+        timeoutSeconds: 60,
+        useResponseFormat: false,
+      );
+    }
     if (result == null) return null;
     return GoalAssessment.fromJson(result);
   }
@@ -972,19 +1045,18 @@ $domainContext
     required String realtimeStats,
     required String coreMemory,
   }) async {
-    final userPrompt = '''
-用户当前状态：
-$realtimeStats
-
-核心记忆：
-${coreMemory.trim().isEmpty ? '（暂无）' : coreMemory}
+    final userPrompt =
+        '''
+用户上下文数据：
+${PromptContext.dataBlock(kind: 'suggestion_context', source: 'local_sumi_data', data: {'realtimeStats': realtimeStats, 'coreMemory': coreMemory.trim().isEmpty ? '（暂无）' : coreMemory})}
 
 请基于以上信息生成 3-4 条个性化建议。''';
 
-    final result = await _callJsonApi(
+    final result = await _callValidatedJsonApi(
       systemPrompt: _openingSuggestionsPrompt,
       userPrompt: userPrompt,
       model: _modelFlash,
+      validator: AiContracts.suggestions,
       thinking: false,
       maxTokens: 400,
       timeoutSeconds: 15,
@@ -992,26 +1064,38 @@ ${coreMemory.trim().isEmpty ? '（暂无）' : coreMemory}
     if (result == null) return [];
     final raw = result['suggestions'] as List<Object?>?;
     if (raw == null) return [];
-    return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+    return raw
+        .map((e) => e.toString().trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
   }
 
-  /// 周度反思（Pro + thinking, ~2000 token）。
+  /// 周度反思（Pro + thinking, ~1500 token）。仅传入 HOT + WARM 层 + 信号摘要。
   Future<WeeklyReflectionResult?> generateWeeklyReflection({
-    required String userModel,
+    required String hotPrompt,
+    required String warmPrefs,
     required String weeklySignals,
   }) async {
-    final userPrompt = '''
-## USER_MODEL.md 全文
-$userModel
+    final userPrompt =
+        '''
+## 用户当前状态与核心记忆（HOT）
+$hotPrompt
+
+## 长期偏好（WARM）
+${warmPrefs.isEmpty ? '（暂无）' : warmPrefs}
 
 ## 本周信号（7 天）
 $weeklySignals
 
-请基于以上信息进行周度反思，更新 USER_MODEL.md：
+请基于以上信息进行周度反思，输出更新后的 USER_MODEL.md 全文：
 1. 领域画像 — 更新学习速度、薄弱维度
 2. 长期偏好 — 如本周行为改变了之前的推断，则更新
-3. 核心记忆 — 写入一条"本周洞察"
-4. 归档 — 将超过 30 天的核心记忆条目移入归档区
+3. 核心记忆 — 写入一条"本周洞察"，将超过 30 天的旧条目移入归档区
+
+重要约束：
+- 必须保留所有区段标题和 <!-- END ... --> 标记，包括 ## 核心记忆、## 领域画像、## 长期偏好、## 归档。
+- 如果本周信息不足以更新某区段，保持该区段原内容不变，不要删除或留空。
+- 不要输出任何区段之外的解释文字。
 
 输出 JSON：{"updatedUserModel": "完整的 USER_MODEL.md 内容（markdown 格式，保留所有区段结构）"}''';
 
@@ -1036,15 +1120,15 @@ $weeklySignals
   /// 调用 Tavily Search API，返回格式化结果列表。
   Future<List<Map<String, String>>> searchWeb(String query) async {
     if (tavilyApiKey == null || tavilyApiKey!.isEmpty) {
-      return [{'error': 'Tavily API Key 未配置'}];
+      return [
+        {'error': 'Tavily API Key 未配置'},
+      ];
     }
     try {
       final response = await _client
           .post(
             Uri.parse('https://api.tavily.com/search'),
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'api_key': tavilyApiKey,
               'query': query,
@@ -1055,25 +1139,41 @@ $weeklySignals
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
-        return [{'error': '搜索失败（${response.statusCode}）'}];
+        return [
+          {'error': '搜索失败（${response.statusCode}）'},
+        ];
       }
 
       final body = jsonDecode(response.body) as Map<String, Object?>;
       final results = body['results'] as List<Object?>?;
       if (results == null || results.isEmpty) {
-        return [{'info': '未找到相关结果'}];
+        return [
+          {'info': '未找到相关结果'},
+        ];
       }
 
       return results.take(5).map((r) {
         final m = r as Map<String, Object?>;
+        final rawUrl = (m['url'] as String?) ?? '';
+        final uri = Uri.tryParse(rawUrl);
+        final safeUrl = uri != null &&
+                (uri.scheme == 'https' || uri.scheme == 'http') &&
+                uri.host.isNotEmpty
+            ? uri.replace(fragment: '').toString()
+            : '';
         return {
-          'title': (m['title'] as String?) ?? '',
-          'url': (m['url'] as String?) ?? '',
-          'content': (m['content'] as String?) ?? '',
+          'title': PromptContext.truncate((m['title'] as String?) ?? '', 200),
+          'url': safeUrl,
+          'content': PromptContext.truncate(
+            (m['content'] as String?) ?? '',
+            800,
+          ),
         };
       }).toList();
     } catch (_) {
-      return [{'error': '搜索请求超时或网络错误'}];
+      return [
+        {'error': '搜索请求超时或网络错误'},
+      ];
     }
   }
 
@@ -1083,7 +1183,7 @@ $weeklySignals
 
   /// Streaming 对话，返回 [StreamEvent]。
   /// [messages] 为完整消息历史（含 system prompt + 历史对话 + 当前用户消息）。
-  /// 每条 assistant 消息应包含 `reasoning_content` 字段（如果有）。
+  /// `reasoning_content` 仅在当前 Agent Loop 内部使用，不传给 Store。
   Stream<StreamEvent> streamChatMessages(
     List<Map<String, Object?>> messages, {
     bool thinkingEnabled = true,
@@ -1094,35 +1194,42 @@ $weeklySignals
         'Authorization': 'Bearer $apiKey',
         'Content-Type': 'application/json',
       });
-      request.body = jsonEncode(_buildRequestParams(
-        model: _modelFlash,
-        messages: messages,
-        thinking: thinkingEnabled,
-        stream: true,
-        tools: _chatTools,
-        maxTokens: 8192,
-      ));
+      request.body = jsonEncode(
+        _buildRequestParams(
+          model: _modelFlash,
+          messages: messages,
+          thinking: thinkingEnabled,
+          stream: true,
+          tools: _chatTools,
+          maxTokens: 8192,
+          temperature: 0.7,
+        ),
+      );
 
-      final streamedResponse =
-          await _client.send(request).timeout(const Duration(seconds: 60));
+      final streamedResponse = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 60));
 
       if (streamedResponse.statusCode != 200) {
         final errorBody = await streamedResponse.stream.bytesToString();
         debugPrint(
-            '[streamChatMessages] HTTP ${streamedResponse.statusCode}: $errorBody');
+          '[streamChatMessages] HTTP ${streamedResponse.statusCode}: $errorBody',
+        );
+        yield AgentErrorEvent(_chatErrorMessage(streamedResponse.statusCode));
         return;
       }
 
       // tool_calls 增量解析状态
       final toolCallBufs = <int, _ToolCallBuf>{};
 
-      await for (final chunk in streamedResponse.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
+      await for (final chunk
+          in streamedResponse.stream
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())) {
         final trimmed = chunk.trim();
-        if (!trimmed.startsWith('data: ')) continue;
+        if (!trimmed.startsWith('data:')) continue;
 
-        final data = trimmed.substring(6);
+        final data = trimmed.substring(5).trimLeft();
         if (data == '[DONE]') break;
 
         try {
@@ -1130,8 +1237,9 @@ $weeklySignals
           final choices = json['choices'] as List<Object?>?;
           if (choices == null || choices.isEmpty) continue;
 
-          final delta = (choices.first as Map<String, Object?>?)?['delta']
-              as Map<String, Object?>?;
+          final delta =
+              (choices.first as Map<String, Object?>?)?['delta']
+                  as Map<String, Object?>?;
           if (delta == null) continue;
 
           // 文本内容
@@ -1141,8 +1249,7 @@ $weeklySignals
           }
 
           // 思考过程
-          final reasoning =
-              delta['reasoning_content'] as String?;
+          final reasoning = delta['reasoning_content'] as String?;
           if (reasoning != null && reasoning.isNotEmpty) {
             yield ReasoningDelta(reasoning);
           }
@@ -1153,10 +1260,7 @@ $weeklySignals
             for (final tc in toolCalls) {
               if (tc is! Map<String, Object?>) continue;
               final index = (tc['index'] as num?)?.toInt() ?? 0;
-              final buf = toolCallBufs.putIfAbsent(
-                index,
-                () => _ToolCallBuf(),
-              );
+              final buf = toolCallBufs.putIfAbsent(index, () => _ToolCallBuf());
 
               final id = tc['id'] as String?;
               if (id != null) buf.id = id;
@@ -1183,15 +1287,15 @@ $weeklySignals
         for (final key in sortedKeys) {
           final buf = toolCallBufs[key]!;
           if (buf.name.isNotEmpty) {
-            calls.add(ToolCall(
-              id: buf.id,
-              name: buf.name,
-              arguments: ToolCall.fromMap({
-                'function': {
-                  'arguments': buf.arguments.toString(),
-                },
-              }).arguments,
-            ));
+            calls.add(
+              ToolCall(
+                id: buf.id,
+                name: buf.name,
+                arguments: ToolCall.fromMap({
+                  'function': {'arguments': buf.arguments.toString()},
+                }).arguments,
+              ),
+            );
           }
         }
         if (calls.isNotEmpty) {
@@ -1202,81 +1306,23 @@ $weeklySignals
       yield StreamDone();
     } catch (e) {
       debugPrint('[streamChatMessages] 流异常: $e');
+      yield AgentErrorEvent('请求失败，请检查网络后重试。');
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Agent Loop（05 轮新增）
-  // ---------------------------------------------------------------------------
-
-  /// 执行 Agent Loop：多轮 tool calling 直到 AI 给出最终回复或达到上限。
-  Stream<StreamEvent> sendAgentLoop({
-    required List<Map<String, Object?>> messages,
-    required Future<String> Function(ToolCall call) executeTool,
-    bool thinkingEnabled = true,
-    int maxTurns = 5,
-  }) async* {
-    for (var turn = 0; turn < maxTurns; turn++) {
-      List<ToolCall>? pendingCalls;
-      final contentBuf = StringBuffer();
-      final reasoningBuf = StringBuffer();
-
-      await for (final event in streamChatMessages(messages,
-          thinkingEnabled: thinkingEnabled)) {
-        switch (event) {
-          case ContentDelta(text: final t):
-            contentBuf.write(t);
-            yield event;
-          case ReasoningDelta(text: final t):
-            reasoningBuf.write(t);
-            yield event;
-          case ToolCallsComplete(calls: final calls):
-            pendingCalls = calls;
-          case StreamDone():
-            break;
-        }
-      }
-
-      // 将 assistant 消息（含 content + reasoning_content + tool_calls）加入历史
-      // 必须在 tool 结果之前添加，否则 API 会因消息序列非法而报错
-      final assistantMsg = <String, Object?>{
-        'role': 'assistant',
-        'content': contentBuf.toString(),
-      };
-      if (reasoningBuf.isNotEmpty) {
-        assistantMsg['reasoning_content'] = reasoningBuf.toString();
-      }
-      if (pendingCalls != null && pendingCalls.isNotEmpty) {
-        assistantMsg['tool_calls'] = pendingCalls.map((c) => {
-          'id': c.id,
-          'type': 'function',
-          'function': {
-            'name': c.name,
-            'arguments': jsonEncode(c.arguments),
-          },
-        }).toList();
-      }
-      messages.add(assistantMsg);
-
-      // 无 tool_calls → 结束
-      if (pendingCalls == null || pendingCalls.isEmpty) return;
-
-      // 执行工具并追加 tool 结果消息
-      for (final call in pendingCalls) {
-        final result = await executeTool(call);
-        messages.add({
-          'role': 'tool',
-          'tool_call_id': call.id,
-          'content': result,
-        });
-      }
-    }
-
-    // 达到最大轮数：发送总结请求
-    yield ContentDelta('\n\n（已达最大轮数，以上为我能获取的信息。）');
-    yield StreamDone();
+  static String _chatErrorMessage(int statusCode) {
+    return switch (statusCode) {
+      401 || 403 => 'API Key 无效或没有访问权限，请检查设置。',
+      429 => '请求过于频繁，请稍后重试。',
+      >= 500 => 'AI 服务暂时不可用，请稍后重试。',
+      _ => '请求失败（$statusCode），请稍后重试。',
+    };
   }
+}
 
+/// 旧测试和注入点的兼容名称；运行时直接依赖 [AiTransport]。
+class AiService extends AiTransport {
+  AiService({required super.apiKey, super.tavilyApiKey, super.client});
 }
 
 /// tool_calls 增量解析缓冲。

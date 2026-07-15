@@ -56,7 +56,7 @@ class _DateStripState extends State<DateStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchTodos(context);
     final selected = dateOnly(store.selectedDate);
     final daysInMonth = DateTime(selected.year, selected.month + 1, 0).day;
     final dates = List.generate(

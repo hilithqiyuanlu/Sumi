@@ -12,7 +12,8 @@ class MonthCardPager extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchProjects(context);
+    SumiScope.watchSettings(context);
     final cards = store.monthCardsFor(project.id);
     final cycle = project.cycleMonths;
 
@@ -43,6 +44,7 @@ class MonthCardPager extends StatelessWidget {
               child: _UnlockedCard(
                 card: card,
                 monthIndex: index,
+                isCurrent: index == project.currentMonthIndex,
                 accentColor: _monthAccent(index, project.currentMonthIndex),
               ),
             );
@@ -66,11 +68,13 @@ Color _monthAccent(int index, int currentIndex) {
 class _UnlockedCard extends StatelessWidget {
   final MonthCard card;
   final int monthIndex;
+  final bool isCurrent;
   final Color accentColor;
 
   const _UnlockedCard({
     required this.card,
     required this.monthIndex,
+    required this.isCurrent,
     required this.accentColor,
   });
 
@@ -83,10 +87,11 @@ class _UnlockedCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isCurrent
+            ? mint.withValues(alpha: 0.5)
+            : accentColor.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(radiusCard),
         border: Border.all(color: line.withValues(alpha: 0.15)),
-        boxShadow: const [...shadow1],
       ),
       padding: const EdgeInsets.all(s16),
       child: Column(
@@ -181,7 +186,7 @@ class _LockedMonthCard extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: paper,
+          color: primary50.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(radiusCard),
           border: Border.all(color: line.withValues(alpha: 0.2)),
         ),

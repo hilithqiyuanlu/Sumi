@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import '../data/signal_database.dart';
 import '../models/models.dart';
 import '../utils/utils.dart';
@@ -12,15 +14,17 @@ enum EditClassification { minor, major, condensedRestore, cleared }
 /// 负责编辑区分、凝练还原保护、信号发射（07 轮新增）。
 class SignalService {
   final SignalDatabase _signalDb;
+  final Project? Function(String projectId)? projectForId;
 
-  SignalService(this._signalDb);
+  SignalService(this._signalDb, {this.projectForId});
 
   // ---------------------------------------------------------------------------
   // 信号发射
   // ---------------------------------------------------------------------------
 
   Future<void> emitTodoCreated(TodoItem todo) async {
-    if (isPastDate(todo.date)) return;
+    debugPrint('[SignalService] emitTodoCreated 被调用: "${todo.title}" date=${todo.date}');
+    if (isPastDate(todo.date)) { debugPrint('[SignalService] 过去日期，跳过'); return; }
     await _insert(UserSignal(
       signal: SignalType.todoCreated,
       time: DateTime.now(),
@@ -63,7 +67,7 @@ class SignalService {
     await _insert(UserSignal(
       signal: SignalType.todoDeleted,
       time: DateTime.now(),
-      contextJson: _ctx(todo: todo, extra: {if (reason != null) 'reason': reason}),
+      contextJson: _ctx(todo: todo, extra: reason == null ? null : {'reason': reason}),
       projectId: todo.projectId,
       todoId: todo.id,
       domain: _inferDomain(todo),
@@ -77,7 +81,8 @@ class SignalService {
     String newTitle, {
     bool projectChanged = false,
   }) async {
-    if (isPastDate(todo.date)) return;
+    debugPrint('[SignalService] emitTodoEdited: "$oldTitle" → "$newTitle" date=${todo.date}');
+    if (isPastDate(todo.date)) { debugPrint('[SignalService] 过去日期，跳过'); return; }
     final changePercent = _changePercent(oldTitle, newTitle);
     await _insert(UserSignal(
       signal: SignalType.todoEdited,
@@ -122,13 +127,12 @@ class SignalService {
 
   Future<void> emitProjectGoalSet(Project project, String? oldGoal) async {
     if (oldGoal == project.goal) return;
+    final goalExtra = <String, dynamic>{'newGoal': project.goal};
+    if (oldGoal != null) goalExtra['oldGoal'] = oldGoal;
     await _insert(UserSignal(
       signal: SignalType.projectGoalSet,
       time: DateTime.now(),
-      contextJson: _projectCtx(project, extra: {
-        if (oldGoal != null) 'oldGoal': oldGoal,
-        'newGoal': project.goal,
-      }),
+      contextJson: _projectCtx(project, extra: goalExtra),
       projectId: project.id,
       domain: project.goal,
       createdAt: DateTime.now(),
@@ -137,13 +141,12 @@ class SignalService {
 
   Future<void> emitProjectLevelSet(Project project, String? oldLevel) async {
     if (oldLevel == project.level) return;
+    final levelExtra = <String, dynamic>{'newLevel': project.level};
+    if (oldLevel != null) levelExtra['oldLevel'] = oldLevel;
     await _insert(UserSignal(
       signal: SignalType.projectLevelSet,
       time: DateTime.now(),
-      contextJson: _projectCtx(project, extra: {
-        if (oldLevel != null) 'oldLevel': oldLevel,
-        'newLevel': project.level,
-      }),
+      contextJson: _projectCtx(project, extra: levelExtra),
       projectId: project.id,
       domain: project.goal,
       createdAt: DateTime.now(),
@@ -215,7 +218,13 @@ class SignalService {
   // ---------------------------------------------------------------------------
 
   Future<void> _insert(UserSignal signal) async {
-    await _signalDb.insert(signal);
+    try {
+      await _signalDb.insert(signal);
+      debugPrint('[SignalService] 信号已写入: ${signal.signal.name}');
+    } catch (e, stack) {
+      debugPrint('[SignalService] 信号写入失败: $e');
+      debugPrint('[SignalService] 堆栈: $stack');
+    }
   }
 
   /// 构建 todo 信号的 context JSON。
@@ -230,12 +239,16 @@ class SignalService {
       'hourOfDay': now.hour,
     };
     if (todo.projectId != null) {
-      // 从 projectList 中找项目名（如果需要）
       map['projectId'] = todo.projectId;
+      final project = projectForId?.call(todo.projectId!);
+      if (project != null) {
+        map['projectName'] = project.name;
+        map['projectGoal'] = project.goal;
+      }
     }
     if (todo.date != null) map['plannedDate'] = todo.date;
     if (completedOnTime != null) {
-      map['completedOnTime'] = todo.date == dateKey(dateOnly(now));
+      map['completedOnTime'] = completedOnTime;
     }
     if (extra != null) map.addAll(extra);
     return jsonEncode(map);
@@ -255,12 +268,12 @@ class SignalService {
     return jsonEncode(map);
   }
 
-  /// 从 todo 推测学习领域（简单启发式）。
   String? _inferDomain(TodoItem todo) {
-    // 有项目归属 → 用项目 goal 作为领域
-    // 这里只能获取到 projectId，具体项目名在外层传入
-    // 简化：返回 projectId
-    return todo.projectId;
+    final projectId = todo.projectId;
+    if (projectId == null) return null;
+    final project = projectForId?.call(projectId);
+    final goal = project?.goal.trim() ?? '';
+    return goal.isEmpty ? null : goal;
   }
 
   /// 计算 Levenshtein 编辑距离。

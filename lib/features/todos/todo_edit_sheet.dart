@@ -72,6 +72,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   }
 
   void _assignProject(String? projectId) {
+    // ignore: discarded_futures
     _store.updateTodoProject(_todo.id, projectId);
     setState(() => _showProjects = false);
   }
@@ -101,25 +102,28 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
       final condensed = await _store.polishText(newTitle);
       if (mounted) {
         setState(() => _saving = false);
-        _store.updateTodo(
+        await _store.updateTodo(
           _todo.id,
           title: condensed ?? newTitle,
           body: bodyChanged ? newBody : null,
         );
+        if (!mounted) return;
         Navigator.pop(context);
       }
     } else {
-      _store.updateTodo(
+      await _store.updateTodo(
         _todo.id,
         title: titleChanged ? newTitle : null,
         body: bodyChanged ? newBody : null,
       );
+      if (!mounted) return;
       Navigator.pop(context);
     }
   }
 
   void _delete() {
     H.medium();
+    // 不阻塞 UI：删除后立即关闭面板，信号写入异步完成
     _store.deleteTodo(_todo.id);
     Navigator.pop(context);
   }
@@ -353,29 +357,26 @@ class _ActionChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool active;
-  final Color? color;
 
   const _ActionChip({
     required this.icon,
     required this.label,
     required this.onTap,
     this.active = false,
-    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final c = color;
-    final iconColor = c ?? (active ? mintDeep : ink);
-    final textColor = c ?? (active ? mintDeep : ink);
+    final iconColor = active ? mintDeep : ink;
+    final textColor = active ? mintDeep : ink;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
         decoration: BoxDecoration(
-          color: active && c == null ? mintDeep.withValues(alpha: 0.12) : surfaceAlt,
+          color: active ? mintDeep.withValues(alpha: 0.12) : surfaceAlt,
           borderRadius: BorderRadius.circular(radiusPill),
-          border: active && c == null
+          border: active
               ? Border.all(color: mintDeep.withValues(alpha: 0.4))
               : Border.all(color: line.withValues(alpha: 0.2), width: 0.5),
         ),

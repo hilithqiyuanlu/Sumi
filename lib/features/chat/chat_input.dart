@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../utils/haptics.dart';
 
 import '../../services/voice_input_service.dart';
+import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/utils.dart';
 
@@ -14,7 +15,7 @@ enum _VoiceHint { none, listening, cancel }
 /// 底部输入栏 —— 支持 Sumi 对话 / Todo 事项两种模式。
 class ChatInput extends StatefulWidget {
   final InputMode mode;
-  final ValueChanged<String> onSend;
+  final ChatSendResult Function(String) onSend;
   final ValueChanged<String>? onAddTodo;
   final ValueChanged<InputMode>? onModeChanged;
   final bool enabled;
@@ -68,8 +69,9 @@ class _ChatInputState extends State<ChatInput> {
     _voice?.onPartialResult = (text) {
       if (!_isRecording) return;
       _controller.text = text;
-      _controller.selection =
-          TextSelection.collapsed(offset: _controller.text.length);
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
     };
   }
 
@@ -101,15 +103,20 @@ class _ChatInputState extends State<ChatInput> {
     final text = _controller.text.trim();
     if (text.isEmpty || !widget.enabled) return;
     H.click();
+
+    if (widget.mode == InputMode.todo) {
+      _clearText();
+      widget.onAddTodo?.call(text);
+    } else {
+      final result = widget.onSend(text);
+      if (result == ChatSendResult.accepted) _clearText();
+    }
+  }
+
+  void _clearText() {
     _controller.clear();
     _hasText = false;
     _voiceText = '';
-
-    if (widget.mode == InputMode.todo) {
-      widget.onAddTodo?.call(text);
-    } else {
-      widget.onSend(text);
-    }
   }
 
   void _toggleMode() {
@@ -118,7 +125,9 @@ class _ChatInputState extends State<ChatInput> {
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) setState(() => _modePressed = false);
     });
-    final newMode = widget.mode == InputMode.chat ? InputMode.todo : InputMode.chat;
+    final newMode = widget.mode == InputMode.chat
+        ? InputMode.todo
+        : InputMode.chat;
     widget.onModeChanged?.call(newMode);
   }
 
@@ -156,8 +165,10 @@ class _ChatInputState extends State<ChatInput> {
       final isCancel = dy < -_cancelSwipeThreshold;
       if (isCancel != wasCancel) {
         H.light();
-        setState(() => _voiceHint =
-            isCancel ? _VoiceHint.cancel : _VoiceHint.listening);
+        setState(
+          () =>
+              _voiceHint = isCancel ? _VoiceHint.cancel : _VoiceHint.listening,
+        );
       }
     }
   }
@@ -224,8 +235,9 @@ class _ChatInputState extends State<ChatInput> {
             ? '$_voiceText\n${result.text}'
             : result.text;
         _controller.text = combined;
-        _controller.selection =
-            TextSelection.collapsed(offset: _controller.text.length);
+        _controller.selection = TextSelection.collapsed(
+          offset: _controller.text.length,
+        );
         _voiceText = combined;
         _hasText = true;
 
@@ -277,8 +289,8 @@ class _ChatInputState extends State<ChatInput> {
     return widget.mode == InputMode.todo
         ? '新增事项'
         : widget.isFutureDate
-            ? '尽管说，不留聊天记录～'
-            : '尽管说';
+        ? '尽管说，不留聊天记录～'
+        : '尽管说';
   }
 
   @override
@@ -444,7 +456,8 @@ class _ChatInputState extends State<ChatInput> {
                             onTap: showSendButton ? _send : null,
                             customBorder: const CircleBorder(),
                             overlayColor: WidgetStatePropertyAll(
-                                Colors.white.withValues(alpha: 0.3)),
+                              Colors.white.withValues(alpha: 0.3),
+                            ),
                             child: Container(
                               width: 44,
                               height: 44,

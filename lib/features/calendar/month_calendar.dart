@@ -12,7 +12,7 @@ class MonthCalendar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchTodos(context);
     final selected = dateOnly(store.selectedDate);
     final today = dateOnly(DateTime.now());
 

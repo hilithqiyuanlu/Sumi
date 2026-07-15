@@ -31,7 +31,29 @@ class SumiApp extends StatefulWidget {
   State<SumiApp> createState() => _SumiAppState();
 }
 
-class _SumiAppState extends State<SumiApp> {
+class _SumiAppState extends State<SumiApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(widget.store.flushPersistence());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(widget.store.close());
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return SumiScope(

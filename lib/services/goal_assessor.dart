@@ -1,11 +1,12 @@
 import '../models/models.dart';
-import 'ai_service.dart';
+import 'ai_runtime.dart';
 
 /// 目标评估编排器 —— 搜索 + AI 评估。
 class GoalAssessor {
-  final AiService ai;
+  final StructuredAiService ai;
+  final WebSearchService search;
 
-  GoalAssessor({required this.ai});
+  GoalAssessor({required this.ai, required this.search});
 
   /// 完整评估流程：并行搜索 → 汇总 → AI 多维度评估。
   /// 返回 [GoalAssessment] 或 null（API 全部失败时）。
@@ -14,17 +15,26 @@ class GoalAssessor {
     required String level,
     required int cycleMonths,
     required int timeConstraint,
+    void Function(int completed, int total)? onSearchProgress,
+    void Function()? onAssessing,
   }) async {
     // 1. 并行搜索领域信息
     final queries = _buildSearchQueries(goal);
-    final searchResults = await Future.wait(
-      queries.map((q) => ai.searchWeb(q)),
-    );
+    var completed = 0;
+    final searchResults = search.isConfigured
+        ? await Future.wait(queries.map((query) async {
+            final result = await search.search(query);
+            completed++;
+            onSearchProgress?.call(completed, queries.length);
+            return result;
+          }))
+        : <List<Map<String, String>>>[];
 
     // 2. 汇总搜索结果为文本
     final domainContext = _buildDomainContext(searchResults, queries);
 
     // 3. 调用 AI 评估
+    onAssessing?.call();
     final assessment = await ai.assessGoal(
       goal: goal,
       level: level,

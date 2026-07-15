@@ -43,7 +43,8 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchTodos(context);
+    SumiScope.watchProjects(context);
     final todos = _getFilteredTodos(store);
 
     if (todos.isEmpty) {

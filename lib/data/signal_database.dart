@@ -1,4 +1,5 @@
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../models/models.dart';
 import 'local_database.dart';
@@ -6,23 +7,54 @@ import 'local_database.dart';
 /// 信号数据持久化 —— 管理 signals 表（07 轮新增）。
 class SignalDatabase {
   final SumiLocalDatabase _store;
+  bool _tableEnsured = false;
 
   SignalDatabase(this._store);
 
-  Future<dynamic> get _db => _store.database;
+  Future<Database> get _db => _store.database;
+
+  /// 确保 signals 表存在（自愈机制）。
+  Future<void> _ensureTable() async {
+    if (_tableEnsured) return;
+    final db = await _db;
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        signal TEXT NOT NULL,
+        time TEXT NOT NULL,
+        context_json TEXT NOT NULL DEFAULT '{}',
+        project_id TEXT,
+        todo_id TEXT,
+        domain TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_signals_time ON signals(time)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id)');
+    _tableEnsured = true;
+    debugPrint('[SignalDB] 自愈：已确保 signals 表存在');
+  }
 
   /// 插入一条信号。
   Future<void> insert(UserSignal signal) async {
+    await _ensureTable();
     final db = await _db;
-    await db.insert('signals', {
-      'signal': signal.signal.name,
-      'time': signal.time.toIso8601String(),
-      'context_json': signal.contextJson,
-      'project_id': signal.projectId,
-      'todo_id': signal.todoId,
-      'domain': signal.domain,
-      'created_at': signal.createdAt.toIso8601String(),
-    });
+    try {
+      final rowId = await db.insert('signals', {
+        'signal': signal.signal.name,
+        'time': signal.time.toIso8601String(),
+        'context_json': signal.contextJson,
+        'project_id': signal.projectId,
+        'todo_id': signal.todoId,
+        'domain': signal.domain,
+        'created_at': signal.createdAt.toIso8601String(),
+      });
+      debugPrint('[SignalDB] 写入成功 rowId=$rowId signal=${signal.signal.name}');
+    } catch (e, stack) {
+      debugPrint('[SignalDB] 写入失败: $e');
+      debugPrint('[SignalDB] 堆栈: $stack');
+    }
   }
 
   /// 查询信号。
@@ -35,6 +67,7 @@ class SignalDatabase {
     String? range,
     int? limit,
   }) async {
+    await _ensureTable();
     final db = await _db;
     final conditions = <String>[];
     final args = <Object?>[];
@@ -55,7 +88,7 @@ class SignalDatabase {
     }
 
     final where = conditions.isNotEmpty ? conditions.join(' AND ') : null;
-    final rows = await db.query(
+    final List<Map<String, Object?>> rows = await db.query(
       'signals',
       where: where,
       whereArgs: args.isNotEmpty ? args : null,
@@ -68,6 +101,7 @@ class SignalDatabase {
 
   /// 统计信号数量。
   Future<int> count({SignalType? type, String? range}) async {
+    await _ensureTable();
     final db = await _db;
     final conditions = <String>[];
     final args = <Object?>[];
@@ -93,12 +127,14 @@ class SignalDatabase {
 
   /// 清除全部信号。
   Future<void> clearAll() async {
+    await _ensureTable();
     final db = await _db;
     await db.delete('signals');
   }
 
   /// 获取用户活跃天数（有信号的日期数）。
   Future<int> activeDays({int days = 7}) async {
+    await _ensureTable();
     final db = await _db;
     final cutoff = DateTime.now().subtract(Duration(days: days));
     final result = await db.rawQuery(
@@ -110,9 +146,10 @@ class SignalDatabase {
 
   /// 获取用户主要活跃时段（小时分布）。
   Future<List<Map<String, int>>> hourlyDistribution({int days = 30}) async {
+    await _ensureTable();
     final db = await _db;
     final cutoff = DateTime.now().subtract(Duration(days: days));
-    final rows = await db.rawQuery(
+    final List<Map<String, Object?>> rows = await db.rawQuery(
       "SELECT CAST(substr(time, 12, 2) AS INTEGER) as hour, COUNT(*) as cnt FROM signals WHERE time >= ? GROUP BY hour ORDER BY cnt DESC LIMIT 4",
       [cutoff.toIso8601String()],
     );
@@ -144,7 +181,7 @@ class SignalDatabase {
       final ctx = s.context;
       final time = s.time.toIso8601String().substring(0, 16);
       final title = ctx['title'] ?? '';
-      final project = ctx['project'] ?? '';
+      final project = ctx['projectName'] ?? ctx['project'] ?? '';
       buf.write('- ${s.signal.name}');
       if (title is String && title.isNotEmpty) buf.write(' "$title"');
       if (project is String && project.isNotEmpty) buf.write(' [项目:$project]');

@@ -11,6 +11,8 @@ class SumiLocalDatabase {
 
   Database? _db;
 
+  SumiLocalDatabase({Database? database}) : _db = database;
+
   /// 暴露 Database 实例供 ChatDatabase 等复用。
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -186,6 +188,12 @@ class SumiLocalDatabase {
   Future<void> importSnapshotText(String text) async {
     final snapshot = jsonDecode(text) as Map<String, Object?>;
     await writeSnapshot(snapshot);
+  }
+
+  Future<void> close() async {
+    final db = _db;
+    _db = null;
+    await db?.close();
   }
 }
 

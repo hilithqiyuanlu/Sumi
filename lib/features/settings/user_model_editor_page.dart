@@ -43,6 +43,18 @@ class _UserModelEditorPageState extends State<UserModelEditorPage> {
     final store = SumiScope.read(context);
     final ums = store.userModelService;
     if (ums != null) {
+      if (!ums.isValidUserModel(_controller.text)) {
+        if (mounted) {
+          setState(() => _saving = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('内容缺少必要的记忆区段，未保存'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
       await ums.writeUserModel(_controller.text);
     }
     if (mounted) {
@@ -55,6 +67,7 @@ class _UserModelEditorPageState extends State<UserModelEditorPage> {
   }
 
   Future<void> _clear() async {
+    final store = SumiScope.read(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -69,10 +82,11 @@ class _UserModelEditorPageState extends State<UserModelEditorPage> {
     );
     if (confirmed == true) {
       H.medium();
-      _controller.clear();
-      final store = SumiScope.read(context);
-      await store.userModelService?.writeUserModel('');
-      if (mounted) Navigator.pop(context);
+      final service = store.userModelService;
+      await service?.resetUserModel();
+      if (service != null) _controller.text = service.defaultUserModel;
+      if (!mounted) return;
+      Navigator.pop(context);
     }
   }
 

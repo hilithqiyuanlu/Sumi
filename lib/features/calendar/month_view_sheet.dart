@@ -13,7 +13,8 @@ class MonthViewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchProjects(context);
+    SumiScope.watchTodos(context);
     final project = store.currentProject;
 
     return GestureDetector(
@@ -54,20 +55,38 @@ class MonthViewSheet extends StatelessWidget {
                   const MonthCalendar(),
                   const SizedBox(height: s20),
 
-                  // 项目 Tab 栏（含项目详情展开）
+                  // 项目选择栏
                   const ProjectTabs(),
                   const SizedBox(height: s12),
 
                   // 月卡 Pager
-                  if (project != null) ...[
-                    const SizedBox(height: s8),
-                    MonthCardPager(project: project),
-                  ],
+                  const SizedBox(height: s8),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      final slide = Tween<Offset>(
+                        begin: const Offset(0.04, 0),
+                        end: Offset.zero,
+                      ).animate(animation);
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(position: slide, child: child),
+                      );
+                    },
+                    child: project == null
+                        ? const SizedBox.shrink(key: ValueKey('no-project'))
+                        : KeyedSubtree(
+                            key: ValueKey(project.id),
+                            child: MonthCardPager(project: project),
+                          ),
+                  ),
                   // 底部拖拽把手（上推收起）
-                  const SizedBox(height: s12),
+                  const SizedBox(height: s24),
                   const Center(
                     child: Padding(
-                      padding: EdgeInsets.only(bottom: s16),
+                      padding: EdgeInsets.only(bottom: s24),
                       child: DragHandle(),
                     ),
                   ),

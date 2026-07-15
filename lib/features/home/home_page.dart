@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import '../../models/models.dart';
-import '../../services/ai_service.dart';
+
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -42,10 +42,10 @@ class _HomePageState extends State<HomePage>
   bool _isGeneratingSuggestions = false;
   final _scrollController = ScrollController();
   bool _showScrollToBottom = false;
-  int _lastMessageSentSignal = 0;
   DateTime? _lastSelectedDate;
   int _lastDataVersion = 0;
-  bool _lastIsStreaming = false;
+  late final SumiStore _store;
+  late ChatViewState _lastChatView;
 
   // 对话模式轻提示
   static const _chatGreetings = [
@@ -67,7 +67,10 @@ class _HomePageState extends State<HomePage>
     _monthController = AnimationController(vsync: this);
     _monthController.addListener(() => setState(() {}));
     _refreshChatGreeting();
-    _lastSelectedDate = SumiScope.read(context).selectedDate;
+    _store = SumiScope.read(context);
+    _lastSelectedDate = _store.selectedDate;
+    _lastChatView = _store.chatView.value;
+    _store.chatView.addListener(_onChatViewChanged);
     _generateSuggestions();
     _scrollController.addListener(_onScroll);
   }
@@ -75,9 +78,21 @@ class _HomePageState extends State<HomePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _store.chatView.removeListener(_onChatViewChanged);
     _scrollController.dispose();
     _monthController.dispose();
     super.dispose();
+  }
+
+  void _onChatViewChanged() {
+    final next = _store.chatView.value;
+    if (next.messageSentSequence != _lastChatView.messageSentSequence) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _scrollUserMessageToTop(),
+      );
+    }
+    if (_lastChatView.isStreaming && !next.isStreaming) H.medium();
+    _lastChatView = next;
   }
 
   // 07 轮：App 生命周期监听
@@ -135,7 +150,7 @@ class _HomePageState extends State<HomePage>
     if (!store.suggestionsDirty && cached.isNotEmpty) return;
     if (_isGeneratingSuggestions) return;
 
-    final ai = store.aiService;
+    final ai = store.structuredAi;
     if (ai == null) return;
 
     _isGeneratingSuggestions = true;
@@ -149,7 +164,9 @@ class _HomePageState extends State<HomePage>
       final coreMemory = ums.buildHotPrompt(modelWithStats);
 
       final aiSuggestions = await ai.generateOpeningSuggestions(
-        realtimeStats: stats.entries.map((e) => '${e.key}: ${e.value}').join('\n'),
+        realtimeStats: stats.entries
+            .map((e) => '${e.key}: ${e.value}')
+            .join('\n'),
         coreMemory: coreMemory,
       );
 
@@ -211,14 +228,6 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  int _pinnedIndex = 0;
-
-  List<String> get _pinnedSuggestions => [
-        '建议以什么顺序开展我今天的待办',
-        '帮我总结一下今天的进展',
-        '建议我再学些什么',
-      ];
-
   static const _suggestionPool = [
     // 规划向
     '帮我制定今天的学习计划',
@@ -273,8 +282,25 @@ class _HomePageState extends State<HomePage>
   }
 
   void _handleSuggestionSelect(String suggestion) {
+    _handleChatSend(suggestion);
+  }
+
+  ChatSendResult _handleChatSend(String content) {
     final store = SumiScope.read(context);
-    store.sendMessage(suggestion);
+    final result = store.sendMessage(content, currentGreeting: _chatGreeting);
+    if (result == ChatSendResult.missingApiKey) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('请先设置 DeepSeek API Key'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: '去设置',
+            onPressed: () => SettingsPanel.show(context),
+          ),
+        ),
+      );
+    }
+    return result;
   }
 
   Future<void> _handleAddTodo(String title) async {
@@ -293,8 +319,10 @@ class _HomePageState extends State<HomePage>
   void _onMonthDragUpdate(DragUpdateDetails d) {
     _dismissKeyboard();
     final h = MediaQuery.of(context).size.height;
-    _monthController.value =
-        (_monthController.value + d.delta.dy / h).clamp(0.0, 1.0);
+    _monthController.value = (_monthController.value + d.delta.dy / h).clamp(
+      0.0,
+      1.0,
+    );
   }
 
   void _onMonthDragEnd(DragEndDetails d) {
@@ -307,28 +335,24 @@ class _HomePageState extends State<HomePage>
       shouldOpen = _monthController.value > 0.35;
     }
     final target = shouldOpen ? 1.0 : 0.0;
-    _monthController.animateWith(SpringSimulation(
-      _monthSpring,
-      _monthController.value,
-      target,
-      velocity / MediaQuery.of(context).size.height,
-    ));
+    _monthController.animateWith(
+      SpringSimulation(
+        _monthSpring,
+        _monthController.value,
+        target,
+        velocity / MediaQuery.of(context).size.height,
+      ),
+    );
   }
 
   void _openMonthView() {
     _dismissKeyboard();
-    _monthController.animateTo(1.0,
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic);
+    _monthController.animateTo(
+      1.0,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+    );
   }
-
-  void _closeMonthView() {
-    _monthController.animateTo(0.0,
-        duration: const Duration(milliseconds: 380),
-        curve: Curves.easeOutCubic);
-  }
-
-  bool get _monthViewExpanded => _monthController.value > 0;
 
   void _dismissKeyboard() {
     FocusScope.of(context).unfocus();
@@ -336,8 +360,10 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
-    final messages = store.currentMessages;
+    final store = SumiScope.watchTodos(context);
+    SumiScope.watchProjects(context);
+    SumiScope.watchSettings(context);
+    SumiScope.watchSelection(context);
     final userName = store.appSettings.userName;
     final selectedDate = store.selectedDate;
     final isPast = dateOnly(selectedDate).isBefore(dateOnly(DateTime.now()));
@@ -351,21 +377,8 @@ class _HomePageState extends State<HomePage>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateSuggestions();
       });
-    } else if (_lastSelectedDate == null) {
-      _lastSelectedDate = selectedDate;
     }
-
-    // 检测消息发送信号 → 滚动用户消息到顶部
-    if (store.messageSentSignal != _lastMessageSentSignal) {
-      _lastMessageSentSignal = store.messageSentSignal;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollUserMessageToTop());
-    }
-
-    // 检测流式结束 → 触觉反馈
-    if (_lastIsStreaming && !store.isStreaming) {
-      H.medium();
-    }
-    _lastIsStreaming = store.isStreaming;
+    _lastSelectedDate ??= selectedDate;
 
     // 检测数据变更 → 刷新建议
     if (store.dataVersion != _lastDataVersion) {
@@ -386,30 +399,32 @@ class _HomePageState extends State<HomePage>
             onTap: _dismissKeyboard,
             behavior: HitTestBehavior.translucent,
             child: Column(
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onVerticalDragUpdate: _onMonthDragUpdate,
-                    onVerticalDragEnd: _onMonthDragEnd,
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        left: s16,
-                        right: s16,
-                        top: topPadding + s16,
-                        bottom: s8,
-                      ),
-                      child: DateStrip(onExpandMonth: _openMonthView),
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragUpdate: _onMonthDragUpdate,
+                  onVerticalDragEnd: _onMonthDragEnd,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      left: s16,
+                      right: s16,
+                      top: topPadding + s16,
+                      bottom: s8,
                     ),
+                    child: DateStrip(onExpandMonth: _openMonthView),
                   ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topCenter,
-                    child: Builder(builder: (_) {
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: Builder(
+                    builder: (_) {
                       final sel = dateKey(dateOnly(store.selectedDate));
                       final todayKey = dateKey(dateOnly(DateTime.now()));
-                      final hasDateTodos = store.todoItems
-                          .any((t) => TodoItem.belongsToDate(t, sel, todayKey));
+                      final hasDateTodos = store.todoItems.any(
+                        (t) => TodoItem.belongsToDate(t, sel, todayKey),
+                      );
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -417,10 +432,13 @@ class _HomePageState extends State<HomePage>
                           TodoChipCarousel(),
                         ],
                       );
-                    }),
+                    },
                   ),
-                  Expanded(
-                    child: GestureDetector(
+                ),
+                Expanded(
+                  child: ValueListenableBuilder<ChatViewState>(
+                    valueListenable: store.chatView,
+                    builder: (context, chat, _) => GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onDoubleTap: () {
                         final store = SumiScope.read(context);
@@ -431,61 +449,60 @@ class _HomePageState extends State<HomePage>
                       },
                       child: Stack(
                         children: [
-                          if (messages.isEmpty)
+                          if (chat.messages.isEmpty)
                             _buildEmptyState(store, userName)
                           else
-                            _buildMessageList(messages, store),
-                          // 顶部渐变遮罩 —— 衔接日历导航栏
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            height: 24,
-                            child: IgnorePointer(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      paper,
-                                      paper.withValues(alpha: 0.0),
-                                    ],
-                                  ),
+                            _buildMessageList(chat, store),
+                        // 顶部渐变遮罩 —— 衔接日历导航栏
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: 24,
+                          child: IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [paper, paper.withValues(alpha: 0.0)],
                                 ),
                               ),
                             ),
                           ),
+                        ),
                         ],
                       ),
                     ),
                   ),
-                  AnimatedOpacity(
-                    opacity: isPast ? 0.0 : 1.0,
-                    duration: const Duration(milliseconds: 320),
-                    curve: isPast ? Curves.easeIn : Curves.easeOut,
-                    child: ClipRect(
-                      child: AnimatedAlign(
-                        alignment: Alignment.topCenter,
-                        heightFactor: isPast ? 0.0 : 1.0,
-                        duration: const Duration(milliseconds: 320),
-                        curve: Curves.easeOutCubic,
-                        child: Column(
+                ),
+                AnimatedOpacity(
+                  opacity: isPast ? 0.0 : 1.0,
+                  duration: const Duration(milliseconds: 320),
+                  curve: isPast ? Curves.easeIn : Curves.easeOut,
+                  child: ClipRect(
+                    child: AnimatedAlign(
+                      alignment: Alignment.topCenter,
+                      heightFactor: isPast ? 0.0 : 1.0,
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      child: ValueListenableBuilder<ChatViewState>(
+                        valueListenable: store.chatView,
+                        builder: (context, chat, _) => Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SuggestionStrip(
                               suggestions: _suggestions,
                               onSelect: _handleSuggestionSelect,
-                              enabled: !store.isStreaming,
+                              enabled: !chat.isStreaming,
                             ),
                             ChatInput(
                               mode: _inputMode,
                               isFutureDate: isFuture,
-                              onSend: (content) => store.sendMessage(content,
-                                  currentGreeting: _chatGreeting),
+                              onSend: _handleChatSend,
                               onAddTodo: _handleAddTodo,
                               onModeChanged: _switchMode,
-                              enabled: !store.isStreaming,
+                              enabled: !chat.isStreaming,
                               voiceService: store.voiceService,
                             ),
                           ],
@@ -493,9 +510,10 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
           // 滚动到底部按钮（位于月视图遮罩之下）
           _buildScrollToBottomButton(bottomPadding),
           // 月视图覆盖层 —— 跟手拖拽 + 弹簧吸附
@@ -507,9 +525,10 @@ class _HomePageState extends State<HomePage>
                 onVerticalDragEnd: _onMonthDragEnd,
                 child: Transform.translate(
                   offset: Offset(
-                      0,
-                      (_monthController.value - 1) *
-                          MediaQuery.of(context).size.height),
+                    0,
+                    (_monthController.value - 1) *
+                        MediaQuery.of(context).size.height,
+                  ),
                   child: const MonthViewSheet(),
                 ),
               ),
@@ -524,9 +543,7 @@ class _HomePageState extends State<HomePage>
                   _closeDrawer();
                 }
               },
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.3),
-              ),
+              child: Container(color: Colors.black.withValues(alpha: 0.3)),
             ),
           SideDrawer(
             isOpen: _drawerOpen,
@@ -583,7 +600,8 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildMessageList(List<ChatMessage> messages, SumiStore store) {
+  Widget _buildMessageList(ChatViewState chat, SumiStore store) {
+    final messages = chat.messages;
     final filtered = messages.where((m) => m.role != 'tool').toList();
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
@@ -593,25 +611,31 @@ class _HomePageState extends State<HomePage>
         return FadeTransition(opacity: animation, child: child);
       },
       child: ListView.builder(
-        key: ValueKey(store.currentConversationId),
+        key: ValueKey(chat.conversationId),
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: s16),
-        itemCount: filtered.length,
+        itemCount: filtered.length + (chat.failure == null ? 0 : 1),
         itemBuilder: (context, index) {
+          if (index == filtered.length) {
+            final failure = chat.failure!;
+            return _buildChatFailure(failure, store);
+          }
           final msg = filtered[index];
-          final isLastAi = msg.role == 'assistant' &&
-              index == filtered.length - 1;
+          final isLastAi =
+              msg.role == 'assistant' && index == filtered.length - 1;
           // 找到该消息在原始 messages 列表中的索引（用于删除）
           final origIndex = messages.indexOf(msg);
 
           return ChatBubble(
             content: msg.content,
             isUser: msg.role == 'user',
-            isStreaming: isLastAi && store.isStreaming,
+            isStreaming: isLastAi && chat.isStreaming,
             timestamp: msg.role == 'user' ? msg.createdAt : null,
-            reasoningContent: msg.reasoningContent,
+            activityLabel: isLastAi && chat.isStreaming
+                ? chat.activityLabel
+                : null,
             toolCallsJson: msg.toolCallsJson,
-            onDelete: (msg.role == 'user' || msg.role == 'assistant')
+            onDelete: msg.role == 'user'
                 ? () => store.deleteMessagePair(origIndex)
                 : null,
           );
@@ -620,6 +644,43 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  Widget _buildChatFailure(ChatFailure failure, SumiStore store) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(s16, s4, s16, s8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 300),
+          padding: const EdgeInsets.fromLTRB(s12, s10, s8, s10),
+          decoration: BoxDecoration(
+            color: danger.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(radiusCard),
+            border: Border.all(color: danger.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 18, color: danger),
+              const SizedBox(width: s8),
+              Flexible(
+                child: Text(
+                  failure.message,
+                  style: const TextStyle(fontSize: 13, color: ink),
+                ),
+              ),
+              if (failure.retryable) ...[
+                const SizedBox(width: s4),
+                TextButton(
+                  onPressed: store.retryLastFailedMessage,
+                  child: const Text('重试'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildGestureArea(double topSafe, double bottomSafe) {
     // 仅覆盖内容区域，避开顶部的 DateStrip（~144px）和底部的输入栏（~90px），

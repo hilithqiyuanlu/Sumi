@@ -29,13 +29,19 @@ class _SignalLogPageState extends State<SignalLogPage> {
     try {
       final store = SumiScope.read(context);
       final db = store.signalDb;
+      debugPrint('[SignalLogPage] signalDb is null? ${db == null}');
+      debugPrint('[SignalLogPage] signalService is null? ${store.signalService == null}');
       if (db == null) {
+        debugPrint('[SignalLogPage] ❌ signalDb 为 null，无法查询');
         if (mounted) setState(() => _loading = false);
         return;
       }
       final signals = await db.query(type: null, range: _range, limit: 100);
+      debugPrint('[SignalLogPage] 查询结果: ${signals.length} 条信号 (range=$_range)');
       if (mounted) setState(() { _signals = signals; _loading = false; });
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[SignalLogPage] ❌ 查询异常: $e');
+      debugPrint('[SignalLogPage] 堆栈: $stack');
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -193,26 +199,23 @@ class _SignalLogPageState extends State<SignalLogPage> {
                   ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
                   : _signals.isEmpty
                       ? _buildEmpty()
-                      : RefreshIndicator(
-                          onRefresh: _load,
-                          child: ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(s16, s4, s16, s24),
-                            itemCount: items.length,
-                            separatorBuilder: (_, i) {
-                              if (items[i] is _SignalItem &&
-                                  i + 1 < items.length &&
-                                  items[i + 1] is _SignalItem) {
-                                return const Divider(height: 1, thickness: 0.5, indent: s20);
-                              }
-                              return const SizedBox.shrink();
-                            },
-                            itemBuilder: (_, i) {
-                              final item = items[i];
-                              if (item is _DateHeader) return _buildDateHeader(item.label);
-                              if (item is _SignalItem) return _buildSignalRow(item.signal);
-                              return const SizedBox.shrink();
-                            },
-                          ),
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(s16, s4, s16, s24),
+                          itemCount: items.length,
+                          separatorBuilder: (_, i) {
+                            if (items[i] is _SignalItem &&
+                                i + 1 < items.length &&
+                                items[i + 1] is _SignalItem) {
+                              return const Divider(height: 1, thickness: 0.5, indent: s20);
+                            }
+                            return const SizedBox.shrink();
+                          },
+                          itemBuilder: (_, i) {
+                            final item = items[i];
+                            if (item is _DateHeader) return _buildDateHeader(item.label);
+                            if (item is _SignalItem) return _buildSignalRow(item.signal);
+                            return const SizedBox.shrink();
+                          },
                         ),
             ),
           ],

@@ -90,8 +90,6 @@ class AppSettings {
 
 enum AssessmentVerdict { a, b, c, d }
 
-enum BubbleType { thinking, searching, validating, info }
-
 class SearchSnippet {
   final String title;
   final String url;
@@ -131,7 +129,7 @@ class GoalAssessment {
   final String? estimatedHours;
   final String? domainSummary;
   final List<SearchSnippet> sources;
-  final String goalSummary; // AI 对目标的凝练（5-15 字），用于项目卡标题
+  final String goalSummary; // AI 对目标的凝练（2-16 字），用于项目卡标题
 
   const GoalAssessment({
     required this.clarity,
@@ -213,14 +211,6 @@ AssessmentVerdict _parseVerdict(Object? raw) {
     (v) => v.name == s,
     orElse: () => AssessmentVerdict.c,
   );
-}
-
-/// 规划弹幕消息（运行时使用，不持久化）。
-class PlanningBubble {
-  final String text;
-  final BubbleType type;
-
-  const PlanningBubble({required this.text, this.type = BubbleType.thinking});
 }
 
 // ---------------------------------------------------------------------------
@@ -543,30 +533,34 @@ class TodoItem {
   static bool belongsToDate(TodoItem t, String selectedDateKey, String todayKey) =>
       t.date != null ? t.date == selectedDateKey : selectedDateKey == todayKey;
 
+  /// copyWith 中用来表示“该字段未被传入”的哨兵，与显式传 null（清空字段）区分。
+  /// 外部 mutation 方法（如 [updateTodo]）可用它来表达“不修改”。
+  static const Object undefined = Symbol('TodoItem.undefined');
+
   TodoItem copyWith({
     String? title,
-    String? body,
+    Object? body = undefined,
     bool? done,
     bool? pinned,
     int? sortOrder,
-    String? reminderTime,
-    String? date,
-    String? projectId,
-    String? condensedFrom,
+    Object? reminderTime = undefined,
+    Object? date = undefined,
+    Object? projectId = undefined,
+    Object? condensedFrom = undefined,
   }) {
     return TodoItem(
       id: id,
       source: source,
-      projectId: projectId ?? this.projectId,
-      date: date ?? this.date,
+      projectId: projectId == undefined ? this.projectId : projectId as String?,
+      date: date == undefined ? this.date : date as String?,
       title: title ?? this.title,
-      body: body ?? this.body,
+      body: body == undefined ? this.body : body as String?,
       done: done ?? this.done,
       pinned: pinned ?? this.pinned,
       sortOrder: sortOrder ?? this.sortOrder,
-      reminderTime: reminderTime ?? this.reminderTime,
+      reminderTime: reminderTime == undefined ? this.reminderTime : reminderTime as String?,
       createdAt: createdAt,
-      condensedFrom: condensedFrom ?? this.condensedFrom,
+      condensedFrom: condensedFrom == undefined ? this.condensedFrom : condensedFrom as String?,
     );
   }
 

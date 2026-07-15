@@ -4,13 +4,13 @@ import '../../utils/haptics.dart';
 import '../../models/models.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
-import 'assessment_loading_page.dart';
+import '../../utils/utils.dart';
+import '../../services/project_generation.dart';
+import 'project_generation_page.dart';
 
-/// 全屏项目编辑页（06 轮：替代弹窗式 project_editor）。
+/// 全屏新建项目页。
 class ProjectEditorPage extends StatefulWidget {
-  final Project? project; // null = 新建模式
-
-  const ProjectEditorPage({this.project, super.key});
+  const ProjectEditorPage({super.key});
 
   @override
   State<ProjectEditorPage> createState() => _ProjectEditorPageState();
@@ -23,8 +23,6 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   late ProjectColor _color;
   late int _cycleMonths;
   late int _timeConstraint;
-
-  bool get _isEditing => widget.project != null;
 
   static const _cycleLabels = [
     '1 个月', '2 个月', '3 个月', '4 个月', '5 个月',
@@ -44,14 +42,13 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   @override
   void initState() {
     super.initState();
-    final p = widget.project;
-    _goalCtrl = TextEditingController(text: p?.goal ?? '');
-    _levelCtrl = TextEditingController(text: p?.level ?? '');
-    _color = p?.color ?? SumiScope.read(context).nextAvailableColor();
-    _cycleMonths = p?.cycleMonths ?? 3;
+    _goalCtrl = TextEditingController();
+    _levelCtrl = TextEditingController();
+    _color = SumiScope.read(context).nextAvailableColor();
+    _cycleMonths = 3;
     if (!_cycleValues.contains(_cycleMonths)) _cycleMonths = _cycleValues.first;
 
-    _timeConstraint = p?.timeConstraint ?? 0;
+    _timeConstraint = 0;
     if (!_hourValues.contains(_timeConstraint)) _timeConstraint = _hourValues.first;
 
     // 监听目标输入以更新按钮状态
@@ -65,67 +62,34 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     super.dispose();
   }
 
-  /// 编辑模式下判断是否仅修改了非规划字段（名称、颜色等）。
-  /// 这些变更不触发重新评估与规划。
-  bool get _onlyCosmeticChanges {
-    if (!_isEditing) return false;
-    final p = widget.project!;
-    final goal = _goalCtrl.text.trim();
-    final level = _levelCtrl.text.trim();
-    return goal == p.goal &&
-        level == p.level &&
-        _cycleMonths == p.cycleMonths &&
-        _timeConstraint == p.timeConstraint;
-  }
-
   void _submit() {
     final goal = _goalCtrl.text.trim();
     if (goal.isEmpty) return;
 
     final store = SumiScope.read(context);
-    // 名称由 AI 评估生成的 goalSummary 作为项目展示标题
-    final name = '';
+    final level = _levelCtrl.text.trim();
 
-    String projectId;
-    if (_isEditing) {
-      projectId = widget.project!.id;
-      store.updateProject(
-        projectId,
-        name: name,
-        color: _color,
-        goal: goal,
-        level: _levelCtrl.text.trim(),
-        cycleMonths: _cycleMonths,
-        timeConstraint: _timeConstraint,
+    if (store.aiRuntime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先在设置中配置 DeepSeek API Key'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-
-      // 仅改外观字段 → 直接保存并返回，不重新评估
-      if (_onlyCosmeticChanges) {
-        Navigator.of(context).pop();
-        return;
-      }
-    } else {
-      // 新建：创建空壳项目（不含月卡，等规划完成后一次性写入）
-      projectId = store.addProjectDraft(
-        name: name,
-        color: _color,
-        goal: goal,
-        level: _levelCtrl.text.trim(),
-        cycleMonths: _cycleMonths,
-        timeConstraint: _timeConstraint,
-      );
+      return;
     }
 
-    // 进入评估流程
+    final request = ProjectGenerationRequest(
+      projectId: newSumiId('proj'),
+      goal: goal,
+      level: level,
+      cycleMonths: _cycleMonths,
+      timeConstraint: _timeConstraint,
+      color: _color,
+    );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AssessmentLoadingPage(
-          projectId: projectId,
-          goal: goal,
-          level: _levelCtrl.text.trim(),
-          cycleMonths: _cycleMonths,
-          timeConstraint: _timeConstraint,
-        ),
+        builder: (_) => ProjectGenerationPage(request: request),
       ),
     );
   }
@@ -276,7 +240,7 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
                   onPressed: () => Navigator.pop(context),
                 ),
                 Text(
-                  _isEditing ? '编辑项目' : '新建项目',
+                  '新建项目',
                   style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -388,5 +352,3 @@ class _PickerColumnState<T> extends State<_PickerColumn<T>> {
     );
   }
 }
-
-

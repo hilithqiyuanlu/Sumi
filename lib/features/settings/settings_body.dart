@@ -22,7 +22,7 @@ class _SettingsBodyState extends State<SettingsBody> {
 
   @override
   Widget build(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchSettings(context);
 
     final topPadding = MediaQuery.of(context).padding.top;
     return ListView(
@@ -61,9 +61,14 @@ class _SettingsBodyState extends State<SettingsBody> {
         _buildCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('昵称', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            title: const Text(
+              '昵称',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
             subtitle: Text(
-              store.appSettings.userName.isEmpty ? '未设置' : store.appSettings.userName,
+              store.appSettings.userName.isEmpty
+                  ? '未设置'
+                  : store.appSettings.userName,
               style: const TextStyle(fontSize: 12),
             ),
             trailing: IconButton(
@@ -78,12 +83,25 @@ class _SettingsBodyState extends State<SettingsBody> {
         _buildCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('编辑记忆', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            subtitle: const Text('查看和编辑 Sumi 对你的理解', style: TextStyle(fontSize: 12)),
-            trailing: const Icon(Icons.chevron_right, size: iconSection, color: textTertiary),
+            title: const Text(
+              '编辑记忆',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            subtitle: const Text(
+              '查看和编辑 Sumi 对你的理解',
+              style: TextStyle(fontSize: 12),
+            ),
+            trailing: const Icon(
+              Icons.chevron_right,
+              size: iconSection,
+              color: textTertiary,
+            ),
             onTap: () {
               H.light();
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const UserModelEditorPage()));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UserModelEditorPage()),
+              );
             },
           ),
         ),
@@ -93,13 +111,20 @@ class _SettingsBodyState extends State<SettingsBody> {
         _buildCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('深度思考',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            subtitle: const Text('开启后 Sumi 会在回复前展示推理过程',
-                style: TextStyle(fontSize: 12)),
+            title: const Text(
+              '深度思考',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            subtitle: const Text(
+              '开启后提升复杂问题处理能力，不展示内部推理',
+              style: TextStyle(fontSize: 12),
+            ),
             trailing: Switch(
               value: store.thinkingEnabled,
-              onChanged: (v) { H.click(); store.setThinkingEnabled(v); },
+              onChanged: (v) {
+                H.click();
+                store.setThinkingEnabled(v);
+              },
             ),
           ),
         ),
@@ -111,26 +136,44 @@ class _SettingsBodyState extends State<SettingsBody> {
             children: [
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('披露全部月卡',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                subtitle: const Text('关闭锁卡，显示所有月份的规划内容',
-                    style: TextStyle(fontSize: 12)),
+                title: const Text(
+                  '披露全部月卡',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '关闭锁卡，显示所有月份的规划内容',
+                  style: TextStyle(fontSize: 12),
+                ),
                 trailing: Switch(
                   value: store.appSettings.showAllMonthCards,
-                  onChanged: (v) { H.click(); store.setShowAllMonthCards(v); },
+                  onChanged: (v) {
+                    H.click();
+                    store.setShowAllMonthCards(v);
+                  },
                 ),
               ),
               const Divider(height: 1),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('信号日志',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                subtitle: const Text('查看用户行为信号记录',
-                    style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right, size: iconSection, color: textTertiary),
+                title: const Text(
+                  '信号日志',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '查看用户行为信号记录',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  size: iconSection,
+                  color: textTertiary,
+                ),
                 onTap: () {
                   H.light();
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SignalLogPage()));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SignalLogPage()),
+                  );
                 },
               ),
             ],
@@ -141,16 +184,22 @@ class _SettingsBodyState extends State<SettingsBody> {
         const SizedBox(height: s12),
         Center(
           child: FilledButton.icon(
-            onPressed: () { H.medium(); _confirmClearData(context, store); },
+            onPressed: () {
+              H.medium();
+              _confirmClearData(context, store);
+            },
             icon: const Icon(Icons.delete_outline, size: 16),
-            label: const Text('清除数据',
-                style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w500)),
+            label: const Text(
+              '清除数据',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
             style: FilledButton.styleFrom(
               backgroundColor: danger,
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: s20, vertical: s10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: s20,
+                vertical: s10,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(radiusPill),
               ),
@@ -188,15 +237,23 @@ class _SettingsBodyState extends State<SettingsBody> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(radiusCard))),
-          title: const Text('设置昵称', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+          ),
+          title: const Text(
+            '设置昵称',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,
             decoration: const InputDecoration(hintText: '输入你的昵称'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () {
                 store.updateUserName(controller.text);
@@ -230,13 +287,17 @@ class _SettingsBodyState extends State<SettingsBody> {
   }) {
     final hasKey = currentValue.isNotEmpty;
     final display = hasKey
-        ? (visible ? currentValue : '••••••••${currentValue.length > 4 ? currentValue.substring(currentValue.length - 4) : currentValue}')
+        ? (visible
+              ? currentValue
+              : '••••••••${currentValue.length > 4 ? currentValue.substring(currentValue.length - 4) : currentValue}')
         : '未设置';
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      title: Text(label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      ),
       subtitle: Text(display, style: const TextStyle(fontSize: 12)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -251,16 +312,19 @@ class _SettingsBodyState extends State<SettingsBody> {
             ),
           IconButton(
             icon: Icon(Icons.edit, size: iconSmall),
-            onPressed: () => _editApiKey(
-              context, label, currentValue, onSave),
+            onPressed: () => _editApiKey(context, label, currentValue, onSave),
           ),
         ],
       ),
     );
   }
 
-  void _editApiKey(BuildContext context, String label,
-      String currentValue, ValueChanged<String> onSave) {
+  void _editApiKey(
+    BuildContext context,
+    String label,
+    String currentValue,
+    ValueChanged<String> onSave,
+  ) {
     final controller = TextEditingController(text: currentValue);
     showDialog(
       context: context,
@@ -269,13 +333,14 @@ class _SettingsBodyState extends State<SettingsBody> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
           ),
-          title: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          title: Text(
+            label,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '粘贴 API Key',
-            ),
+            decoration: const InputDecoration(hintText: '粘贴 API Key'),
           ),
           actions: [
             TextButton(
@@ -303,7 +368,10 @@ class _SettingsBodyState extends State<SettingsBody> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
           ),
-          title: const Text('清除所有数据', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          title: const Text(
+            '清除所有数据',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
           content: const Text(
             '此操作将删除所有项目、月卡、事项及偏好设置。\n\n此操作不可恢复。',
             style: TextStyle(fontSize: 14),
@@ -315,8 +383,9 @@ class _SettingsBodyState extends State<SettingsBody> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: danger,
-                  foregroundColor: Colors.white),
+                backgroundColor: danger,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 store.clearAllData(keepSecrets: true);
                 Navigator.pop(ctx);

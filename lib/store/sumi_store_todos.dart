@@ -4,33 +4,39 @@ part of 'sumi_store.dart';
 // Todo Mutations mixin（07 轮：增加信号采集 + 过去日期门禁 + 编辑区分）
 // ---------------------------------------------------------------------------
 
-mixin SumiStoreTodos on ChangeNotifier {
+mixin SumiStoreTodos {
   List<TodoItem> get todoItems;
   List<Project> get projectList;
   DateTime get selectedDate;
-  AiService? get aiService;
+  StructuredAiService? get structuredAi;
   SignalService? get signalService; // 07 轮
-  void afterMutation();
+  void afterTodoMutation();
 
   // ---------------------------------------------------------------------------
   // 创建
   // ---------------------------------------------------------------------------
 
   /// 添加用户 todo —— 自动赋值 date（当前选中日期）和 sortOrder。
-  Future<void> addUserTodo(String title, {String? condensedFrom}) async {
+  Future<void> addUserTodo(
+    String title, {
+    String? condensedFrom,
+    String? date,
+    String? body,
+  }) async {
     if (title.trim().isEmpty) return;
     final nextOrder = _nextSortOrder();
     final todo = TodoItem(
       id: newSumiId('todo'),
       source: TodoSource.user,
-      date: dateKey(selectedDate),
+      date: date ?? dateKey(selectedDate),
       title: title.trim(),
+      body: body,
       sortOrder: nextOrder,
       createdAt: DateTime.now(),
       condensedFrom: condensedFrom,
     );
     todoItems.add(todo);
-    afterMutation();
+    afterTodoMutation();
     await signalService?.emitTodoCreated(todo);
   }
 
@@ -49,7 +55,7 @@ mixin SumiStoreTodos on ChangeNotifier {
       createdAt: DateTime.now(),
     );
     todoItems.add(todo);
-    afterMutation();
+    afterTodoMutation();
     await signalService?.emitTodoCreated(todo);
   }
 
@@ -73,7 +79,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     final todo = todoItems[i];
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可操作
     todoItems[i] = todo.copyWith(done: !todo.done);
-    afterMutation();
+    afterTodoMutation();
     if (todoItems[i].done) {
       await signalService?.emitTodoCompleted(todoItems[i]);
     } else {
@@ -89,7 +95,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可删除
     await signalService?.emitTodoDeleted(todo);
     todoItems.removeWhere((t) => t.id == id);
-    afterMutation();
+    afterTodoMutation();
   }
 
   /// 更新标题（含编辑区分 + 凝练还原保护）。
@@ -137,7 +143,7 @@ mixin SumiStoreTodos on ChangeNotifier {
         await signalService?.emitTodoEdited(todo, todo.title, newTitle.trim());
         todoItems[i] = todo.copyWith(title: newTitle.trim());
     }
-    afterMutation();
+    afterTodoMutation();
   }
 
   // ---------------------------------------------------------------------------
@@ -150,7 +156,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     if (i == -1) return;
     if (isPastDate(todoItems[i].date)) return; // 07 轮：过去日期不可操作
     todoItems[i] = todoItems[i].copyWith(pinned: !todoItems[i].pinned);
-    afterMutation();
+    afterTodoMutation();
     // 置顶不产生信号
   }
 
@@ -158,7 +164,7 @@ mixin SumiStoreTodos on ChangeNotifier {
   // 日期
   // ---------------------------------------------------------------------------
 
-  /// 更新 todo 的分配日期。
+  /// 更新 todo 的分配日期。传 null 表示清空日期。
   Future<void> updateTodoDate(String id, String? date) async {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
@@ -166,7 +172,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可拖拽
     final oldDate = todo.date ?? '';
     todoItems[i] = todo.copyWith(date: date);
-    afterMutation();
+    afterTodoMutation();
     await signalService?.emitTodoMovedDate(todoItems[i], oldDate, date ?? '');
   }
 
@@ -174,7 +180,7 @@ mixin SumiStoreTodos on ChangeNotifier {
   // 项目归属
   // ---------------------------------------------------------------------------
 
-  /// 更新 todo 的项目归属（null = 移除项目）。
+  /// 更新 todo 的项目归属。传 null 表示移除项目归属。
   Future<void> updateTodoProject(String id, String? projectId) async {
     final i = todoItems.indexWhere((t) => t.id == id);
     if (i == -1) return;
@@ -182,7 +188,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可操作
     await signalService?.emitTodoEdited(todo, todo.title, todo.title, projectChanged: true);
     todoItems[i] = todo.copyWith(projectId: projectId);
-    afterMutation();
+    afterTodoMutation();
   }
 
   // ---------------------------------------------------------------------------
@@ -200,7 +206,7 @@ mixin SumiStoreTodos on ChangeNotifier {
     todoItems[dragIdx] = todoItems[dragIdx].copyWith(sortOrder: targetOrder);
     todoItems[targetIdx] =
         todoItems[targetIdx].copyWith(sortOrder: dragOrder);
-    afterMutation();
+    afterTodoMutation();
     // 排序不产生信号
   }
 
@@ -210,7 +216,7 @@ mixin SumiStoreTodos on ChangeNotifier {
 
   /// 调用 AI 凝练任意文本至 18 字以内。失败返回 null。
   Future<String?> polishText(String text) async {
-    final svc = aiService;
+    final svc = structuredAi;
     if (svc == null) return null;
     return await svc.polishTodo(text);
   }
@@ -220,6 +226,8 @@ mixin SumiStoreTodos on ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// 批量更新 todo 字段（07 轮：增加编辑区分）。
+  /// [body]/[projectId]/[reminderTime] 传 null 表示不修改；如需清空请使用
+  /// [updateTodoProject]、[updateTodoDate] 或传 [TodoItem.undefined] 哨兵。
   Future<void> updateTodo(
     String id, {
     String? title,
@@ -232,6 +240,11 @@ mixin SumiStoreTodos on ChangeNotifier {
     final todo = todoItems[i];
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可编辑
 
+    // 将 null 解释为“不修改”，转换为哨兵值传入 copyWith。
+    final bodyArg = body ?? TodoItem.undefined;
+    final projectIdArg = projectId ?? TodoItem.undefined;
+    final reminderTimeArg = reminderTime ?? TodoItem.undefined;
+
     // 标题变更使用编辑区分
     if (title != null && title.trim() != todo.title) {
       final classification = signalService?.classifyEdit(
@@ -242,11 +255,16 @@ mixin SumiStoreTodos on ChangeNotifier {
 
       switch (classification) {
         case EditClassification.condensedRestore:
-          todoItems[i] = todo.copyWith(title: title.trim(), body: body, projectId: projectId, reminderTime: reminderTime);
+          todoItems[i] = todo.copyWith(
+            title: title.trim(),
+            body: bodyArg,
+            projectId: projectIdArg,
+            reminderTime: reminderTimeArg,
+          );
         case EditClassification.cleared:
           await signalService?.emitTodoDeleted(todo);
           todoItems.removeWhere((t) => t.id == id);
-          afterMutation();
+          afterTodoMutation();
           return;
         case EditClassification.major:
           await signalService?.emitTodoDeleted(todo, reason: 'largeEdit');
@@ -260,13 +278,22 @@ mixin SumiStoreTodos on ChangeNotifier {
           await signalService?.emitTodoCreated(newTodo);
         case EditClassification.minor:
           await signalService?.emitTodoEdited(todo, todo.title, title.trim());
-          todoItems[i] = todo.copyWith(title: title.trim(), body: body, projectId: projectId, reminderTime: reminderTime);
+          todoItems[i] = todo.copyWith(
+            title: title.trim(),
+            body: bodyArg,
+            projectId: projectIdArg,
+            reminderTime: reminderTimeArg,
+          );
       }
     } else {
       // 仅 body/projectId/reminderTime 变更，不产生信号
-      todoItems[i] = todo.copyWith(body: body, projectId: projectId, reminderTime: reminderTime);
+      todoItems[i] = todo.copyWith(
+        body: bodyArg,
+        projectId: projectIdArg,
+        reminderTime: reminderTimeArg,
+      );
     }
-    afterMutation();
+    afterTodoMutation();
   }
 
   // ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import 'ai_service.dart';
+import 'ai_runtime.dart';
 import '../data/signal_database.dart';
 import '../models/models.dart';
 import '../services/user_model_service.dart';
@@ -6,7 +7,7 @@ import '../services/user_model_service.dart';
 /// 工具执行器 —— 执行 AI 返回的 tool_calls，返回文本结果。
 /// 07 轮改造：新增 read_signals、write_memory 合并逻辑、USER_MODEL.md 读写。
 class ToolExecutor {
-  final AiService? aiService;
+  final WebSearchService? searchService;
   final UserModelService userModelService;
   final SignalDatabase signalDatabase;
   final String Function({String? filter}) readTodos;
@@ -18,7 +19,7 @@ class ToolExecutor {
   }) writeTodo;
 
   ToolExecutor({
-    this.aiService,
+    this.searchService,
     required this.userModelService,
     required this.signalDatabase,
     required this.readTodos,
@@ -50,10 +51,10 @@ class ToolExecutor {
     if (query == null || query.isEmpty) {
       return '错误：未提供搜索关键词';
     }
-    if (aiService == null) {
+    if (searchService == null) {
       return '错误：搜索服务未配置';
     }
-    final results = await aiService!.searchWeb(query);
+    final results = await searchService!.search(query);
     if (results.isEmpty) {
       return '未找到相关结果。';
     }
@@ -124,11 +125,12 @@ class ToolExecutor {
           await userModelService.writeUserModel(updated);
           return mergeResult.message;
         case 'append':
-          final entry = '- [$confidence] $content';
+          // 内容由 _appendUnderSection 统一添加 '- ' 前缀，这里不再加。
+          final entry = '[$confidence] $content';
           await userModelService.appendToSection('coreMemory', entry);
           return mergeResult.message;
         case 'conflict':
-          final entry = '- [待确认] $content（与已有[确信]条目矛盾）';
+          final entry = '[待确认] $content（与已有[确信]条目矛盾）';
           await userModelService.appendToSection('coreMemory', entry);
           return mergeResult.message;
         default:
@@ -216,17 +218,25 @@ class ToolExecutor {
   // ---------------------------------------------------------------------------
 
   /// 简单解析 USER_MODEL.md 的主要区段。
+  /// 返回英文键，与 [_writeMemory] 中 `sections['coreMemory']` 等用法对齐。
   Map<String, String> _parseSections(String content) {
     final sections = <String, String>{};
-    final titles = ['核心记忆', '领域画像', '长期偏好', '归档'];
-    for (final title in titles) {
+    final titles = {
+      'coreMemory': '核心记忆',
+      'domainProfile': '领域画像',
+      'longTermPrefs': '长期偏好',
+      'archive': '归档',
+    };
+    for (final entry in titles.entries) {
+      final key = entry.key;
+      final title = entry.value;
       final start = content.indexOf('## $title');
       if (start == -1) continue;
       final nextSection = RegExp(r'\n## \S').firstMatch(content.substring(start + 3));
       if (nextSection != null) {
-        sections[title] = content.substring(start, start + 3 + nextSection.start);
+        sections[key] = content.substring(start, start + 3 + nextSection.start);
       } else {
-        sections[title] = content.substring(start);
+        sections[key] = content.substring(start);
       }
     }
     return sections;

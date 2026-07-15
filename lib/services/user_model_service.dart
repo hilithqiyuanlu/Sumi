@@ -50,6 +50,15 @@ class UserModelService {
 
   /// 覆写 USER_MODEL.md 全文。
   Future<void> writeUserModel(String content) async {
+    if (!isValidUserModel(content)) {
+      throw const FormatException('USER_MODEL.md 缺少必要区段');
+    }
+    await _writeRaw(content);
+  }
+
+  Future<void> resetUserModel() => _writeRaw(defaultUserModel);
+
+  Future<void> _writeRaw(String content) async {
     try {
       final path = await _filePath();
       final sepIdx = path.lastIndexOf('/');
@@ -60,7 +69,54 @@ class UserModelService {
       await io.File(path).writeAsString(content);
     } catch (e) {
       debugPrint('[UserModelService] writeUserModel error: $e');
+      rethrow;
     }
+  }
+
+  /// 将当前 USER_MODEL.md 复制为带时间戳的备份，返回备份路径。
+  Future<String?> backupUserModel() async {
+    try {
+      final path = await _filePath();
+      final file = io.File(path);
+      if (!await file.exists()) return null;
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final backupPath = '$path.bak.$timestamp';
+      await file.copy(backupPath);
+      try {
+        final backups = await file.parent
+            .list()
+            .where((entry) => entry is io.File && entry.path.startsWith('$path.bak.'))
+            .cast<io.File>()
+            .toList();
+        backups.sort((a, b) => b.path.compareTo(a.path));
+        for (final oldBackup in backups.skip(10)) {
+          await oldBackup.delete();
+        }
+      } catch (e) {
+        debugPrint('[UserModelService] 清理旧备份失败: $e');
+      }
+      return backupPath;
+    } catch (e) {
+      debugPrint('[UserModelService] backupUserModel error: $e');
+      return null;
+    }
+  }
+
+  /// 校验 USER_MODEL.md 内容是否包含关键区段结构。
+  bool isValidUserModel(String content) {
+    if (content.trim().isEmpty) return false;
+    final required = [
+      '## 核心记忆',
+      '<!-- END CORE MEMORY -->',
+      '## 长期偏好',
+      '<!-- END PREFS -->',
+      '## 领域画像',
+      '<!-- END DOMAIN -->',
+    ];
+    for (final marker in required) {
+      if (!content.contains(marker)) return false;
+    }
+    return true;
   }
 
   /// 向指定区段追加一条条目。
@@ -111,8 +167,6 @@ class UserModelService {
 
   /// 计算实时统计摘要，直接嵌入 USER_MODEL.md 的 SYSTEM-MANAGED 区块。
   Future<Map<String, String>> computeRealtimeStats() async {
-    final now = DateTime.now();
-
     // 一次查询本周信号，内存中分类统计
     final weekSignals = await _signalDb.query(range: '7d', limit: 1000);
     final completed = weekSignals.where((s) => s.signal == SignalType.todoCompleted).length;
@@ -249,6 +303,10 @@ class UserModelService {
   /// - 与[确信]条目矛盾 → append "[待确认]" + 标注
   /// - 全新 → append
   MergeResult mergeMemoryEntry(String newEntry, String existingCoreMemory) {
+    if (newEntry.trim().isEmpty) {
+      return const MergeResult(action: 'skip', message: '记忆内容为空，跳过写入。');
+    }
+
     final entries = _parseCoreEntries(existingCoreMemory);
 
     if (entries.isEmpty) {
@@ -262,13 +320,15 @@ class UserModelService {
 
     for (final entry in entries) {
       // 去掉置信度标记再比较
-      final strippedEntry = entry.replaceFirst(RegExp(r'^\[.*?\]\s*'), '');
+      final normalizedEntry = entry.replaceFirst(RegExp(r'^-\s*'), '');
+      final strippedEntry =
+          normalizedEntry.replaceFirst(RegExp(r'^\[.*?\]\s*'), '');
       final sim = _diceCoefficient(newEntry, strippedEntry);
       if (sim > maxSim) {
         maxSim = sim;
         bestMatch = entry;
         // 提取置信度标记
-        final labelMatch = RegExp(r'^\[(.*?)\]').firstMatch(entry);
+        final labelMatch = RegExp(r'^\[(.*?)\]').firstMatch(normalizedEntry);
         bestLabel = labelMatch?.group(1) ?? '';
       }
     }
@@ -281,10 +341,10 @@ class UserModelService {
     }
 
     if (maxSim >= 0.5) {
-      // 替换旧条目
+      // 替换旧条目：保留原置信度标签，内容更新为新内容，并加 (已更新) 后缀。
       final updated = existingCoreMemory.replaceFirst(
         bestMatch,
-        '$bestMatch (已更新)',
+        '- [$bestLabel] $newEntry (已更新)',
       );
       return MergeResult(
         action: 'replace',
@@ -311,6 +371,9 @@ class UserModelService {
   // ---------------------------------------------------------------------------
   // 内部工具
   // ---------------------------------------------------------------------------
+
+  /// 公开访问默认模板，用于重置数据后恢复文件结构。
+  String get defaultUserModel => _defaultUserModel();
 
   String _defaultUserModel() {
     return '''# Sumi 对你的理解
@@ -350,7 +413,7 @@ $_systemManagedSection
   String _appendUnderSection(String content, String endMarker, String entry) {
     final idx = content.indexOf('<!-- $endMarker -->');
     if (idx == -1) return content;
-    return '${content.substring(0, idx)}- ${entry}\n${content.substring(idx)}';
+    return '${content.substring(0, idx)}- $entry\n${content.substring(idx)}';
   }
 
   /// 提取指定区段的内容。

@@ -60,7 +60,7 @@ class VoiceInputService {
   /// 检查麦克风权限是否已授权。
   Future<bool> get hasPermission async {
     try {
-      return await _speech.hasPermission ?? false;
+      return await _speech.hasPermission;
     } catch (_) {
       return false;
     }
@@ -88,12 +88,14 @@ class VoiceInputService {
     _setState(VoiceState.recording);
 
     await _speech.listen(
-      localeId: 'zh_CN',
+      listenOptions: stt.SpeechListenOptions(
+        localeId: 'zh_CN',
+        listenMode: stt.ListenMode.deviceDefault,
+      ),
       onResult: (result) {
         _latestText = result.recognizedWords.trim();
         onPartialResult?.call(_latestText);
       },
-      listenMode: stt.ListenMode.deviceDefault,
       onSoundLevelChange: (level) {
         onSoundLevel?.call(level);
       },

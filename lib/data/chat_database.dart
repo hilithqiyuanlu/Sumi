@@ -139,13 +139,26 @@ class ChatDatabase {
     return lastId;
   }
 
-  /// 删除指定会话中所有的 tool 角色消息（用于重新生成时清理）。
-  Future<void> popToolMessages(String conversationId) async {
+  /// 删除指定会话中，在指定 assistant 消息之后（含同时）产生的 tool 消息。
+  /// 用于重新生成时只清理最后一轮 tool 结果，保留历史 tool 结果。
+  Future<void> popToolMessagesAfter(
+    String conversationId,
+    String assistantMessageId,
+  ) async {
     final db = await _db;
+    final assistantRows = await db.query(
+      'messages',
+      columns: ['created_at'],
+      where: 'id = ? AND role = ?',
+      whereArgs: [assistantMessageId, 'assistant'],
+    );
+    if (assistantRows.isEmpty) return;
+    final createdAt = assistantRows.first['created_at'] as String;
     await db.delete(
       'messages',
-      where: 'conversation_id = ? AND role = ?',
-      whereArgs: [conversationId, 'tool'],
+      where:
+          'conversation_id = ? AND role = ? AND created_at >= ?',
+      whereArgs: [conversationId, 'tool', createdAt],
     );
   }
 

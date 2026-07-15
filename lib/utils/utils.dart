@@ -1,4 +1,4 @@
-/// 日期与 ID 工具函数。
+// 日期与 ID 工具函数。
 
 /// 底部输入模式。
 enum InputMode { chat, todo }

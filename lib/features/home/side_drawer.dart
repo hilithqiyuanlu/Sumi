@@ -52,7 +52,7 @@ class SideDrawer extends StatelessWidget {
   }
 
   Widget _buildUserProfile(BuildContext context) {
-    final store = SumiScope.watch(context);
+    final store = SumiScope.watchSettings(context);
     final userName = store.appSettings.userName;
 
     return Padding(

@@ -4,86 +4,15 @@ part of 'sumi_store.dart';
 // Project & MonthCard Mutations mixin
 // ---------------------------------------------------------------------------
 
-mixin SumiStoreProjects on ChangeNotifier {
+mixin SumiStoreProjects {
   List<Project> get projectList;
   List<MonthCard> get monthCardList;
   List<TodoItem> get todoItems;
   String? get currentProjectId;
   set currentProjectId(String? v);
-  AiService? get aiService;
+  StructuredAiService? get structuredAi;
   SignalService? get signalService; // 07 轮
-  void afterMutation();
-
-  // ---------------------------------------------------------------------------
-  // 创建项目（改造：创建后触发 AI 规划）
-  // ---------------------------------------------------------------------------
-
-  /// 新建项目（06 轮：不再自动触发规划，由 UI 层通过评估流程驱动）。
-  void addProject({
-    required String name,
-    required ProjectColor color,
-    String goal = '',
-    String level = '',
-    int cycleMonths = 3,
-    int timeConstraint = 0,
-  }) {
-    final projId = newSumiId('proj');
-    projectList.add(Project(
-      id: projId,
-      name: name,
-      color: color,
-      goal: goal,
-      level: level,
-      cycleMonths: cycleMonths,
-      timeConstraint: timeConstraint,
-      currentMonthIndex: 0,
-      createdAt: DateTime.now(),
-    ));
-    // 自动生成 cycleMonths 张空月卡
-    for (var i = 0; i < cycleMonths; i++) {
-      monthCardList.add(MonthCard(
-        id: newSumiId('mc'),
-        projectId: projId,
-        monthIndex: i,
-        title: '',
-      ));
-    }
-    if (currentProjectId == null) {
-      currentProjectId = projectList.last.id;
-    }
-    afterMutation();
-    // 06 轮：不再自动触发 AI 规划，由 UI 层通过评估→规划流程驱动
-  }
-
-  /// 新建项目草稿（06 轮新增）—— 不创建月卡，不触发规划。
-  /// 月卡由 [commitPlan] 在评估+规划完成后一次性写入。
-  String addProjectDraft({
-    required String name,
-    required ProjectColor color,
-    String goal = '',
-    String level = '',
-    int cycleMonths = 3,
-    int timeConstraint = 0,
-  }) {
-    final projId = newSumiId('proj');
-    projectList.add(Project(
-      id: projId,
-      name: name,
-      color: color,
-      goal: goal,
-      level: level,
-      cycleMonths: cycleMonths,
-      timeConstraint: timeConstraint,
-      currentMonthIndex: 0,
-      createdAt: DateTime.now(),
-    ));
-    // 不创建月卡 —— 等 commitPlan 一次性写入
-    if (currentProjectId == null) {
-      currentProjectId = projId;
-    }
-    afterMutation();
-    return projId;
-  }
+  void afterProjectMutation();
 
   /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
   Future<void> updateProject(String id, {
@@ -143,7 +72,7 @@ mixin SumiStoreProjects on ChangeNotifier {
       await signalService?.emitProjectTimeSet(updated, old.timeConstraint);
     }
 
-    afterMutation();
+    afterProjectMutation();
     // 06 轮：不再自动触发重规划，由 UI 层通过评估→规划流程驱动
   }
 
@@ -156,34 +85,23 @@ mixin SumiStoreProjects on ChangeNotifier {
     if (currentProjectId == id) {
       currentProjectId = projectList.isNotEmpty ? projectList.first.id : null;
     }
-    afterMutation();
+    afterProjectMutation();
   }
 
   /// 切换当前项目。
   void selectProject(String id) {
     currentProjectId = id;
-    afterMutation();
+    afterProjectMutation();
   }
 
-  // ---------------------------------------------------------------------------
-  // 月卡 CRUD
-  // ---------------------------------------------------------------------------
-
-  /// 更新月卡。
-  void updateMonthCard(String id, {String? title, String? summary, bool? aiGenerated}) {
-    final i = monthCardList.indexWhere((m) => m.id == id);
-    if (i == -1) return;
-    monthCardList[i] = monthCardList[i].copyWith(
-      title: title,
-      summary: summary,
-      aiGenerated: aiGenerated,
-    );
-    afterMutation();
-  }
-
-  /// 当前项目进度 +1（不超过 cycleMonths）。
-  void advanceCurrentMonth() {
-    final project = currentProject;
+  /// 指定项目进度 +1（不超过 cycleMonths）。
+  void advanceCurrentMonth({String? projectId}) {
+    final project = projectId == null
+        ? currentProject
+        : projectList.cast<Project?>().firstWhere(
+            (p) => p?.id == projectId,
+            orElse: () => null,
+          );
     if (project == null) return;
     final next = project.currentMonthIndex + 1;
     if (next >= project.cycleMonths) return;
@@ -196,7 +114,7 @@ mixin SumiStoreProjects on ChangeNotifier {
 
   /// 检测并生成每日 todo（App 启动时调用）。
   Future<void> checkAndGenerateDaily() async {
-    final svc = aiService;
+    final svc = structuredAi;
     if (svc == null) return;
 
     final today = dateKey(DateTime.now());
@@ -237,16 +155,21 @@ mixin SumiStoreProjects on ChangeNotifier {
       final actualCardMonth = (cardMonth - 1) % 12 + 1;
       final actualCardYear = cardYear;
 
-      // 检查今天是新月第一天
+      // 检查今天是否在当前月卡对应的真实月份内
       if (todayDate.month == actualCardMonth && todayDate.year == actualCardYear) {
         // 当月月卡期内，生成每日 todo
       } else if (todayDate.isAfter(DateTime(actualCardYear, actualCardMonth + 1, 0))) {
-        // 已过该月 → advance 并重新检测
-        advanceCurrentMonth();
-        // 重新生成（递归一次）
-        await _generateDailyTodoForProject(
-          svc, project, today, currentCard,
-        );
+        // 已过该月 → advance 并改用新月卡生成任务
+        final nextMonthIndex = project.currentMonthIndex + 1;
+        if (nextMonthIndex < project.cycleMonths) {
+          updateProject(project.id, currentMonthIndex: nextMonthIndex);
+          final newCard = DailyPlanningPolicy.cardForMonth(
+            cards: monthCardList,
+            projectId: project.id,
+            monthIndex: nextMonthIndex,
+          );
+          await _generateDailyTodoForProject(svc, project, today, newCard);
+        }
         continue;
       }
 
@@ -254,25 +177,25 @@ mixin SumiStoreProjects on ChangeNotifier {
       await _generateDailyTodoForProject(svc, project, today, currentCard);
     }
 
-    afterMutation();
+    afterProjectMutation();
   }
 
   Future<void> _generateDailyTodoForProject(
-    AiService svc,
+    StructuredAiService svc,
     Project project,
     String today,
-    MonthCard currentCard,
+    MonthCard? currentCard,
   ) async {
-    // 计算本周已安排的 todo 数量（作为简单代理）
-    final scheduledHours = todoItems
-        .where((t) =>
-            t.source == TodoSource.system &&
-            t.projectId == project.id &&
-            t.date != null)
-        .length;
+    // 计算本周已安排的系统 todo 数量（作为简单代理，避免历史累积偏差）
+    final todayDate = DateTime.parse(today);
+    final scheduledHours = DailyPlanningPolicy.scheduledCountForWeek(
+      todos: todoItems,
+      projectId: project.id,
+      today: todayDate,
+    );
 
-    // 如果月卡标题为空，生成一个基础 todo
-    if (currentCard.title.isEmpty) {
+    // 如果月卡为空或标题为空，生成一个基础 todo
+    if (currentCard == null || currentCard.title.isEmpty) {
       _addSystemTodoForDate(
         title: '开始学习 ${project.name}',
         date: today,
@@ -309,13 +232,52 @@ mixin SumiStoreProjects on ChangeNotifier {
     }
   }
 
-  /// 规划完成后一次性提交（06 轮新增）。
-  /// 写入月卡 + 首日 todo，完成后触发 UI 刷新。
-  Future<void> commitPlan(String projectId, PlanResult plan) async {
-    // 清除该项目的旧月卡（如果有）
-    monthCardList.removeWhere((m) => m.projectId == projectId);
+  /// 将内存中的项目生成请求一次性提交到领域状态。
+  Future<void> commitProjectPlan(
+    ProjectGenerationRequest request,
+    GoalAssessment? assessment,
+    PlanResult plan,
+  ) async {
+    final projectId = request.existingProjectId ?? request.projectId;
+    final existingIndex = projectList.indexWhere((p) => p.id == projectId);
+    final existing = existingIndex == -1 ? null : projectList[existingIndex];
+    final summary = assessment?.goalSummary.trim() ?? '';
+    final plannedTitle = plan.projectTitle.trim();
+    final fallbackName = request.goal.length <= 16
+        ? request.goal
+        : request.goal.substring(0, 16);
+    final name = summary.isNotEmpty
+        ? summary
+        : plannedTitle.length >= 2 && plannedTitle.length <= 16
+        ? plannedTitle
+        : existing != null && existing.name.trim().isNotEmpty
+        ? existing.name
+        : fallbackName;
+    final assessmentJson = assessment == null
+        ? null
+        : jsonEncode(assessment.toJson());
 
-    // 写入新月卡
+    final updated = Project(
+      id: projectId,
+      name: name,
+      color: request.color,
+      goal: request.goal,
+      level: request.level,
+      cycleMonths: request.cycleMonths,
+      timeConstraint: request.timeConstraint,
+      currentMonthIndex: 0,
+      createdAt: existing?.createdAt ?? DateTime.now(),
+      lastAssessmentJson: assessmentJson ?? existing?.lastAssessmentJson,
+      goalSummary: name,
+    );
+    if (existingIndex == -1) {
+      projectList.add(updated);
+    } else {
+      projectList[existingIndex] = updated;
+    }
+    currentProjectId = projectId;
+
+    monthCardList.removeWhere((card) => card.projectId == projectId);
     for (final monthPlan in plan.monthPlans) {
       monthCardList.add(MonthCard(
         id: newSumiId('mc'),
@@ -326,8 +288,6 @@ mixin SumiStoreProjects on ChangeNotifier {
         aiGenerated: true,
       ));
     }
-
-    // 写入首日 todo
     for (final seed in plan.todayTodos) {
       _addSystemTodoForDate(
         title: seed.title,
@@ -337,16 +297,8 @@ mixin SumiStoreProjects on ChangeNotifier {
       );
     }
 
-    // 07 轮：规划完成产生项目目标信号
-    final proj = projectList.cast<Project?>().firstWhere(
-      (p) => p?.id == projectId,
-      orElse: () => null,
-    );
-    if (proj != null) {
-      await signalService?.emitProjectGoalSet(proj, null);
-    }
-
-    afterMutation();
+    await signalService?.emitProjectGoalSet(updated, existing?.goal);
+    afterProjectMutation();
   }
 
   /// 添加系统 todo（指定日期），去重检查。

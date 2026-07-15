@@ -4,7 +4,7 @@ part of 'sumi_store.dart';
 // Persistence mixin
 // ---------------------------------------------------------------------------
 
-mixin SumiStorePersist on ChangeNotifier {
+mixin SumiStorePersist {
   // 声明由 SumiStore 提供的字段（mixin 约束）
   SumiLocalDatabase? get _database;
   List<TodoItem> get todoItems;
@@ -22,6 +22,7 @@ mixin SumiStorePersist on ChangeNotifier {
   UserModelService? get userModelService;
   DateTime? get lastWeeklyReflection;
   set lastWeeklyReflection(DateTime? v);
+  Future<void> persistSnapshotNow(Map<String, Object?> snapshot);
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -92,7 +93,7 @@ mixin SumiStorePersist on ChangeNotifier {
   }
 
   Future<void> writeToDb() async {
-    await _database?.writeSnapshot(snapshotMap());
+    await persistSnapshotNow(snapshotMap());
   }
 
   /// 清除所有数据，可选择是否保留 API Key。
@@ -116,9 +117,12 @@ mixin SumiStorePersist on ChangeNotifier {
 
     // 07 轮：清除信号和用户模型
     await signalDb?.clearAll();
-    await userModelService?.writeUserModel('');
+    // 重置用户模型时保留模板结构，否则后续 AI 无法定位区段标记。
+    await userModelService?.resetUserModel();
 
     await writeToDb();
-    notifyListeners();
+    notifyAllDomains();
   }
+
+  void notifyAllDomains();
 }

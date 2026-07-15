@@ -8,7 +8,6 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../theme/app_theme.dart';
 import '../../utils/utils.dart';
-import '../shared/collapsible_section.dart';
 
 /// 聊天气泡组件 —— 支持用户（右侧 mint）和 AI（左侧白色）两种样式。
 class ChatBubble extends StatelessWidget {
@@ -16,7 +15,7 @@ class ChatBubble extends StatelessWidget {
   final bool isUser;
   final bool isStreaming;
   final DateTime? timestamp;
-  final String? reasoningContent;
+  final String? activityLabel;
   final String? toolCallsJson;
   final VoidCallback? onDelete;
 
@@ -26,14 +25,16 @@ class ChatBubble extends StatelessWidget {
     required this.isUser,
     this.isStreaming = false,
     this.timestamp,
-    this.reasoningContent,
+    this.activityLabel,
     this.toolCallsJson,
     this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final alignment = isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final alignment = isUser
+        ? CrossAxisAlignment.end
+        : CrossAxisAlignment.start;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: s16, vertical: s6),
@@ -56,25 +57,8 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
-          // 思考过程（仅 AI 且有内容时显示折叠区域）
-          if (!isUser &&
-              reasoningContent != null &&
-              reasoningContent!.isNotEmpty)
-            SizedBox(
-              width: double.infinity,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: s4),
-                child: CollapsibleSection(
-                  title: '思考过程',
-                  body: reasoningContent!,
-                  backgroundColor: surfaceAlt,
-                ),
-              ),
-            ),
           // 工具调用指示（仅 AI 且有 tool_calls 时显示，简洁样式）
-          if (!isUser &&
-              toolCallsJson != null &&
-              toolCallsJson!.isNotEmpty)
+          if (!isUser && toolCallsJson != null && toolCallsJson!.isNotEmpty)
             _ToolCallIndicator(toolCallsJson: toolCallsJson!),
           // 气泡（长按删除或复制）
           GestureDetector(
@@ -85,12 +69,21 @@ class ChatBubble extends StatelessWidget {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(radiusCard),
+                      ),
                     ),
-                    title: const Text('删除这条对话？',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                    content: const Text('将同时删除这一来一回的全部内容，包括思考过程和工具信息。',
-                        style: TextStyle(fontSize: 14)),
+                    title: const Text(
+                      '删除这条对话？',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    content: const Text(
+                      '将同时删除这一来一回的全部内容，包括工具信息。',
+                      style: TextStyle(fontSize: 14),
+                    ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
@@ -126,7 +119,9 @@ class ChatBubble extends StatelessWidget {
                 maxWidth: MediaQuery.of(context).size.width * 0.72,
               ),
               padding: const EdgeInsets.symmetric(
-                  horizontal: s12, vertical: s10),
+                horizontal: s12,
+                vertical: s10,
+              ),
               decoration: BoxDecoration(
                 color: isUser ? mint : Colors.white,
                 borderRadius: BorderRadius.only(
@@ -160,19 +155,20 @@ class ChatBubble extends StatelessWidget {
 
   Widget _buildContent() {
     if (content.isEmpty && isStreaming) {
-      return const SizedBox(
-        width: 24,
-        height: 20,
-        child: Center(
-          child: SizedBox(
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
             width: 14,
             height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: mintDeep,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2, color: mintDeep),
           ),
-        ),
+          const SizedBox(width: s8),
+          Text(
+            activityLabel ?? '正在生成回复',
+            style: const TextStyle(fontSize: 13, color: textTertiary),
+          ),
+        ],
       );
     }
 
@@ -184,17 +180,21 @@ class ChatBubble extends StatelessWidget {
         if (isUser)
           Text(
             content,
-            style: const TextStyle(
-              fontSize: 15,
-              height: 1.5,
-              color: ink,
-            ),
+            style: const TextStyle(fontSize: 15, height: 1.5, color: ink),
           )
         else
           MarkdownBody(
             data: content,
             selectable: true,
             styleSheet: _mdStyleSheet,
+          ),
+        if (isStreaming && activityLabel != null)
+          Padding(
+            padding: const EdgeInsets.only(top: s8),
+            child: Text(
+              activityLabel!,
+              style: const TextStyle(fontSize: 12, color: textTertiary),
+            ),
           ),
         if (isStreaming)
           const Padding(
@@ -208,25 +208,24 @@ class ChatBubble extends StatelessWidget {
   static final MarkdownStyleSheet _mdStyleSheet = MarkdownStyleSheet(
     p: const TextStyle(fontSize: 15, height: 1.5, color: ink),
     strong: const TextStyle(
-        fontSize: 15,
-        height: 1.5,
-        color: ink,
-        fontWeight: FontWeight.w600),
+      fontSize: 15,
+      height: 1.5,
+      color: ink,
+      fontWeight: FontWeight.w600,
+    ),
     code: TextStyle(
-        fontSize: 13,
-        color: textTertiary,
-        backgroundColor: surfaceAlt,
-        fontFamily: 'monospace'),
+      fontSize: 13,
+      color: textTertiary,
+      backgroundColor: surfaceAlt,
+      fontFamily: 'monospace',
+    ),
     codeblockDecoration: BoxDecoration(
       color: surfaceAlt,
       borderRadius: BorderRadius.circular(radius8),
     ),
-    h1: const TextStyle(
-        fontSize: 18, fontWeight: FontWeight.w700, color: ink),
-    h2: const TextStyle(
-        fontSize: 16, fontWeight: FontWeight.w700, color: ink),
-    h3: const TextStyle(
-        fontSize: 15, fontWeight: FontWeight.w600, color: ink),
+    h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: ink),
+    h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: ink),
+    h3: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: ink),
     listBullet: const TextStyle(fontSize: 15, color: ink),
     horizontalRuleDecoration: BoxDecoration(
       border: Border(
@@ -244,8 +243,7 @@ class _Cursor extends StatefulWidget {
   State<_Cursor> createState() => _CursorState();
 }
 
-class _CursorState extends State<_Cursor>
-    with SingleTickerProviderStateMixin {
+class _CursorState extends State<_Cursor> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -285,11 +283,6 @@ class _CursorState extends State<_Cursor>
 }
 
 // ---------------------------------------------------------------------------
-// 思考过程折叠区域
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
 // 工具调用指示（简洁版）
 // ---------------------------------------------------------------------------
 
@@ -325,14 +318,13 @@ class _ToolCallIndicator extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.78,
           ),
-          padding:
-              const EdgeInsets.symmetric(horizontal: s8, vertical: s4),
+          padding: const EdgeInsets.symmetric(horizontal: s8, vertical: s4),
           decoration: BoxDecoration(
             color: mint.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(s6),
           ),
           child: Text(
-            '${names.join(" · ")}',
+            names.join(" · "),
             style: const TextStyle(
               fontSize: 11,
               color: mintDeep,
