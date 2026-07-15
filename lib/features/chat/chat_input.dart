@@ -271,7 +271,7 @@ class _ChatInputState extends State<ChatInput> {
 
   String get _placeholderText {
     if (_isRecording) return '正在收听…';
-    return widget.mode == InputMode.todo ? '新增事项' : '尽管说';
+    return widget.mode == InputMode.todo ? '新增事项' : '尽管说，不留聊天记录～';
   }
 
   @override

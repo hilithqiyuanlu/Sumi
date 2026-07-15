@@ -170,8 +170,8 @@ class SumiStore extends ChangeNotifier
 
     final result = await _aiService!.splitTodo(text);
     if (result == null) {
-      // AI 调用失败 → 若 >18 字尝试凝练，否则直接创建
-      if (text.length > 18) {
+      // AI 调用失败 → 若 >16 字尝试凝练，否则直接创建
+      if (text.length > 16) {
         final condensed = await polishText(text);
         addUserTodo(condensed ?? text);
       } else {
@@ -183,7 +183,7 @@ class SumiStore extends ChangeNotifier
     if (!result.split) {
       // AI 判断无需拆分 → 用 AI 凝练结果或直接创建
       final single = result.items.isNotEmpty ? result.items.first : text;
-      if (single.length > 18) {
+      if (single.length > 16) {
         final condensed = await polishText(single);
         addUserTodo(condensed ?? single);
       } else {
@@ -195,7 +195,7 @@ class SumiStore extends ChangeNotifier
     // 需要拆分 → 确保每项 ≤18 字
     final polishedItems = <String>[];
     for (final item in result.items) {
-      if (item.length > 18) {
+      if (item.length > 16) {
         final condensed = await polishText(item);
         polishedItems.add(condensed ?? item);
       } else {

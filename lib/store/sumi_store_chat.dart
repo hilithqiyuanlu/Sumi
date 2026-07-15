@@ -40,9 +40,9 @@ mixin SumiStoreChat on ChangeNotifier {
   bool get isTemporaryConversation => _isTemporaryConversation;
 
   /// 判断 dateKey 是否为未来日期（相对于今天）。
-  static bool _isFutureDate(String dateKey) {
+  static bool _isFutureDate(String dk) {
     final today = dateKey(DateTime.now());
-    return dateKey.compareTo(today) > 0;
+    return dk.compareTo(today) > 0;
   }
 
   // ---------------------------------------------------------------------------

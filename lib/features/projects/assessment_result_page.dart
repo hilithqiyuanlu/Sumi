@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../models/models.dart';
+import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/score_bar.dart';
 import '../../widgets/verdict_badge.dart';
@@ -39,6 +40,13 @@ class _AssessmentResultPageState extends State<AssessmentResultPage> {
   void _proceedToPlanning() {
     if (_isNavigating) return;
     _isNavigating = true;
+
+    // 保存 AI 凝练的目标摘要到项目
+    if (widget.assessment.goalSummary.isNotEmpty) {
+      final store = SumiScope.read(context);
+      store.updateProject(widget.projectId,
+          goalSummary: widget.assessment.goalSummary);
+    }
 
     // 将评估结果序列化为 JSON
     final assessmentJson = jsonEncode(widget.assessment.toJson());

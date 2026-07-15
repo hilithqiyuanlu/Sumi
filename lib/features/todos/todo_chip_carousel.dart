@@ -56,6 +56,7 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
+        clipBehavior: Clip.hardEdge,
         padding: const EdgeInsets.symmetric(horizontal: s16),
         itemCount: todos.length,
         itemBuilder: (context, index) {
@@ -80,6 +81,17 @@ class _TodoChip extends StatelessWidget {
     final store = SumiScope.read(context);
     final isDone = todo.done;
 
+    // 查找关联项目色
+    ProjectColor? projectColor;
+    if (todo.projectId != null) {
+      try {
+        final project = store.projectList.firstWhere(
+          (p) => p.id == todo.projectId,
+        );
+        projectColor = project.color;
+      } catch (_) {}
+    }
+
     return LongPressDraggable<TodoItem>(
       data: todo,
       delay: const Duration(milliseconds: 300),
@@ -87,17 +99,21 @@ class _TodoChip extends StatelessWidget {
         color: Colors.transparent,
         child: Opacity(
           opacity: 0.85,
-          child: _TodoChipView(todo: todo, isDone: isDone, isDragging: true),
+          child: _TodoChipView(
+              todo: todo, isDone: isDone, isDragging: true, projectColor: projectColor),
         ),
       ),
       childWhenDragging: Opacity(
         opacity: 0.3,
-        child: _TodoChipView(todo: todo, isDone: isDone),
+        child: _TodoChipView(todo: todo, isDone: isDone, projectColor: projectColor),
       ),
       onDragStarted: () => HapticFeedback.mediumImpact(),
       child: GestureDetector(
-        onTap: () => showTodoEditSheet(context, store, todo),
-        child: _TodoChipView(todo: todo, isDone: isDone),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          showTodoEditSheet(context, store, todo);
+        },
+        child: _TodoChipView(todo: todo, isDone: isDone, projectColor: projectColor),
       ),
     );
   }
@@ -108,11 +124,13 @@ class _TodoChipView extends StatelessWidget {
   final TodoItem todo;
   final bool isDone;
   final bool isDragging;
+  final ProjectColor? projectColor;
 
   const _TodoChipView({
     required this.todo,
     required this.isDone,
     this.isDragging = false,
+    this.projectColor,
   });
 
   @override
@@ -120,7 +138,11 @@ class _TodoChipView extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: s10),
       decoration: BoxDecoration(
-        color: isDone ? neutral200 : surfaceChip,
+        color: isDone
+            ? neutral200
+            : (projectColor != null
+                ? projectCardBackground(projectColor!)
+                : surfaceChip),
         borderRadius: BorderRadius.circular(radiusPill),
         border: isDragging
             ? Border.all(color: primary500, width: 1.5)

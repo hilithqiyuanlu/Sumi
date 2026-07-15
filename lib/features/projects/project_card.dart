@@ -72,12 +72,14 @@ class _ProjectCardState extends State<ProjectCard> {
                 children: [
                   Expanded(
                     child: Text(
-                      p.name,
+                      p.goalSummary.isNotEmpty ? p.goalSummary : p.name,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: ink,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   AnimatedRotation(

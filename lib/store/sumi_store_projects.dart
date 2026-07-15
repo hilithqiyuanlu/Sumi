@@ -93,6 +93,7 @@ mixin SumiStoreProjects on ChangeNotifier {
     int? cycleMonths,
     int? timeConstraint,
     int? currentMonthIndex,
+    String? goalSummary,
   }) {
     final i = projectList.indexWhere((p) => p.id == id);
     if (i == -1) return;
@@ -106,6 +107,7 @@ mixin SumiStoreProjects on ChangeNotifier {
       cycleMonths: cycleMonths,
       timeConstraint: timeConstraint,
       currentMonthIndex: currentMonthIndex,
+      goalSummary: goalSummary,
     );
     // 如果 cycleMonths 变更，调整月卡数量
     if (cycleMonths != null && cycleMonths != oldCycle) {

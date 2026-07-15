@@ -336,7 +336,8 @@ class AiService {
           '  "concerns": ["具体问题1"],\n'
           '  "suggestions": ["可操作的调整建议"],\n'
           '  "estimatedHours": "约 200-300 小时",\n'
-          '  "domainSummary": "该领域的概述"\n'
+          '  "domainSummary": "该领域的概述",\n'
+          '  "goalSummary": "5-15字目标凝练，用于卡片标题展示"\n'
           '}';
 
   // ---------------------------------------------------------------------------
@@ -550,7 +551,12 @@ class AiService {
       }
 
       try {
-        return jsonDecode(content) as Map<String, Object?>;
+        String cleaned = content.trim();
+        if (cleaned.startsWith('```')) {
+          cleaned = cleaned.replaceFirst(RegExp(r'^```\w*\n?'), '');
+          cleaned = cleaned.replaceFirst(RegExp(r'\n?```$'), '');
+        }
+        return jsonDecode(cleaned) as Map<String, Object?>;
       } catch (e) {
         lastApiError = 'JSON 解析失败: $e';
         debugPrint('[callJsonApi] $lastApiError: $content');
@@ -628,8 +634,15 @@ class AiService {
           as Map<String, Object?>?;
       final content = message?['content'] as String?;
       final result = content?.trim();
-      debugPrint('[polishTodo] 结果: "$result"');
-      return (result != null && result.isNotEmpty) ? result : null;
+      String? cleaned = result;
+      if (cleaned != null && cleaned.isNotEmpty) {
+        if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+            (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+          cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+        }
+      }
+      debugPrint('[polishTodo] 结果: "$cleaned"');
+      return (cleaned != null && cleaned.isNotEmpty) ? cleaned : null;
     } catch (e) {
       debugPrint('[polishTodo] 异常: $e');
       return null;

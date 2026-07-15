@@ -51,6 +51,7 @@ class GoalAssessor {
         estimatedHours: assessment.estimatedHours,
         domainSummary: assessment.domainSummary,
         sources: sources,
+        goalSummary: assessment.goalSummary,
       );
     }
 

@@ -115,6 +115,7 @@ class GoalAssessment {
   final String? estimatedHours;
   final String? domainSummary;
   final List<SearchSnippet> sources;
+  final String goalSummary; // AI 对目标的凝练（5-15 字），用于项目卡标题
 
   const GoalAssessment({
     required this.clarity,
@@ -131,6 +132,7 @@ class GoalAssessment {
     this.estimatedHours,
     this.domainSummary,
     this.sources = const [],
+    this.goalSummary = '',
   });
 
   factory GoalAssessment.fromJson(Map<String, Object?> json) {
@@ -160,6 +162,7 @@ class GoalAssessment {
                   (e) => SearchSnippet.fromJson(e as Map<String, Object?>))
               .toList() ??
           [],
+      goalSummary: (json['goalSummary'] as String?) ?? '',
     );
   }
 
@@ -178,6 +181,7 @@ class GoalAssessment {
         if (estimatedHours != null) 'estimatedHours': estimatedHours,
         if (domainSummary != null) 'domainSummary': domainSummary,
         'sources': sources.map((s) => s.toJson()).toList(),
+        if (goalSummary.isNotEmpty) 'goalSummary': goalSummary,
       };
 }
 
@@ -218,6 +222,7 @@ class Project {
   final int currentMonthIndex;
   final DateTime createdAt;
   final String? lastAssessmentJson; // 06 轮：最近一次评估结果 JSON
+  final String goalSummary; // AI 对目标的凝练（5-15 字），用于项目卡标题
 
   const Project({
     required this.id,
@@ -230,6 +235,7 @@ class Project {
     this.currentMonthIndex = 0,
     required this.createdAt,
     this.lastAssessmentJson,
+    this.goalSummary = '',
   });
 
   Project copyWith({
@@ -241,6 +247,7 @@ class Project {
     int? timeConstraint,
     int? currentMonthIndex,
     String? lastAssessmentJson,
+    String? goalSummary,
   }) {
     return Project(
       id: id,
@@ -253,6 +260,7 @@ class Project {
       currentMonthIndex: currentMonthIndex ?? this.currentMonthIndex,
       createdAt: createdAt,
       lastAssessmentJson: lastAssessmentJson ?? this.lastAssessmentJson,
+      goalSummary: goalSummary ?? this.goalSummary,
     );
   }
 
@@ -268,6 +276,7 @@ class Project {
         'createdAt': createdAt.toIso8601String(),
         if (lastAssessmentJson != null)
           'lastAssessmentJson': lastAssessmentJson,
+        if (goalSummary.isNotEmpty) 'goalSummary': goalSummary,
       };
 
   factory Project.fromJson(Map<String, Object?> json) {
@@ -287,6 +296,7 @@ class Project {
       createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
       lastAssessmentJson: json['lastAssessmentJson'] as String?,
+      goalSummary: (json['goalSummary'] as String?) ?? '',
     );
   }
 }

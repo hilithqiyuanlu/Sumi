@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import '../../models/models.dart';
+import '../../services/ai_service.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -44,6 +45,7 @@ class _HomePageState extends State<HomePage>
   final _scrollController = ScrollController();
   bool _showScrollToBottom = false;
   int _lastMessageSentSignal = 0;
+  DateTime? _lastSelectedDate;
 
   // 对话模式轻提示
   static const _chatGreetings = [
@@ -64,6 +66,7 @@ class _HomePageState extends State<HomePage>
     _monthController = AnimationController(vsync: this);
     _monthController.addListener(() => setState(() {}));
     _refreshChatGreeting();
+    _lastSelectedDate = SumiScope.read(context).selectedDate;
     _generateSuggestions();
     _startSuggestionPolling();
     _scrollController.addListener(_onScroll);
@@ -319,6 +322,17 @@ class _HomePageState extends State<HomePage>
     final messages = store.currentMessages;
     final userName = store.appSettings.userName;
 
+    // 检测日期切换 → 重载建议
+    if (_lastSelectedDate != null &&
+        !isSameDate(store.selectedDate, _lastSelectedDate!)) {
+      _lastSelectedDate = store.selectedDate;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _generateSuggestions();
+      });
+    } else if (_lastSelectedDate == null) {
+      _lastSelectedDate = store.selectedDate;
+    }
+
     // 检测消息发送信号 → 滚动用户消息到顶部
     if (store.messageSentSignal != _lastMessageSentSignal) {
       _lastMessageSentSignal = store.messageSentSignal;
@@ -326,6 +340,8 @@ class _HomePageState extends State<HomePage>
     }
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final isPast =
+        dateOnly(store.selectedDate).isBefore(dateOnly(DateTime.now()));
 
     return Scaffold(
       backgroundColor: paper,
@@ -410,22 +426,37 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                   ),
-                  SuggestionStrip(
-                    suggestions: _suggestions,
-                    onSelect: _handleSuggestionSelect,
-                    enabled: !store.isStreaming,
-                  ),
-                  ChatInput(
-                    mode: _inputMode,
-                    onSend: (content) => store.sendMessage(content, currentGreeting: _chatGreeting),
-                    onAddTodo: _handleAddTodo,
-                    onModeChanged: _switchMode,
-                    enabled: !store.isStreaming,
-                    voiceService: store.voiceService,
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.topCenter,
+                    child: isPast
+                        ? const SizedBox.shrink()
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SuggestionStrip(
+                                suggestions: _suggestions,
+                                onSelect: _handleSuggestionSelect,
+                                enabled: !store.isStreaming,
+                              ),
+                              ChatInput(
+                                mode: _inputMode,
+                                onSend: (content) => store.sendMessage(content,
+                                    currentGreeting: _chatGreeting),
+                                onAddTodo: _handleAddTodo,
+                                onModeChanged: _switchMode,
+                                enabled: !store.isStreaming,
+                                voiceService: store.voiceService,
+                              ),
+                            ],
+                          ),
                   ),
                 ],
               ),
             ),
+          // 滚动到底部按钮（位于月视图遮罩之下）
+          _buildScrollToBottomButton(bottomPadding),
           // 月视图覆盖层 —— 跟手拖拽 + 弹簧吸附
           if (_monthController.value > 0.0)
             IgnorePointer(
@@ -463,7 +494,6 @@ class _HomePageState extends State<HomePage>
           ),
           // 左边缘手势区：仅覆盖内容区域，避开顶部 DateStrip 和底部输入栏
           _buildGestureArea(topPadding, bottomPadding),
-          _buildScrollToBottomButton(bottomPadding),
         ],
       ),
     );
@@ -479,7 +509,7 @@ class _HomePageState extends State<HomePage>
     if (isPast) {
       title = '这一天没有对话';
     } else if (isFuture) {
-      title = _chatGreeting;
+      title = '前方的区域还没有开放';
     } else if (_inputMode == InputMode.todo) {
       title = userName.isEmpty
           ? '嗨，今天要和 Sumi 一起做点什么？'
@@ -579,10 +609,10 @@ class _HomePageState extends State<HomePage>
     if (!_showScrollToBottom) return const SizedBox.shrink();
 
     // ChatInput ≈ s16(top) + 60(container) + bottomSafe + s8(const)
-    // SuggestionStrip ≈ 40px, + 16px clearance
+    // SuggestionStrip ≈ 40px, + 32px clearance
     final inputBottom = 16 + 60 + bottomSafe + 8; // ~84 + bottomSafe
     final suggestionHeight = 40.0;
-    final clearance = 16.0;
+    final clearance = 32.0;
     final btnBottom = inputBottom + suggestionHeight + clearance;
 
     return Positioned(
