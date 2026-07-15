@@ -49,6 +49,7 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
     if (todos.isEmpty) {
       return const SizedBox.shrink();
     }
+    final projectColorMap = {for (final p in store.projectList) p.id: p.color};
 
     return SizedBox(
       height: 52,
@@ -63,7 +64,12 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
           final todo = todos[index];
           return Padding(
             padding: EdgeInsets.only(left: index == 0 ? 0 : s8),
-            child: _TodoChip(todo: todo),
+            child: _TodoChip(
+              todo: todo,
+              projectColor: todo.projectId != null
+                  ? projectColorMap[todo.projectId]
+                  : null,
+            ),
           );
         },
       ),
@@ -73,24 +79,14 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
 
 class _TodoChip extends StatelessWidget {
   final TodoItem todo;
+  final ProjectColor? projectColor;
 
-  const _TodoChip({required this.todo});
+  const _TodoChip({required this.todo, this.projectColor});
 
   @override
   Widget build(BuildContext context) {
     final store = SumiScope.read(context);
     final isDone = todo.done;
-
-    // 查找关联项目色
-    ProjectColor? projectColor;
-    if (todo.projectId != null) {
-      try {
-        final project = store.projectList.firstWhere(
-          (p) => p.id == todo.projectId,
-        );
-        projectColor = project.color;
-      } catch (_) {}
-    }
 
     return LongPressDraggable<TodoItem>(
       data: todo,

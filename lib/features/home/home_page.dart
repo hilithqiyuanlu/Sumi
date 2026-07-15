@@ -46,6 +46,7 @@ class _HomePageState extends State<HomePage>
   bool _showScrollToBottom = false;
   int _lastMessageSentSignal = 0;
   DateTime? _lastSelectedDate;
+  int _lastDataVersion = 0;
 
   // 对话模式轻提示
   static const _chatGreetings = [
@@ -94,7 +95,7 @@ class _HomePageState extends State<HomePage>
 
   void _startSuggestionPolling() {
     _suggestionTimer?.cancel();
-    _suggestionTimer = Timer.periodic(const Duration(seconds: 180), (_) {
+    _suggestionTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _generateSuggestions();
     });
   }
@@ -261,7 +262,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _handleAddTodo(String title) async {
     final store = SumiScope.read(context);
-    if (title.length > 16) {
+    if (title.length > SumiStore.todoTitleMaxLength) {
       await store.splitAndAddTodo(title);
     } else {
       store.addUserTodo(title);
@@ -321,16 +322,19 @@ class _HomePageState extends State<HomePage>
     final store = SumiScope.watch(context);
     final messages = store.currentMessages;
     final userName = store.appSettings.userName;
+    final selectedDate = store.selectedDate;
+    final isPast = dateOnly(selectedDate).isBefore(dateOnly(DateTime.now()));
+    final isFuture = dateOnly(selectedDate).isAfter(dateOnly(DateTime.now()));
 
     // 检测日期切换 → 重载建议
     if (_lastSelectedDate != null &&
-        !isSameDate(store.selectedDate, _lastSelectedDate!)) {
-      _lastSelectedDate = store.selectedDate;
+        !isSameDate(selectedDate, _lastSelectedDate!)) {
+      _lastSelectedDate = selectedDate;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateSuggestions();
       });
     } else if (_lastSelectedDate == null) {
-      _lastSelectedDate = store.selectedDate;
+      _lastSelectedDate = selectedDate;
     }
 
     // 检测消息发送信号 → 滚动用户消息到顶部
@@ -338,10 +342,16 @@ class _HomePageState extends State<HomePage>
       _lastMessageSentSignal = store.messageSentSignal;
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollUserMessageToTop());
     }
+
+    // 检测数据变更 → 刷新建议
+    if (store.dataVersion != _lastDataVersion) {
+      _lastDataVersion = store.dataVersion;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _generateSuggestions();
+      });
+    }
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final isPast =
-        dateOnly(store.selectedDate).isBefore(dateOnly(DateTime.now()));
 
     return Scaffold(
       backgroundColor: paper,
@@ -426,31 +436,37 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                   ),
-                  AnimatedSize(
+                  AnimatedOpacity(
+                    opacity: isPast ? 0.0 : 1.0,
                     duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: isPast
-                        ? const SizedBox.shrink()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SuggestionStrip(
-                                suggestions: _suggestions,
-                                onSelect: _handleSuggestionSelect,
-                                enabled: !store.isStreaming,
-                              ),
-                              ChatInput(
-                                mode: _inputMode,
-                                onSend: (content) => store.sendMessage(content,
-                                    currentGreeting: _chatGreeting),
-                                onAddTodo: _handleAddTodo,
-                                onModeChanged: _switchMode,
-                                enabled: !store.isStreaming,
-                                voiceService: store.voiceService,
-                              ),
-                            ],
-                          ),
+                    curve: isPast ? Curves.easeIn : Curves.easeOut,
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOut,
+                      alignment: Alignment.topCenter,
+                      child: isPast
+                          ? const SizedBox.shrink()
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SuggestionStrip(
+                                  suggestions: _suggestions,
+                                  onSelect: _handleSuggestionSelect,
+                                  enabled: !store.isStreaming,
+                                ),
+                                ChatInput(
+                                  mode: _inputMode,
+                                  isFutureDate: isFuture,
+                                  onSend: (content) => store.sendMessage(content,
+                                      currentGreeting: _chatGreeting),
+                                  onAddTodo: _handleAddTodo,
+                                  onModeChanged: _switchMode,
+                                  enabled: !store.isStreaming,
+                                  voiceService: store.voiceService,
+                                ),
+                              ],
+                            ),
+                    ),
                   ),
                 ],
               ),
@@ -509,7 +525,7 @@ class _HomePageState extends State<HomePage>
     if (isPast) {
       title = '这一天没有对话';
     } else if (isFuture) {
-      title = '前方的区域还没有开放';
+      title = '前方的区域还没有开放，过段时间再来探索吧';
     } else if (_inputMode == InputMode.todo) {
       title = userName.isEmpty
           ? '嗨，今天要和 Sumi 一起做点什么？'

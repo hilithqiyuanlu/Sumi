@@ -29,6 +29,9 @@ class SumiStore extends ChangeNotifier
   ToolExecutor? _toolExecutor;
   VoiceInputService? _voiceService;
 
+  /// todo 标题最大字数，超过触发 AI 凝练。
+  static const todoTitleMaxLength = 16;
+
   /// 暴露给 mixin 使用。
   AiService? get aiService => _aiService;
 
@@ -65,6 +68,9 @@ class SumiStore extends ChangeNotifier
     _messageSentSignal++;
     notifyListeners();
   }
+
+  // --- 数据变更版本号（不持久化，触发建议刷新等副作用） ---
+  int dataVersion = 0;
 
   // --- 数据列表（mixin 需要访问，不可私有） ---
   final List<TodoItem> todoItems = [];
@@ -170,8 +176,8 @@ class SumiStore extends ChangeNotifier
 
     final result = await _aiService!.splitTodo(text);
     if (result == null) {
-      // AI 调用失败 → 若 >16 字尝试凝练，否则直接创建
-      if (text.length > 16) {
+      // AI 调用失败 → 若超长尝试凝练，否则直接创建
+      if (text.length > todoTitleMaxLength) {
         final condensed = await polishText(text);
         addUserTodo(condensed ?? text);
       } else {
@@ -183,7 +189,7 @@ class SumiStore extends ChangeNotifier
     if (!result.split) {
       // AI 判断无需拆分 → 用 AI 凝练结果或直接创建
       final single = result.items.isNotEmpty ? result.items.first : text;
-      if (single.length > 16) {
+      if (single.length > todoTitleMaxLength) {
         final condensed = await polishText(single);
         addUserTodo(condensed ?? single);
       } else {
@@ -192,10 +198,10 @@ class SumiStore extends ChangeNotifier
       return null;
     }
 
-    // 需要拆分 → 确保每项 ≤18 字
+    // 需要拆分 → 确保每项不超长
     final polishedItems = <String>[];
     for (final item in result.items) {
-      if (item.length > 16) {
+      if (item.length > todoTitleMaxLength) {
         final condensed = await polishText(item);
         polishedItems.add(condensed ?? item);
       } else {
@@ -259,6 +265,7 @@ class SumiStore extends ChangeNotifier
 
   /// mutation 后自动持久化并通知 UI。
   void afterMutation() {
+    dataVersion++;
     writeToDb();
     notifyListeners();
   }

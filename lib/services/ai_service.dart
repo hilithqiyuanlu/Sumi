@@ -569,6 +569,97 @@ class AiService {
     }
   }
 
+  /// 流式 JSON 调用 —— SSE 解析，累积内容，流结束后 parse JSON。
+  /// [onProgress] 每收到内容片段时回调，用于实时弹幕等。
+  Future<Map<String, Object?>?> _callStreamingJsonApi({
+    required String systemPrompt,
+    required String userPrompt,
+    required String model,
+    bool thinking = false,
+    int maxTokens = 8192,
+    int timeoutSeconds = 120,
+    void Function(String chunk)? onProgress,
+  }) async {
+    try {
+      // 在 system prompt 末尾追加 JSON 输出要求（streaming 不能使用 response_format）
+      final augmentedSystem = '$systemPrompt\n\n[重要] 只输出 JSON，不要 markdown 代码块，不要任何额外文字。';
+
+      final request = http.Request('POST', Uri.parse(_baseUrl));
+      request.headers.addAll({
+        'Authorization': 'Bearer $apiKey',
+        'Content-Type': 'application/json',
+      });
+      request.body = jsonEncode(_buildRequestParams(
+        model: model,
+        messages: [
+          {'role': 'system', 'content': augmentedSystem},
+          {'role': 'user', 'content': userPrompt},
+        ],
+        thinking: thinking,
+        stream: true,
+        maxTokens: maxTokens,
+      ));
+
+      final streamedResponse =
+          await _client.send(request).timeout(Duration(seconds: timeoutSeconds));
+
+      if (streamedResponse.statusCode != 200) {
+        final errorBody = await streamedResponse.stream.bytesToString();
+        debugPrint(
+            '[_callStreamingJsonApi] HTTP ${streamedResponse.statusCode}: $errorBody');
+        return null;
+      }
+
+      final contentBuf = StringBuffer();
+      await for (final chunk in streamedResponse.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        final trimmed = chunk.trim();
+        if (!trimmed.startsWith('data: ')) continue;
+
+        final data = trimmed.substring(6);
+        if (data == '[DONE]') break;
+
+        try {
+          final json = jsonDecode(data) as Map<String, Object?>;
+          final choices = json['choices'] as List<Object?>?;
+          if (choices == null || choices.isEmpty) continue;
+
+          final delta = (choices.first as Map<String, Object?>?)?['delta']
+              as Map<String, Object?>?;
+          if (delta == null) continue;
+
+          final content = delta['content'] as String?;
+          if (content != null && content.isNotEmpty) {
+            contentBuf.write(content);
+            onProgress?.call(content);
+          }
+        } catch (_) {
+          // 跳过无法解析的 chunk
+        }
+      }
+
+      final fullContent = contentBuf.toString().trim();
+      if (fullContent.isEmpty) {
+        lastApiError = '流式响应无内容';
+        debugPrint('[_callStreamingJsonApi] $lastApiError');
+        return null;
+      }
+
+      // 清洗 markdown fence 后解析 JSON
+      String cleaned = fullContent;
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replaceFirst(RegExp(r'^```\w*\n?'), '');
+        cleaned = cleaned.replaceFirst(RegExp(r'\n?```$'), '');
+      }
+      return jsonDecode(cleaned) as Map<String, Object?>;
+    } catch (e) {
+      lastApiError = '流式调用异常: $e';
+      debugPrint('[_callStreamingJsonApi] $lastApiError');
+      return null;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Todo 拆分
   // ---------------------------------------------------------------------------
@@ -730,8 +821,46 @@ $domainKnowledge
     return PlanResult.fromJson(result);
   }
 
-  // ---------------------------------------------------------------------------
-  // 每日 todo 生成
+  /// 流式版本 —— 实时回调内容片段用于弹幕展示，降级时回退到非流式版本。
+  Future<PlanResult?> generatePlanEnhancedStreaming({
+    required String goal,
+    required String level,
+    required int cycleMonths,
+    required int timeConstraint,
+    required String startDate,
+    required String assessmentReport,
+    required String domainKnowledge,
+    void Function(String chunk)? onProgress,
+  }) async {
+    final userPrompt = '''
+## 项目信息
+- 目标：$goal
+- 当前水平：$level
+- 规划周期：$cycleMonths 个月
+- 每周投入：$timeConstraint 小时
+- 起始日期：$startDate
+
+## 评估报告
+$assessmentReport
+
+## 领域知识（网络搜索结果）
+$domainKnowledge
+
+请基于以上全部信息，生成 $cycleMonths 个月的月计划卡和第一天的 todo。''';
+
+    final result = await _callStreamingJsonApi(
+      systemPrompt: _buildPlanningPrompt(hasAssessment: true),
+      userPrompt: userPrompt,
+      model: _modelPro,
+      thinking: false,
+      maxTokens: 8192,
+      timeoutSeconds: 120,
+      onProgress: onProgress,
+    );
+    if (result == null) return null;
+    return PlanResult.fromJson(result);
+  }
+
   // ---------------------------------------------------------------------------
 
   Future<DailyTodoResult?> generateDailyTodos({

@@ -19,6 +19,7 @@ class ChatInput extends StatefulWidget {
   final ValueChanged<InputMode>? onModeChanged;
   final bool enabled;
   final VoiceInputService? voiceService;
+  final bool isFutureDate;
 
   const ChatInput({
     super.key,
@@ -28,6 +29,7 @@ class ChatInput extends StatefulWidget {
     this.onModeChanged,
     this.enabled = true,
     this.voiceService,
+    this.isFutureDate = false,
   });
 
   @override
@@ -271,7 +273,11 @@ class _ChatInputState extends State<ChatInput> {
 
   String get _placeholderText {
     if (_isRecording) return '正在收听…';
-    return widget.mode == InputMode.todo ? '新增事项' : '尽管说，不留聊天记录～';
+    return widget.mode == InputMode.todo
+        ? '新增事项'
+        : widget.isFutureDate
+            ? '尽管说，不留聊天记录～'
+            : '尽管说';
   }
 
   @override

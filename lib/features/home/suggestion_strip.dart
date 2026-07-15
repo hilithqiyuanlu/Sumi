@@ -20,22 +20,31 @@ class SuggestionStrip extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(left: s16, right: s16, top: s4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: suggestions
-              .map((s) => Padding(
-                    padding: const EdgeInsets.only(right: s8),
-                    child: _SuggestionChip(
-                      text: s,
-                      onTap: enabled ? () => onSelect(s) : null,
-                      enabled: enabled,
-                    ),
-                  ))
-              .toList(),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: Padding(
+        key: ValueKey(suggestions.join(',')),
+        padding: const EdgeInsets.only(left: s16, right: s16, top: s4),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            children: suggestions
+                .map((s) => Padding(
+                      padding: const EdgeInsets.only(right: s8),
+                      child: _SuggestionChip(
+                        text: s,
+                        onTap: enabled ? () => onSelect(s) : null,
+                        enabled: enabled,
+                      ),
+                    ))
+                .toList(),
+          ),
         ),
       ),
     );

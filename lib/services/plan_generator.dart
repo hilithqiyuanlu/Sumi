@@ -3,7 +3,7 @@ import 'dart:async';
 import '../models/models.dart';
 import 'ai_service.dart';
 
-/// 规划弹幕预设文本。
+/// 规划弹幕预设文本（仅降级时使用）。
 const _bubblePresets = <BubbleType, List<String>>{
   BubbleType.searching: [
     '让我搜索一下这个领域的学习路线…',
@@ -35,15 +35,14 @@ const _bubblePresets = <BubbleType, List<String>>{
   ],
 };
 
-/// 规划编排器 —— 两阶段规划 + 弹幕回调。
+/// 规划编排器 —— 流式生成 + 实时弹幕。
 class PlanGenerator {
   final AiService ai;
 
   PlanGenerator({required this.ai});
 
-  /// 增强两阶段规划。
-  /// [onBubble] 在关键节点被调用，用于 UI 弹幕展示。
-  /// 返回 [PlanResult]，失败时返回 null。
+  /// 生成规划，优先使用流式 API 提供真实进度弹幕，
+  /// 失败时降级到非流式 + 预设弹幕。
   Future<PlanResult?> generate({
     required String goal,
     required String level,
@@ -58,74 +57,107 @@ class PlanGenerator {
       onBubble?.call(PlanningBubble(text: text, type: type));
     }
 
-    Future<void> sleep(int ms) => Future.delayed(Duration(milliseconds: ms));
+    Future<void> sleep(int ms) =>
+        Future.delayed(Duration(milliseconds: ms));
 
-    // Phase 1: 置信度检查（放慢节奏）
+    // Phase 1: 梳理（快速过场）
     emit(BubbleType.searching, '让我梳理一下已有的信息…');
-    await sleep(1200);
+    await sleep(500);
 
     if (domainKnowledge.contains('未能搜索到') ||
         domainKnowledge.length < 200) {
-      emit(BubbleType.thinking,
-          '关于这个方向的信息有点少，我先基于已知的来规划…');
-      await sleep(900);
+      emit(BubbleType.thinking, '关于这个方向的信息有点少，我先基于已知的来规划…');
+      await sleep(500);
     } else {
       emit(BubbleType.searching, '找到不少参考信息，开始规划…');
-      await sleep(900);
+      await sleep(500);
     }
 
-    // Phase 2: 规划生成（弹幕在 AI 调用期间继续发射）
+    // Phase 2: AI 规划（优先流式，弹幕来自真实 AI 进度）
     emit(BubbleType.thinking, '根据你的水平，我来设计一个合适的学习节奏…');
-    await sleep(400);
 
-    // 异步发射弹幕，同时等待 AI 响应
-    final bubbleFutures = <Future<void>>[];
-    final presetThinking = List<String>.from(
-        _bubblePresets[BubbleType.thinking]!)
-      ..shuffle();
-    for (final text in presetThinking.take(3)) {
-      bubbleFutures.add(
-        sleep(2000 + bubbleFutures.length * 100)
-            .then((_) => emit(BubbleType.thinking, text)),
-      );
-    }
-
-    // 发起 AI 规划
     PlanResult? plan;
-    plan = await ai.generatePlanEnhanced(
-      goal: goal,
-      level: level,
-      cycleMonths: cycleMonths,
-      timeConstraint: timeConstraint,
-      startDate: startDate,
-      assessmentReport: assessmentReport,
-      domainKnowledge: domainKnowledge,
-    );
+    final contentBuf = StringBuffer();
+    int lastMilestone = 0;
 
-    // 等弹幕先发完
-    await Future.wait(bubbleFutures);
+    try {
+      plan = await ai.generatePlanEnhancedStreaming(
+        goal: goal,
+        level: level,
+        cycleMonths: cycleMonths,
+        timeConstraint: timeConstraint,
+        startDate: startDate,
+        assessmentReport: assessmentReport,
+        domainKnowledge: domainKnowledge,
+        onProgress: (chunk) {
+          contentBuf.write(chunk);
+          final len = contentBuf.length;
+          // 基于累积内容长度发射里程碑弹幕
+          if (len > 300 && lastMilestone < 1) {
+            lastMilestone = 1;
+            emit(BubbleType.thinking,
+                cycleMonths > 3 ? '正在规划各阶段递进关系…' : '正在生成月计划卡…');
+          } else if (len > 1200 && lastMilestone < 2) {
+            lastMilestone = 2;
+            emit(BubbleType.thinking, '正在细化每月学习内容…');
+          } else if (len > 3000 && lastMilestone < 3) {
+            lastMilestone = 3;
+            emit(BubbleType.thinking, '正在生成每日待办…');
+          }
+        },
+      );
+    } catch (_) {
+      // 流式失败，降级到非流式
+    }
 
     if (plan == null) {
-      emit(BubbleType.info, '抱歉，规划生成失败，请检查网络后重试。');
-      return null;
+      // 降级：非流式 + 预设弹幕
+      emit(BubbleType.thinking, '正在使用备用模式生成计划…');
+
+      final bubbleFutures = <Future<void>>[];
+      final presetThinking = List<String>.from(
+          _bubblePresets[BubbleType.thinking]!)
+        ..shuffle();
+      for (final text in presetThinking.take(3)) {
+        bubbleFutures.add(
+          sleep(2000 + bubbleFutures.length * 100)
+              .then((_) => emit(BubbleType.thinking, text)),
+        );
+      }
+
+      plan = await ai.generatePlanEnhanced(
+        goal: goal,
+        level: level,
+        cycleMonths: cycleMonths,
+        timeConstraint: timeConstraint,
+        startDate: startDate,
+        assessmentReport: assessmentReport,
+        domainKnowledge: domainKnowledge,
+      );
+
+      await Future.wait(bubbleFutures);
+
+      if (plan == null) {
+        emit(BubbleType.info, '抱歉，规划生成失败，请检查网络后重试。');
+        return null;
+      }
     }
 
-    // Phase 3: 验证（放慢节奏）
+    // Phase 3: 验证
     emit(BubbleType.validating, '让我验证一下整体计划的合理性…');
-    await sleep(1500);
+    await sleep(1000);
 
     if (plan.monthPlans.length < cycleMonths) {
       emit(BubbleType.thinking,
           '注意：生成的月计划数 (${plan.monthPlans.length}) 少于设定周期 ($cycleMonths)…');
-      await sleep(900);
+      await sleep(600);
     }
 
     emit(BubbleType.validating, '确认每个月的递进关系…');
-    await sleep(1200);
+    await sleep(800);
 
     // Phase 4: 完成
     emit(BubbleType.info, '计划已经生成好了！');
-    await sleep(500);
 
     return plan;
   }
