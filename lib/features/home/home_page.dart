@@ -39,6 +39,8 @@ class _HomePageState extends State<HomePage>
   List<String> _suggestions = [];
   Timer? _suggestionTimer;
   bool _isGeneratingSuggestions = false;
+  String? _todaySuggestion;
+  String? _userModelSuggestion;
   final _scrollController = ScrollController();
   bool _showScrollToBottom = false;
   int _lastMessageSentSignal = 0;
@@ -89,7 +91,7 @@ class _HomePageState extends State<HomePage>
 
   void _startSuggestionPolling() {
     _suggestionTimer?.cancel();
-    _suggestionTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+    _suggestionTimer = Timer.periodic(const Duration(seconds: 180), (_) {
       _generateSuggestions();
     });
   }
@@ -130,57 +132,115 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _generateSuggestions() async {
     if (_isGeneratingSuggestions) return;
+
+    final store = SumiScope.read(context);
+    final aiService = store.aiService;
+
+    final todayKey = dateKey(dateOnly(store.selectedDate));
+    final todayTodos = store.todoItems
+        .where((t) => t.date == null || t.date == todayKey)
+        .map((t) => t.title)
+        .join('\n');
+    final hasTodayTodos = todayTodos.trim().isNotEmpty;
+
+    final memory = await store.readMemory();
+    final hasMemory = memory.trim().isNotEmpty;
+
+    final needAi = (hasTodayTodos || hasMemory) && aiService != null;
+
+    if (!needAi) {
+      _buildSuggestionList();
+      return;
+    }
+
     _isGeneratingSuggestions = true;
 
     try {
-      final store = SumiScope.read(context);
-      final aiService = store.aiService;
-
-      final todayTodos = store.todoItems
-          .where((t) => t.date == null || t.date == dateKey(dateOnly(store.selectedDate)))
-          .map((t) => t.title)
-          .join('\n');
-
-      if (aiService == null) {
-        setState(() {
-          _suggestions = [..._pinnedSuggestions, ..._defaultSuggestions];
-        });
-        return;
-      }
-
-      // 读取用户记忆，让 AI 建议更个性化
-      final memory = await store.readMemory();
-
-      final suggestions = await aiService.generateSuggestions(
-        todayTodosText: todayTodos,
-        memory: memory,
-      );
+      final results = await Future.wait([
+        if (hasTodayTodos)
+          _generateTodaySuggestion(aiService!, todayTodos, memory)
+              .then((v) => _todaySuggestion = v),
+        if (hasMemory)
+          _generateUserModelSuggestion(aiService!, memory)
+              .then((v) => _userModelSuggestion = v),
+      ]);
 
       if (!mounted) return;
-      setState(() {
-        final aiSuggestions = suggestions.isNotEmpty ? suggestions : _defaultSuggestions;
-        _suggestions = [..._pinnedSuggestions, ...aiSuggestions];
-      });
+      _buildSuggestionList();
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _suggestions = [..._pinnedSuggestions, ..._defaultSuggestions];
-      });
+      _buildSuggestionList();
     } finally {
       _isGeneratingSuggestions = false;
     }
   }
 
-  List<String> get _defaultSuggestions => [
-        '我现在应该专注做什么',
-        '帮我回顾一下最近学了什么',
+  Future<String?> _generateTodaySuggestion(
+      AiService aiService, String todayTodos, String memory) async {
+    final suggestions = await aiService.generateSuggestions(
+      todayTodosText: todayTodos,
+      memory: memory,
+    );
+    return suggestions.isNotEmpty ? suggestions.first : null;
+  }
+
+  Future<String?> _generateUserModelSuggestion(
+      AiService aiService, String memory) async {
+    final suggestions = await aiService.generateSuggestions(
+      todayTodosText: '',
+      memory: memory,
+    );
+    return suggestions.isNotEmpty ? suggestions.first : null;
+  }
+
+  void _buildSuggestionList() {
+    final store = SumiScope.read(context);
+    final todayKey = dateKey(dateOnly(store.selectedDate));
+    final hasTodayTodos = store.todoItems
+        .any((t) => (t.date == null || t.date == todayKey) && t.title.isNotEmpty);
+
+    final List<String> result = [];
+
+    _pinnedIndex = (_pinnedIndex + 1) % _pinnedSuggestions.length;
+    result.add(_pinnedSuggestions[_pinnedIndex]);
+
+    if (hasTodayTodos && _todaySuggestion != null) {
+      result.add(_todaySuggestion!);
+    }
+
+    if (_userModelSuggestion != null) {
+      result.add(_userModelSuggestion!);
+    }
+
+    result.addAll(_randomFaq());
+
+    setState(() {
+      _suggestions = result;
+    });
+  }
+
+  int _pinnedIndex = 0;
+
+  List<String> get _pinnedSuggestions => [
+        '建议以什么顺序开展我今天的待办',
+        '帮我总结一下今天的进展',
+        '建议我再学些什么',
       ];
 
-  // 常驻固定建议（始终显示，不参与 AI 轮换）
-  static const _pinnedSuggestions = [
-    '建议以什么顺序开展我今天的待办',
-    '帮我总结一下今天的进展',
-  ];
+  List<String> _randomFaq() {
+    final faqs = [
+      '我现在应该专注做什么',
+      '帮我回顾一下最近学了什么',
+      '推荐一个学习方法',
+      '帮我制定一个学习计划',
+      '最近有什么值得学的',
+      '如何提高学习效率',
+      '给我一些学习建议',
+      '帮我分析一下学习进度',
+    ];
+    final shuffled = List<String>.from(faqs)..shuffle();
+    return shuffled.take(2).toList();
+  }
 
   void _closeDrawer() {
     setState(() => _drawerOpen = false);
@@ -310,34 +370,44 @@ class _HomePageState extends State<HomePage>
                     }),
                   ),
                   Expanded(
-                    child: Stack(
-                      children: [
-                        if (messages.isEmpty)
-                          _buildEmptyState(store, userName)
-                        else
-                          _buildMessageList(messages, store),
-                        // 顶部渐变遮罩 —— 衔接日历导航栏
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          height: 24,
-                          child: IgnorePointer(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    paper,
-                                    paper.withValues(alpha: 0.0),
-                                  ],
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onDoubleTap: () {
+                        final store = SumiScope.read(context);
+                        final today = dateOnly(DateTime.now());
+                        if (!isSameDate(store.selectedDate, today)) {
+                          store.selectDate(today);
+                        }
+                      },
+                      child: Stack(
+                        children: [
+                          if (messages.isEmpty)
+                            _buildEmptyState(store, userName)
+                          else
+                            _buildMessageList(messages, store),
+                          // 顶部渐变遮罩 —— 衔接日历导航栏
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 24,
+                            child: IgnorePointer(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      paper,
+                                      paper.withValues(alpha: 0.0),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   SuggestionStrip(
