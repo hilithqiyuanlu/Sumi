@@ -39,7 +39,7 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
       onTap: () => setState(() => _expanded = !_expanded),
       child: Container(
         padding:
-            const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
+            const EdgeInsets.symmetric(horizontal: s16, vertical: s12),
         decoration: BoxDecoration(
           color: widget.backgroundColor,
           borderRadius: BorderRadius.circular(s8),
@@ -59,7 +59,7 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
                   size: widget.iconSize,
                   color: textTertiary,
                 ),
-                const SizedBox(width: s4),
+                const SizedBox(width: s6),
                 Flexible(
                   child: Text(
                     widget.title,
@@ -75,7 +75,7 @@ class _CollapsibleSectionState extends State<CollapsibleSection> {
               ],
             ),
             if (_expanded && hasBody) ...[
-              const SizedBox(height: s6),
+              const SizedBox(height: s8),
               Text(
                 widget.body!,
                 style: TextStyle(
