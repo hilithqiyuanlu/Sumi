@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/models.dart';
 import '../../services/project_generation.dart';
@@ -88,8 +89,16 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
             appBar: isCompleted
                 ? null
                 : AppBar(
-                    backgroundColor: paper,
+                    backgroundColor: Colors.transparent,
                     elevation: 0,
+                    scrolledUnderElevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    systemOverlayStyle: const SystemUiOverlayStyle(
+                      statusBarColor: Colors.transparent,
+                      statusBarIconBrightness: Brightness.dark,
+                      statusBarBrightness: Brightness.light,
+                    ),
                     leading: IconButton(
                       onPressed: _handleBack,
                       icon: const Icon(Icons.arrow_back),

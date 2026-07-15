@@ -1,6 +1,6 @@
 # Sumi
 
-一个 **AI 原生**的个人效率伴侣 — 以对话为主要界面，融合事项管理、学习规划与知识记忆。
+一个 **AI 原生**的个人自学助手 — 以对话为主要界面，融合事项管理、学习规划与知识记忆。
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-iOS%2016%2B%20%7C%20Android-lightgrey" alt="platform">
@@ -11,9 +11,9 @@
 
 ## 功能
 
-- **💬 AI 对话** — 首页即对话，流式输出 Markdown 渲染，支持 Thinking 过程展示与 Function Calling 工具调用，不留聊天记录
+- **💬 AI 对话** — 首页即对话，流式输出 Markdown 渲染，支持 Thinking 过程展示与 Function Calling 工具调用；按日期组织对话，侧边抽屉切换/删除历史会话
 - **📋 事项管理** — 输入 >16 字自动触发 AI 智能拆分；支持置顶、完成态、长按拖拽排序；关联项目的事项 Chip 显示项目主题色
-- **📂 学习项目** — 最多 3 个项目，AI 生成月度学习计划，月卡解锁机制追踪进度；AI 凝练目标摘要作为卡片标题
+- **📂 学习项目** — AI 生成月度学习计划，月卡解锁机制逐月推进；AI 凝练目标摘要作为卡片标题，支持项目主题色区分
 - **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 8 维度评分，流式生成学习计划；统一生成管线（搜索→评估→确认→规划→校验→保存），支持取消/重试/跳过评估
 - **📅 日历导航** — 折叠日期条 + 展开月视图，垂直拖拽手势自然切换；历史日期只读，仅可查看过往对话
 - **🎤 语音输入** — 长按说话松开发送、上滑取消，支持连续识别与自动提交
@@ -94,12 +94,32 @@ lib/
 │   └── verdict_badge.dart               # 评估结论徽章
 └── features/
     ├── home/                            # 首页、侧边抽屉、设置面板、建议条
+    │   ├── home_page.dart
+    │   ├── side_drawer.dart
+    │   ├── settings_panel.dart
+    │   └── suggestion_strip.dart
     ├── chat/                            # 对话气泡、输入栏（对话 / 事项双模式）
+    │   ├── chat_bubble.dart
+    │   └── chat_input.dart
     ├── todos/                           # 事项 Chip 轮播、编辑面板、拆分确认
+    │   ├── todo_chip_carousel.dart
+    │   ├── todo_edit_sheet.dart
+    │   └── split_confirm_sheet.dart
     ├── calendar/                        # 日期条、月历、月视图
+    │   ├── date_strip.dart
+    │   ├── month_calendar.dart
+    │   └── month_view_sheet.dart
     ├── projects/                        # 项目筛选栏、月卡翻页、编辑器、生成管线页
+    │   ├── project_tabs.dart
+    │   ├── month_card_pager.dart
+    │   ├── project_editor_page.dart
+    │   └── project_generation_page.dart
     ├── settings/                        # 设置页（API Key、用户模型编辑器、信号日志）
+    │   ├── settings_body.dart
+    │   ├── user_model_editor_page.dart
+    │   └── signal_log_page.dart
     └── shared/                          # 拖拽把手
+        └── drag_handle.dart
 ```
 
 ## License
