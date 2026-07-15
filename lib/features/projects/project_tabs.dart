@@ -48,8 +48,9 @@ class ProjectTabs extends StatelessWidget {
                     borderRadius: BorderRadius.circular(radiusCard),
                     border: Border.all(
                       color: isCurrent
-                          ? ink.withValues(alpha: 0.12)
+                          ? primary500
                           : Colors.transparent,
+                      width: isCurrent ? 2 : 1,
                     ),
                   ),
                   child: Text(
@@ -145,8 +146,9 @@ class _CreateNewCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: s24, vertical: s14),
           decoration: BoxDecoration(
-            color: mint.withValues(alpha: 0.5),
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(radiusCard),
+            border: Border.all(color: neutral300),
           ),
           child: const Text(
             '新建项目',

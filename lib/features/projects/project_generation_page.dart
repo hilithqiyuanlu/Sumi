@@ -79,33 +79,38 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _handleBack();
       },
-      child: Scaffold(
-        backgroundColor: paper,
-        appBar: AppBar(
-          backgroundColor: paper,
-          elevation: 0,
-          leading: IconButton(
-            onPressed: _handleBack,
-            icon: const Icon(Icons.arrow_back),
-            tooltip: '返回',
-          ),
-        ),
-        body: SafeArea(
-          top: false,
-          child: ValueListenableBuilder<ProjectGenerationState>(
-            valueListenable: _coordinator.state,
-            builder: (context, state, _) {
-              if (state.stage == ProjectGenerationStage.awaitingConfirmation &&
-                  state.assessment != null) {
-                return _buildAssessment(state.assessment!, state);
-              }
-              if (state.stage == ProjectGenerationStage.completed) {
-                return _buildCompleted(state);
-              }
-              return _buildProgress(state);
-            },
-          ),
-        ),
+      child: ValueListenableBuilder<ProjectGenerationState>(
+        valueListenable: _coordinator.state,
+        builder: (context, state, _) {
+          final isCompleted = state.stage == ProjectGenerationStage.completed;
+          return Scaffold(
+            backgroundColor: paper,
+            appBar: isCompleted
+                ? null
+                : AppBar(
+                    backgroundColor: paper,
+                    elevation: 0,
+                    leading: IconButton(
+                      onPressed: _handleBack,
+                      icon: const Icon(Icons.arrow_back),
+                      tooltip: '返回',
+                    ),
+                  ),
+            body: SafeArea(
+              top: false,
+              child: Builder(builder: (_) {
+                if (state.stage == ProjectGenerationStage.awaitingConfirmation &&
+                    state.assessment != null) {
+                  return _buildAssessment(state.assessment!, state);
+                }
+                if (state.stage == ProjectGenerationStage.completed) {
+                  return _buildCompleted(state);
+                }
+                return _buildProgress(state);
+              }),
+            ),
+          );
+        },
       ),
     );
   }
@@ -247,7 +252,7 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle, size: 52, color: success500),
+            const Icon(Icons.check_circle, size: 52, color: primary500),
             const SizedBox(height: s16),
             const Text('计划已生成', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
             const SizedBox(height: s6),
@@ -300,7 +305,7 @@ class _StageTimeline extends StatelessWidget {
               Icon(
                 done ? Icons.check_circle : active ? Icons.radio_button_checked : Icons.circle_outlined,
                 size: 18,
-                color: done ? success500 : active ? mintDeep : textTertiary,
+                color: done ? primary500 : active ? mintDeep : textTertiary,
               ),
               const SizedBox(width: s10),
               Text(

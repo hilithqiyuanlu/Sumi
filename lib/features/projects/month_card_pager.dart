@@ -37,6 +37,7 @@ class MonthCardPager extends StatelessWidget {
               )!;
           final isUnlocked = store.appSettings.showAllMonthCards ||
               index <= project.currentMonthIndex;
+          final isCurrent = index == project.currentMonthIndex;
 
           if (isUnlocked) {
             return SizedBox(
@@ -44,24 +45,18 @@ class MonthCardPager extends StatelessWidget {
               child: _UnlockedCard(
                 card: card,
                 monthIndex: index,
-                isCurrent: index == project.currentMonthIndex,
-                accentColor: _monthAccent(index, project.currentMonthIndex),
+                isCurrent: isCurrent,
               ),
             );
           }
-          return const SizedBox(width: 280, child: _LockedMonthCard());
+          return SizedBox(
+            width: 280,
+            child: _LockedMonthCard(monthIndex: index),
+          );
         },
       ),
     );
   }
-}
-
-/// 返回月卡标签的强调色，当月突出，其他月份轮换。
-Color _monthAccent(int index, int currentIndex) {
-  if (index == currentIndex) return primary500; // 当月用主色（实心 indigo）
-  // 其他月份轮换使用项目色
-  final palette = [lemon, sky, peach, sage, lilac, cherry];
-  return palette[index % palette.length];
 }
 
 /// 已解锁月卡。
@@ -69,13 +64,11 @@ class _UnlockedCard extends StatelessWidget {
   final MonthCard card;
   final int monthIndex;
   final bool isCurrent;
-  final Color accentColor;
 
   const _UnlockedCard({
     required this.card,
     required this.monthIndex,
     required this.isCurrent,
-    required this.accentColor,
   });
 
   @override
@@ -89,7 +82,7 @@ class _UnlockedCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isCurrent
             ? mint.withValues(alpha: 0.5)
-            : accentColor.withValues(alpha: 0.18),
+            : primary50.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(radiusCard),
         border: Border.all(color: line.withValues(alpha: 0.15)),
       ),
@@ -103,15 +96,15 @@ class _UnlockedCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
                 decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.35),
+                  color: isCurrent ? mintDeep : primary100,
                   borderRadius: BorderRadius.circular(radiusPill),
                 ),
                 child: Text(
                   monthLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: ink,
+                    color: isCurrent ? Colors.white : ink,
                   ),
                 ),
               ),
@@ -159,10 +152,16 @@ class _UnlockedCard extends StatelessWidget {
 
 /// 锁定月卡。
 class _LockedMonthCard extends StatelessWidget {
-  const _LockedMonthCard();
+  final int monthIndex;
+
+  const _LockedMonthCard({required this.monthIndex});
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final cardDate = DateTime(now.year, now.month + monthIndex, 1);
+    final monthLabel = '${cardDate.month}月';
+
     return GestureDetector(
       onTap: () {
         H.light();
@@ -185,14 +184,40 @@ class _LockedMonthCard extends StatelessWidget {
         );
       },
       child: Container(
+        padding: const EdgeInsets.all(s16),
         decoration: BoxDecoration(
           color: primary50.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(radiusCard),
           border: Border.all(color: line.withValues(alpha: 0.2)),
         ),
-        child: Center(
-          child: Icon(Icons.lock_outline,
-              size: 36, color: textTertiary),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
+              decoration: BoxDecoration(
+                color: primary100,
+                borderRadius: BorderRadius.circular(radiusPill),
+              ),
+              child: Text(
+                monthLabel,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: ink,
+                ),
+              ),
+            ),
+            const Expanded(
+              child: Center(
+                child: Icon(
+                  Icons.lock_outline,
+                  size: 36,
+                  color: textTertiary,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
