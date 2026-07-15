@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -30,11 +30,11 @@ class ProjectTabs extends StatelessWidget {
               padding: const EdgeInsets.only(right: s8),
               child: GestureDetector(
                 onTap: () {
-                  HapticFeedback.selectionClick();
+                  H.click();
                   store.selectProject(p.id);
                 },
                 onLongPress: () {
-                  HapticFeedback.mediumImpact();
+                  H.medium();
                   confirmDeleteProject(context, store, p);
                 },
                 child: AnimatedContainer(
@@ -86,7 +86,7 @@ class ProjectTabs extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () {
-                HapticFeedback.selectionClick();
+                H.click();
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     fullscreenDialog: true,

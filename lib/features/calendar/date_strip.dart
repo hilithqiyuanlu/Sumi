@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
@@ -111,7 +111,7 @@ class _DateStripState extends State<DateStrip> {
                       isPast: isPast,
                       hasTodos: hasTodos,
                       onTap: () {
-                        HapticFeedback.selectionClick();
+                        H.click();
                         store.selectDate(date);
                       },
                     ),
@@ -123,7 +123,7 @@ class _DateStripState extends State<DateStrip> {
           // 拖拽把手 —— 点击展开月视图（拖拽由父级 GestureDetector 处理）
           GestureDetector(
             onTap: () {
-              HapticFeedback.mediumImpact();
+              H.medium();
               widget.onExpandMonth();
             },
             child: Container(
@@ -150,7 +150,7 @@ class _DateStripState extends State<DateStrip> {
       // 仅当目标日期和当前选中不同时才震（经过已选中日不震）
       final centerDate = DateTime(selected.year, selected.month, dayIndex + 1);
       if (!isSameDate(centerDate, selected)) {
-        HapticFeedback.lightImpact();
+        H.light();
       }
     }
   }
@@ -166,7 +166,7 @@ class _DateStripState extends State<DateStrip> {
     final centerDate =
         DateTime(selected.year, selected.month, dayIndex + 1);
     if (!isSameDate(centerDate, selected)) {
-      HapticFeedback.selectionClick();
+      H.click();
       store.selectDate(centerDate);
     }
   }

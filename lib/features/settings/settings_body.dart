@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/haptics.dart';
 
 class SettingsBody extends StatefulWidget {
   const SettingsBody({super.key});
@@ -44,6 +45,7 @@ class _SettingsBodyState extends State<SettingsBody> {
   }
 
   Future<void> _saveMemory() async {
+    H.click();
     setState(() => _memorySaving = true);
     final store = SumiScope.read(context);
     await store.writeMemory(_memoryController.text);
@@ -83,6 +85,7 @@ class _SettingsBodyState extends State<SettingsBody> {
       ),
     );
     if (confirmed == true) {
+      H.medium();
       _memoryController.clear();
       final store = SumiScope.read(context);
       await store.writeMemory('');
@@ -159,7 +162,7 @@ class _SettingsBodyState extends State<SettingsBody> {
                 style: TextStyle(fontSize: 12)),
             trailing: Switch(
               value: store.thinkingEnabled,
-              onChanged: (v) => store.setThinkingEnabled(v),
+              onChanged: (v) { H.click(); store.setThinkingEnabled(v); },
             ),
           ),
         ),
@@ -175,7 +178,7 @@ class _SettingsBodyState extends State<SettingsBody> {
                 style: TextStyle(fontSize: 12)),
             trailing: Switch(
               value: store.appSettings.showAllMonthCards,
-              onChanged: (v) => store.setShowAllMonthCards(v),
+              onChanged: (v) { H.click(); store.setShowAllMonthCards(v); },
             ),
           ),
         ),
@@ -184,7 +187,7 @@ class _SettingsBodyState extends State<SettingsBody> {
         const SizedBox(height: s12),
         Center(
           child: FilledButton.icon(
-            onPressed: () => _confirmClearData(context, store),
+            onPressed: () { H.medium(); _confirmClearData(context, store); },
             icon: const Icon(Icons.delete_outline, size: 16),
             label: const Text('清除数据',
                 style: TextStyle(
@@ -302,6 +305,7 @@ class _SettingsBodyState extends State<SettingsBody> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () {
+                  H.light();
                   setState(() => _isEditingMemory = true);
                   // 延迟一帧确保 TextField 已挂载再聚焦
                   WidgetsBinding.instance.addPostFrameCallback((_) {

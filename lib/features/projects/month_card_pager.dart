@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../models/models.dart';
 import '../../sumi_scope.dart';
@@ -160,7 +160,7 @@ class _LockedMonthCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
+        H.light();
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(

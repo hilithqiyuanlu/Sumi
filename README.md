@@ -58,6 +58,7 @@ lib/
 ├── models/models.dart                   # 全部数据模型
 ├── theme/app_theme.dart                 # Sumi 设计系统
 ├── utils/utils.dart                     # 工具函数
+├── utils/haptics.dart                  # 统一触觉反馈（H 工具类）
 ├── store/
 │   ├── sumi_store.dart                  # 全局状态（ChangeNotifier）
 │   ├── sumi_store_todos.dart            # 事项 CRUD + 排序 + AI 拆分

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/haptics.dart';
 
 class SideDrawer extends StatelessWidget {
   final bool isOpen;
@@ -106,6 +107,7 @@ class SideDrawer extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s8),
         child: InkWell(
           onTap: () {
+            H.click();
             onClose();
             onOpenSettings();
           },

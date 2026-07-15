@@ -8,6 +8,7 @@ import '../../services/ai_service.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/haptics.dart';
 import '../../utils/utils.dart';
 import '../calendar/date_strip.dart';
 import '../calendar/month_view_sheet.dart';
@@ -47,6 +48,7 @@ class _HomePageState extends State<HomePage>
   int _lastMessageSentSignal = 0;
   DateTime? _lastSelectedDate;
   int _lastDataVersion = 0;
+  bool _lastIsStreaming = false;
 
   // 对话模式轻提示
   static const _chatGreetings = [
@@ -343,6 +345,12 @@ class _HomePageState extends State<HomePage>
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollUserMessageToTop());
     }
 
+    // 检测流式结束 → 触觉反馈
+    if (_lastIsStreaming && !store.isStreaming) {
+      H.medium();
+    }
+    _lastIsStreaming = store.isStreaming;
+
     // 检测数据变更 → 刷新建议
     if (store.dataVersion != _lastDataVersion) {
       _lastDataVersion = store.dataVersion;
@@ -610,6 +618,7 @@ class _HomePageState extends State<HomePage>
         behavior: HitTestBehavior.translucent,
         onHorizontalDragUpdate: (details) {
           if (details.delta.dx > 6 && !_drawerOpen) {
+            H.light();
             _dismissKeyboard();
             setState(() => _drawerOpen = true);
           } else if (details.delta.dx < -6 && _drawerOpen) {

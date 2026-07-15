@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -72,7 +72,7 @@ class MonthViewSheet extends StatelessWidget {
                   ] else ...[
                     GestureDetector(
                       onTap: () {
-                        HapticFeedback.selectionClick();
+                        H.light();
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             fullscreenDialog: true,

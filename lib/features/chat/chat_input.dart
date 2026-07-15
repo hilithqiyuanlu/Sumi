@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../services/voice_input_service.dart';
 import '../../theme/app_theme.dart';
@@ -100,6 +100,7 @@ class _ChatInputState extends State<ChatInput> {
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty || !widget.enabled) return;
+    H.click();
     _controller.clear();
     _hasText = false;
     _voiceText = '';
@@ -112,7 +113,7 @@ class _ChatInputState extends State<ChatInput> {
   }
 
   void _toggleMode() {
-    HapticFeedback.selectionClick();
+    H.click();
     setState(() => _modePressed = true);
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) setState(() => _modePressed = false);
@@ -132,7 +133,7 @@ class _ChatInputState extends State<ChatInput> {
     _longPressTimer = Timer(_longPressDuration, () {
       _longPressTimer = null;
       if (!mounted || _isRecording) return;
-      HapticFeedback.mediumImpact();
+      H.medium();
       _startRecording();
       setState(() {});
     });
@@ -154,7 +155,7 @@ class _ChatInputState extends State<ChatInput> {
       final wasCancel = _voiceHint == _VoiceHint.cancel;
       final isCancel = dy < -_cancelSwipeThreshold;
       if (isCancel != wasCancel) {
-        HapticFeedback.selectionClick();
+        H.light();
         setState(() => _voiceHint =
             isCancel ? _VoiceHint.cancel : _VoiceHint.listening);
       }

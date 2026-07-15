@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/haptics.dart';
 import '../shared/drag_handle.dart';
 
 /// 底部弹出编辑面板 —— 标题 + 备注编辑，标记/项目/定时操作，删除/保存。
@@ -87,6 +88,8 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
       return;
     }
 
+    H.click();
+
     // 标题 >18 字触发 AI 凝练
     if (titleChanged && newTitle.length > 18) {
       setState(() => _saving = true);
@@ -111,6 +114,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   }
 
   void _delete() {
+    H.medium();
     _store.deleteTodo(_todo.id);
     Navigator.pop(context);
   }
@@ -183,6 +187,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                   label: todo.done ? '标记未完成' : '标记完成',
                   active: todo.done,
                   onTap: () {
+                    H.click();
                     _store.toggleTodo(_todo.id);
                     if (mounted) setState(() {});
                   },

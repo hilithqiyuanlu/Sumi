@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../models/models.dart';
 import '../../store/sumi_store.dart';
@@ -103,10 +103,10 @@ class _TodoChip extends StatelessWidget {
         opacity: 0.3,
         child: _TodoChipView(todo: todo, isDone: isDone, projectColor: projectColor),
       ),
-      onDragStarted: () => HapticFeedback.mediumImpact(),
+      onDragStarted: () => H.medium(),
       child: GestureDetector(
         onTap: () {
-          HapticFeedback.lightImpact();
+          H.light();
           showTodoEditSheet(context, store, todo);
         },
         child: _TodoChipView(todo: todo, isDone: isDone, projectColor: projectColor),

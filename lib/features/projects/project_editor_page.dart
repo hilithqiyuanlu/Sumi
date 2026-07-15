@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../utils/haptics.dart';
 
 import '../../models/models.dart';
 import '../../sumi_scope.dart';
@@ -372,7 +372,7 @@ class _PickerColumnState<T> extends State<_PickerColumn<T>> {
                 perspective: 0.005,
                 physics: const FixedExtentScrollPhysics(),
                 onSelectedItemChanged: (index) {
-                  HapticFeedback.selectionClick();
+                  H.tick();
                   if (index >= 0 && index < widget.items.length) {
                     widget.onChanged(widget.items[index]);
                   }

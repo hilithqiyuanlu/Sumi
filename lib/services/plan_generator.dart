@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../models/models.dart';
+import '../utils/haptics.dart';
 import 'ai_service.dart';
 
 /// 规划弹幕预设文本（仅降级时使用）。
@@ -139,6 +140,7 @@ class PlanGenerator {
 
       if (plan == null) {
         emit(BubbleType.info, '抱歉，规划生成失败，请检查网络后重试。');
+        H.error();
         return null;
       }
     }
@@ -158,6 +160,7 @@ class PlanGenerator {
 
     // Phase 4: 完成
     emit(BubbleType.info, '计划已经生成好了！');
+    H.success();
 
     return plan;
   }

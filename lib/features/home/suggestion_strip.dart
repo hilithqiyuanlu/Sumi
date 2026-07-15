@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../utils/haptics.dart';
 
 class SuggestionStrip extends StatelessWidget {
   final List<String> suggestions;
@@ -39,7 +40,7 @@ class SuggestionStrip extends StatelessWidget {
                       padding: const EdgeInsets.only(right: s8),
                       child: _SuggestionChip(
                         text: s,
-                        onTap: enabled ? () => onSelect(s) : null,
+                        onTap: enabled ? () { H.light(); onSelect(s); } : null,
                         enabled: enabled,
                       ),
                     ))

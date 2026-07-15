@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../../utils/haptics.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../theme/app_theme.dart';
@@ -74,7 +76,7 @@ class ChatBubble extends StatelessWidget {
           // 气泡（长按删除或复制）
           GestureDetector(
             onLongPress: () {
-              HapticFeedback.selectionClick();
+              H.medium();
               if (onDelete != null) {
                 showDialog(
                   context: context,
