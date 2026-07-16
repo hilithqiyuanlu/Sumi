@@ -67,37 +67,30 @@ class ToolsPage extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 12,
                                   height: 1.4,
-                                  color: tool.system ? textTertiary : textSecondary,
+                                  color: tool.system
+                                      ? textTertiary
+                                      : textSecondary,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (tool.system)
-                          const Text(
-                            '系统',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: textTertiary,
-                            ),
-                          )
-                        else
-                        Switch(
-                          value: tool.system || enabled.contains(tool.name),
-                          onChanged: tool.system
-                              ? null
-                              : (value) {
-                                  H.click();
-                                  final next = {...enabled};
-                                  if (value) {
-                                    next.add(tool.name);
-                                  } else {
-                                    next.remove(tool.name);
-                                  }
-                                  store.updateEnabledTools(next);
-                                },
-                        ),
+                        if (!tool.system)
+                          Switch(
+                            value: tool.system || enabled.contains(tool.name),
+                            onChanged: tool.system
+                                ? null
+                                : (value) {
+                                    H.click();
+                                    final next = {...enabled};
+                                    if (value) {
+                                      next.add(tool.name);
+                                    } else {
+                                      next.remove(tool.name);
+                                    }
+                                    store.updateEnabledTools(next);
+                                  },
+                          ),
                       ],
                     ),
                   ),

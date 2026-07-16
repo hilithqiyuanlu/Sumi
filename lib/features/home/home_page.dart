@@ -782,6 +782,21 @@ class _HomePageState extends State<HomePage>
     for (final card in cards) {
       addCard(card);
     }
+    final pendingUserMessage = chat.pendingUserMessage;
+    if (pendingUserMessage != null) {
+      listItems.add(
+        ChatBubble(
+          content: pendingUserMessage.content,
+          isUser: true,
+          timestamp: pendingUserMessage.createdAt,
+          timerController: store.timerController,
+          onStartTimer: store.startStudyTimer,
+          onPauseTimer: store.pauseStudyTimer,
+          onFinishTimer: store.finishStudyTimer,
+          projectGenerationController: store.projectGenerationController,
+        ),
+      );
+    }
     if (chat.failure != null) {
       listItems.add(_buildChatFailure(chat.failure!, store));
     }

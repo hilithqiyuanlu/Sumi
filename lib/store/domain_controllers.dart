@@ -53,6 +53,7 @@ class ChatViewState {
   final int messageSentSequence;
   final ChatFailure? failure;
   final Set<String> milestoneSourceMessageIds;
+  final ChatMessage? pendingUserMessage;
 
   const ChatViewState({
     required this.conversationId,
@@ -64,6 +65,7 @@ class ChatViewState {
     required this.messageSentSequence,
     required this.failure,
     this.milestoneSourceMessageIds = const {},
+    this.pendingUserMessage,
   });
 
   static const empty = ChatViewState(
@@ -76,6 +78,7 @@ class ChatViewState {
     messageSentSequence: 0,
     failure: null,
     milestoneSourceMessageIds: {},
+    pendingUserMessage: null,
   );
 }
 

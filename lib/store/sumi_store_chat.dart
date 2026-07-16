@@ -61,6 +61,7 @@ mixin SumiStoreChat {
   String? _activeToolDefaultDate;
   String? _todoDraft;
   Set<String> _milestoneSourceMessageIds = <String>{};
+  ChatMessage? _pendingUserMessage;
 
   String? get currentConversationId => _currentConversationId;
   String? get streamingAssistantMessageId =>
@@ -95,6 +96,13 @@ mixin SumiStoreChat {
     if (classifier == null) {
       return sendMessage(text, currentGreeting: currentGreeting);
     }
+    _pendingUserMessage = ChatMessage(
+      id: newSumiId('pending'),
+      conversationId: _currentConversationId ?? '',
+      role: 'user',
+      content: text,
+      createdAt: DateTime.now(),
+    );
     _isStreaming = true;
     _streamConversationId = _currentConversationId;
     _streamAssistantMessageId = null;
@@ -150,7 +158,11 @@ mixin SumiStoreChat {
     _isStreaming = false;
     _currentToolCallLabel = null;
     _publishChatState();
-    sendMessage(text, currentGreeting: currentGreeting);
+    final result = sendMessage(text, currentGreeting: currentGreeting);
+    if (result != ChatSendResult.accepted) {
+      _pendingUserMessage = null;
+      _publishChatState();
+    }
   }
 
   Future<void> _recordClarification(String userText, String question) async {
@@ -227,6 +239,7 @@ mixin SumiStoreChat {
       await db.touchConversation(_currentConversationId!);
     }
     _currentMessages = [..._currentMessages, ...messages];
+    _pendingUserMessage = null;
     for (final message in messages) {
       if (message.role == 'user') {
         unawaited(
@@ -276,6 +289,7 @@ mixin SumiStoreChat {
           ? _chatFailure
           : null,
       milestoneSourceMessageIds: Set.unmodifiable(_milestoneSourceMessageIds),
+      pendingUserMessage: _pendingUserMessage,
     );
   }
 
@@ -314,6 +328,7 @@ mixin SumiStoreChat {
       _currentToolCallLabel = null;
       _activeToolDefaultDate = null;
     }
+    _pendingUserMessage = null;
     _publishChatState();
   }
 
@@ -589,6 +604,7 @@ mixin SumiStoreChat {
         await db.touchConversation(convId);
       }
       _currentMessages = [..._currentMessages, userMsg];
+      _pendingUserMessage = null;
       if (!isTemporary) scheduleLocalIndex();
       if (!isTemporary) {
         unawaited(
