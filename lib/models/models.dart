@@ -22,15 +22,7 @@ enum SignalType {
   projectTimeSet,
 }
 
-enum ProjectColor {
-  lemon,
-  mint,
-  lilac,
-  cherry,
-  sky,
-  peach,
-  sage,
-}
+enum ProjectColor { lemon, mint, lilac, cherry, sky, peach, sage }
 
 // ---------------------------------------------------------------------------
 // AppSettings
@@ -42,6 +34,7 @@ class AppSettings {
   final bool thinkingEnabled;
   final bool showAllMonthCards; // 开发者开关：披露全部月卡
   final String userName; // 用户昵称
+  final List<String> enabledTools;
 
   const AppSettings({
     this.deepseekApiKey = '',
@@ -49,6 +42,15 @@ class AppSettings {
     this.thinkingEnabled = true,
     this.showAllMonthCards = false,
     this.userName = '',
+    this.enabledTools = const [
+      'search_web',
+      'read_memory',
+      'read_todos',
+      'read_signals',
+      'write_todo',
+      'create_study_timer',
+      'start_project_generation',
+    ],
   });
 
   AppSettings copyWith({
@@ -57,6 +59,7 @@ class AppSettings {
     bool? thinkingEnabled,
     bool? showAllMonthCards,
     String? userName,
+    List<String>? enabledTools,
   }) {
     return AppSettings(
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
@@ -64,24 +67,97 @@ class AppSettings {
       thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
       showAllMonthCards: showAllMonthCards ?? this.showAllMonthCards,
       userName: userName ?? this.userName,
+      enabledTools: enabledTools ?? this.enabledTools,
     );
   }
 
   Map<String, Object?> toJson({bool includeSecrets = false}) => {
-        'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
-        'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
-        'thinkingEnabled': thinkingEnabled,
-        'showAllMonthCards': showAllMonthCards,
-        'userName': userName,
-      };
+    'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
+    'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
+    'thinkingEnabled': thinkingEnabled,
+    'showAllMonthCards': showAllMonthCards,
+    'userName': userName,
+    'enabledTools': enabledTools,
+  };
 
   factory AppSettings.fromJson(Map<String, Object?> json) => AppSettings(
-        deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
-        tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
-        thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
-        showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
-        userName: (json['userName'] as String?) ?? '',
-      );
+    deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
+    tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
+    thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
+    showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
+    userName: (json['userName'] as String?) ?? '',
+    enabledTools:
+        (json['enabledTools'] as List<Object?>?)
+            ?.whereType<String>()
+            .toSet()
+            .toList(growable: false) ??
+        const [
+          'search_web',
+          'read_memory',
+          'read_todos',
+          'read_signals',
+          'write_todo',
+          'create_study_timer',
+          'start_project_generation',
+        ],
+  );
+}
+
+enum StudyTimerStatus { ready, running, paused, completed, cancelled }
+
+class StudyTimer {
+  final String id;
+  final String toolCallId;
+  final String conversationId;
+  final String title;
+  final int totalSeconds;
+  final int remainingSeconds;
+  final StudyTimerStatus status;
+  final DateTime? startedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const StudyTimer({
+    required this.id,
+    required this.toolCallId,
+    required this.conversationId,
+    required this.title,
+    required this.totalSeconds,
+    required this.remainingSeconds,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.startedAt,
+  });
+
+  int remainingAt(DateTime now) {
+    if (status != StudyTimerStatus.running || startedAt == null) {
+      return remainingSeconds;
+    }
+    return (remainingSeconds - now.difference(startedAt!).inSeconds).clamp(
+      0,
+      totalSeconds,
+    );
+  }
+
+  StudyTimer copyWith({
+    int? remainingSeconds,
+    StudyTimerStatus? status,
+    DateTime? startedAt,
+    bool clearStartedAt = false,
+    DateTime? updatedAt,
+  }) => StudyTimer(
+    id: id,
+    toolCallId: toolCallId,
+    conversationId: conversationId,
+    title: title,
+    totalSeconds: totalSeconds,
+    remainingSeconds: remainingSeconds ?? this.remainingSeconds,
+    status: status ?? this.status,
+    startedAt: clearStartedAt ? null : startedAt ?? this.startedAt,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -102,16 +178,16 @@ class SearchSnippet {
   });
 
   factory SearchSnippet.fromJson(Map<String, Object?> json) => SearchSnippet(
-        title: (json['title'] as String?) ?? '',
-        url: (json['url'] as String?) ?? '',
-        content: (json['content'] as String?) ?? '',
-      );
+    title: (json['title'] as String?) ?? '',
+    url: (json['url'] as String?) ?? '',
+    content: (json['content'] as String?) ?? '',
+  );
 
   Map<String, Object?> toJson() => {
-        'title': title,
-        'url': url,
-        'content': content,
-      };
+    'title': title,
+    'url': url,
+    'content': content,
+  };
 }
 
 class GoalAssessment {
@@ -161,19 +237,21 @@ class GoalAssessment {
       resourceAccess: _parseDouble(json['resourceAccess']),
       measurability: _parseDouble(json['measurability']),
       verdict: _parseVerdict(json['verdict']),
-      concerns: (json['concerns'] as List<Object?>?)
+      concerns:
+          (json['concerns'] as List<Object?>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
-      suggestions: (json['suggestions'] as List<Object?>?)
+      suggestions:
+          (json['suggestions'] as List<Object?>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
       estimatedHours: json['estimatedHours'] as String?,
       domainSummary: json['domainSummary'] as String?,
-      sources: sourcesRaw
-              ?.map(
-                  (e) => SearchSnippet.fromJson(e as Map<String, Object?>))
+      sources:
+          sourcesRaw
+              ?.map((e) => SearchSnippet.fromJson(e as Map<String, Object?>))
               .toList() ??
           [],
       goalSummary: (json['goalSummary'] as String?) ?? '',
@@ -181,22 +259,22 @@ class GoalAssessment {
   }
 
   Map<String, Object?> toJson() => {
-        'clarity': clarity,
-        'feasibility': feasibility,
-        'challengeFit': challengeFit,
-        'decomposability': decomposability,
-        'timeRealism': timeRealism,
-        'motivationPotential': motivationPotential,
-        'resourceAccess': resourceAccess,
-        'measurability': measurability,
-        'verdict': verdict.name,
-        'concerns': concerns,
-        'suggestions': suggestions,
-        if (estimatedHours != null) 'estimatedHours': estimatedHours,
-        if (domainSummary != null) 'domainSummary': domainSummary,
-        'sources': sources.map((s) => s.toJson()).toList(),
-        if (goalSummary.isNotEmpty) 'goalSummary': goalSummary,
-      };
+    'clarity': clarity,
+    'feasibility': feasibility,
+    'challengeFit': challengeFit,
+    'decomposability': decomposability,
+    'timeRealism': timeRealism,
+    'motivationPotential': motivationPotential,
+    'resourceAccess': resourceAccess,
+    'measurability': measurability,
+    'verdict': verdict.name,
+    'concerns': concerns,
+    'suggestions': suggestions,
+    if (estimatedHours != null) 'estimatedHours': estimatedHours,
+    if (domainSummary != null) 'domainSummary': domainSummary,
+    'sources': sources.map((s) => s.toJson()).toList(),
+    if (goalSummary.isNotEmpty) 'goalSummary': goalSummary,
+  };
 }
 
 double _parseDouble(Object? raw) {
@@ -271,19 +349,18 @@ class Project {
   }
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'name': name,
-        'color': color.name,
-        'goal': goal,
-        'level': level,
-        'cycleMonths': cycleMonths,
-        'timeConstraint': timeConstraint,
-        'currentMonthIndex': currentMonthIndex,
-        'createdAt': createdAt.toIso8601String(),
-        if (lastAssessmentJson != null)
-          'lastAssessmentJson': lastAssessmentJson,
-        if (goalSummary.isNotEmpty) 'goalSummary': goalSummary,
-      };
+    'id': id,
+    'name': name,
+    'color': color.name,
+    'goal': goal,
+    'level': level,
+    'cycleMonths': cycleMonths,
+    'timeConstraint': timeConstraint,
+    'currentMonthIndex': currentMonthIndex,
+    'createdAt': createdAt.toIso8601String(),
+    if (lastAssessmentJson != null) 'lastAssessmentJson': lastAssessmentJson,
+    if (goalSummary.isNotEmpty) 'goalSummary': goalSummary,
+  };
 
   factory Project.fromJson(Map<String, Object?> json) {
     final colorName = (json['color'] as String?) ?? 'lemon';
@@ -299,7 +376,8 @@ class Project {
       cycleMonths: (json['cycleMonths'] as num?)?.toInt() ?? 3,
       timeConstraint: _parseTimeConstraint(json['timeConstraint']),
       currentMonthIndex: (json['currentMonthIndex'] as num?)?.toInt() ?? 0,
-      createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+      createdAt:
+          DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
       lastAssessmentJson: json['lastAssessmentJson'] as String?,
       goalSummary: (json['goalSummary'] as String?) ?? '',
@@ -336,11 +414,7 @@ class MonthCard {
     this.aiGenerated = false,
   });
 
-  MonthCard copyWith({
-    String? title,
-    String? summary,
-    bool? aiGenerated,
-  }) {
+  MonthCard copyWith({String? title, String? summary, bool? aiGenerated}) {
     return MonthCard(
       id: id,
       projectId: projectId,
@@ -352,22 +426,22 @@ class MonthCard {
   }
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'projectId': projectId,
-        'monthIndex': monthIndex,
-        'title': title,
-        'summary': summary,
-        'aiGenerated': aiGenerated,
-      };
+    'id': id,
+    'projectId': projectId,
+    'monthIndex': monthIndex,
+    'title': title,
+    'summary': summary,
+    'aiGenerated': aiGenerated,
+  };
 
   factory MonthCard.fromJson(Map<String, Object?> json) => MonthCard(
-        id: (json['id'] as String?) ?? '',
-        projectId: (json['projectId'] as String?) ?? '',
-        monthIndex: (json['monthIndex'] as num?)?.toInt() ?? 0,
-        title: (json['title'] as String?) ?? '',
-        summary: json['summary'] as String?,
-        aiGenerated: (json['aiGenerated'] as bool?) ?? false,
-      );
+    id: (json['id'] as String?) ?? '',
+    projectId: (json['projectId'] as String?) ?? '',
+    monthIndex: (json['monthIndex'] as num?)?.toInt() ?? 0,
+    title: (json['title'] as String?) ?? '',
+    summary: json['summary'] as String?,
+    aiGenerated: (json['aiGenerated'] as bool?) ?? false,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -408,29 +482,58 @@ class Conversation {
   }
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'dateKey': dateKey,
-        'title': title,
-        'pinned': pinned,
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-      };
+    'id': id,
+    'dateKey': dateKey,
+    'title': title,
+    'pinned': pinned,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
 
   factory Conversation.fromJson(Map<String, Object?> json) => Conversation(
-        id: (json['id'] as String?) ?? '',
-        dateKey: (json['dateKey'] as String?) ?? '',
-        title: (json['title'] as String?) ?? '',
-        pinned: (json['pinned'] as bool?) ?? false,
-        createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
-            DateTime.now(),
-        updatedAt: DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
-            DateTime.now(),
-      );
+    id: (json['id'] as String?) ?? '',
+    dateKey: (json['dateKey'] as String?) ?? '',
+    title: (json['title'] as String?) ?? '',
+    pinned: (json['pinned'] as bool?) ?? false,
+    createdAt:
+        DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
+        DateTime.now(),
+  );
 }
 
 // ---------------------------------------------------------------------------
 // ChatMessage
 // ---------------------------------------------------------------------------
+
+/// A persisted user-message match returned by monthly local search.
+class ChatSearchResult {
+  final String messageId;
+  final String conversationId;
+  final DateTime date;
+  final String content;
+  final DateTime createdAt;
+  final String role;
+
+  const ChatSearchResult({
+    required this.messageId,
+    required this.conversationId,
+    required this.date,
+    required this.content,
+    required this.createdAt,
+    required this.role,
+  });
+}
+
+/// A persisted chat message with the calendar date of its conversation.
+class MonthChatMessage {
+  final DateTime date;
+  final ChatMessage message;
+
+  const MonthChatMessage({required this.date, required this.message});
+}
 
 class ChatMessage {
   final String id;
@@ -472,27 +575,28 @@ class ChatMessage {
   }
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'conversationId': conversationId,
-        'role': role,
-        'content': content,
-        'createdAt': createdAt.toIso8601String(),
-        if (reasoningContent != null) 'reasoningContent': reasoningContent,
-        if (toolCallsJson != null) 'toolCallsJson': toolCallsJson,
-        if (toolCallId != null) 'toolCallId': toolCallId,
-      };
+    'id': id,
+    'conversationId': conversationId,
+    'role': role,
+    'content': content,
+    'createdAt': createdAt.toIso8601String(),
+    if (reasoningContent != null) 'reasoningContent': reasoningContent,
+    if (toolCallsJson != null) 'toolCallsJson': toolCallsJson,
+    if (toolCallId != null) 'toolCallId': toolCallId,
+  };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
-        id: (json['id'] as String?) ?? '',
-        conversationId: (json['conversationId'] as String?) ?? '',
-        role: (json['role'] as String?) ?? 'user',
-        content: (json['content'] as String?) ?? '',
-        createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
-            DateTime.now(),
-        reasoningContent: json['reasoningContent'] as String?,
-        toolCallsJson: json['toolCallsJson'] as String?,
-        toolCallId: json['toolCallId'] as String?,
-      );
+    id: (json['id'] as String?) ?? '',
+    conversationId: (json['conversationId'] as String?) ?? '',
+    role: (json['role'] as String?) ?? 'user',
+    content: (json['content'] as String?) ?? '',
+    createdAt:
+        DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+        DateTime.now(),
+    reasoningContent: json['reasoningContent'] as String?,
+    toolCallsJson: json['toolCallsJson'] as String?,
+    toolCallId: json['toolCallId'] as String?,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -530,8 +634,11 @@ class TodoItem {
 
   /// 判断 todo 是否属于指定日期。
   /// [date] 为 null 的 todo 仅归入今天。
-  static bool belongsToDate(TodoItem t, String selectedDateKey, String todayKey) =>
-      t.date != null ? t.date == selectedDateKey : selectedDateKey == todayKey;
+  static bool belongsToDate(
+    TodoItem t,
+    String selectedDateKey,
+    String todayKey,
+  ) => t.date != null ? t.date == selectedDateKey : selectedDateKey == todayKey;
 
   /// copyWith 中用来表示“该字段未被传入”的哨兵，与显式传 null（清空字段）区分。
   /// 外部 mutation 方法（如 [updateTodo]）可用它来表达“不修改”。
@@ -558,26 +665,30 @@ class TodoItem {
       done: done ?? this.done,
       pinned: pinned ?? this.pinned,
       sortOrder: sortOrder ?? this.sortOrder,
-      reminderTime: reminderTime == undefined ? this.reminderTime : reminderTime as String?,
+      reminderTime: reminderTime == undefined
+          ? this.reminderTime
+          : reminderTime as String?,
       createdAt: createdAt,
-      condensedFrom: condensedFrom == undefined ? this.condensedFrom : condensedFrom as String?,
+      condensedFrom: condensedFrom == undefined
+          ? this.condensedFrom
+          : condensedFrom as String?,
     );
   }
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'source': source.name,
-        'projectId': projectId,
-        'date': date,
-        'title': title,
-        'body': body,
-        'done': done,
-        'pinned': pinned,
-        'sortOrder': sortOrder,
-        'reminderTime': reminderTime,
-        'createdAt': createdAt.toIso8601String(),
-        if (condensedFrom != null) 'condensedFrom': condensedFrom,
-      };
+    'id': id,
+    'source': source.name,
+    'projectId': projectId,
+    'date': date,
+    'title': title,
+    'body': body,
+    'done': done,
+    'pinned': pinned,
+    'sortOrder': sortOrder,
+    'reminderTime': reminderTime,
+    'createdAt': createdAt.toIso8601String(),
+    if (condensedFrom != null) 'condensedFrom': condensedFrom,
+  };
 
   factory TodoItem.fromJson(Map<String, Object?> json) {
     final sourceName = (json['source'] as String?) ?? 'user';
@@ -595,7 +706,8 @@ class TodoItem {
       pinned: (json['pinned'] as bool?) ?? false,
       sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
       reminderTime: json['reminderTime'] as String?,
-      createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+      createdAt:
+          DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
           DateTime.now(),
       condensedFrom: json['condensedFrom'] as String?,
     );
@@ -610,7 +722,8 @@ class UserSignal {
   final int? id; // DB 自增主键
   final SignalType signal;
   final DateTime time;
-  final String contextJson; // JSON 字符串：title, project, domain, plannedDate, completedOnTime, hourOfDay 等
+  final String
+  contextJson; // JSON 字符串：title, project, domain, plannedDate, completedOnTime, hourOfDay 等
   final String? projectId;
   final String? todoId;
   final String? domain;
@@ -639,15 +752,15 @@ class UserSignal {
   }
 
   Map<String, Object?> toJson() => {
-        if (id != null) 'id': id,
-        'signal': signal.name,
-        'time': time.toIso8601String(),
-        'contextJson': contextJson,
-        'projectId': projectId,
-        'todoId': todoId,
-        'domain': domain,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    if (id != null) 'id': id,
+    'signal': signal.name,
+    'time': time.toIso8601String(),
+    'contextJson': contextJson,
+    'projectId': projectId,
+    'todoId': todoId,
+    'domain': domain,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory UserSignal.fromJson(Map<String, Object?> json) {
     final signalName = (json['signal'] as String?) ?? 'todoCreated';
@@ -657,12 +770,15 @@ class UserSignal {
         (s) => s.name == signalName,
         orElse: () => SignalType.todoCreated,
       ),
-      time: DateTime.tryParse((json['time'] as String?) ?? '') ?? DateTime.now(),
+      time:
+          DateTime.tryParse((json['time'] as String?) ?? '') ?? DateTime.now(),
       contextJson: (json['contextJson'] as String?) ?? '{}',
       projectId: json['projectId'] as String?,
       todoId: json['todoId'] as String?,
       domain: json['domain'] as String?,
-      createdAt: DateTime.tryParse((json['createdAt'] as String?) ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+          DateTime.now(),
     );
   }
 }

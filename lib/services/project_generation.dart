@@ -109,6 +109,52 @@ typedef ProjectPlanCommit = Future<void> Function(
   PlanResult plan,
 );
 
+class ProjectGenerationSession extends ChangeNotifier {
+  final String? toolCallId;
+  final String? conversationId;
+  final ProjectGenerationCoordinator coordinator;
+  bool _started = false;
+  bool _navigationTaken = false;
+
+  ProjectGenerationSession({
+    required ProjectGenerationRequest request,
+    required ModelRouter router,
+    required ProjectPlanCommit commit,
+    this.toolCallId,
+    this.conversationId,
+  }) : coordinator = ProjectGenerationCoordinator(
+         request: request,
+         router: router,
+         commit: commit,
+       ) {
+    coordinator.state.addListener(notifyListeners);
+  }
+
+  ProjectGenerationState get state => coordinator.state.value;
+  bool get isChatInitiated => toolCallId != null;
+
+  Future<void> start() {
+    if (_started) return Future.value();
+    _started = true;
+    return coordinator.start();
+  }
+
+  bool takeNavigation() {
+    if (_navigationTaken ||
+        state.stage != ProjectGenerationStage.awaitingConfirmation) {
+      return false;
+    }
+    _navigationTaken = true;
+    return true;
+  }
+
+  void disposeSession() {
+    coordinator.state.removeListener(notifyListeners);
+    coordinator.dispose();
+    dispose();
+  }
+}
+
 class ProjectGenerationCoordinator {
   final ProjectGenerationRequest request;
   final ModelRouter router;
@@ -127,11 +173,13 @@ class ProjectGenerationCoordinator {
     required this.router,
     required this.commit,
     GenerationCancellationToken? cancellation,
-  })  : cancellation = cancellation ?? GenerationCancellationToken(),
-        state = ValueNotifier(const ProjectGenerationState(
-          stage: ProjectGenerationStage.searching,
-          status: '正在准备资料检索',
-        ));
+  }) : cancellation = cancellation ?? GenerationCancellationToken(),
+       state = ValueNotifier(
+         const ProjectGenerationState(
+           stage: ProjectGenerationStage.searching,
+           status: '正在准备资料检索',
+         ),
+       );
 
   bool get failedDuringPlanning => _lastFailureWasPlanning;
 
@@ -142,16 +190,21 @@ class ProjectGenerationCoordinator {
     _lastFailureWasPlanning = false;
     _assessment = null;
     _startClock();
-    _emit(ProjectGenerationState(
-      stage: ProjectGenerationStage.searching,
-      status: router.search.isConfigured ? '正在检索参考资料' : '未配置搜索服务，已跳过外部资料',
-      elapsed: _stopwatch.elapsed,
-      searchTotal: router.search.isConfigured ? 3 : 0,
-      searchSkipped: !router.search.isConfigured,
-    ));
+    _emit(
+      ProjectGenerationState(
+        stage: ProjectGenerationStage.searching,
+        status: router.search.isConfigured ? '正在检索参考资料' : '未配置搜索服务，已跳过外部资料',
+        elapsed: _stopwatch.elapsed,
+        searchTotal: router.search.isConfigured ? 3 : 0,
+        searchSkipped: !router.search.isConfigured,
+      ),
+    );
 
     try {
-      final assessor = GoalAssessor(ai: router.structured, search: router.search);
+      final assessor = GoalAssessor(
+        ai: router.structured,
+        search: router.search,
+      );
       final result = await assessor.assess(
         goal: request.goal,
         level: request.level,
@@ -159,31 +212,37 @@ class ProjectGenerationCoordinator {
         timeConstraint: request.timeConstraint,
         onSearchProgress: (completed, total) {
           if (cancellation.isCancelled) return;
-          _emit(state.value.copyWith(
-            stage: ProjectGenerationStage.searching,
-            status: '已完成 $completed/$total 项资料检索',
-            searchCompleted: completed,
-            searchTotal: total,
-          ));
+          _emit(
+            state.value.copyWith(
+              stage: ProjectGenerationStage.searching,
+              status: '已完成 $completed/$total 项资料检索',
+              searchCompleted: completed,
+              searchTotal: total,
+            ),
+          );
         },
         onAssessing: () {
           if (cancellation.isCancelled) return;
-          _emit(state.value.copyWith(
-            stage: ProjectGenerationStage.assessing,
-            status: '正在评估目标可行性',
-          ));
+          _emit(
+            state.value.copyWith(
+              stage: ProjectGenerationStage.assessing,
+              status: '正在评估目标可行性',
+            ),
+          );
         },
       );
       if (cancellation.isCancelled) return;
       if (result == null) throw StateError('评估服务没有返回有效结果');
       _assessment = result;
-      _emit(state.value.copyWith(
-        stage: ProjectGenerationStage.awaitingConfirmation,
-        status: '评估完成，请确认后继续',
-        assessment: result,
-        clearError: true,
-        canRetry: false,
-      ));
+      _emit(
+        state.value.copyWith(
+          stage: ProjectGenerationStage.awaitingConfirmation,
+          status: '评估完成，请确认后继续',
+          assessment: result,
+          clearError: true,
+          canRetry: false,
+        ),
+      );
     } catch (e) {
       if (cancellation.isCancelled) return;
       _fail(_aiFailureMessage('目标评估'));
@@ -195,62 +254,76 @@ class ProjectGenerationCoordinator {
   Future<void> skipAssessmentAndPlan() => _runPlanning(null);
 
   Future<void> retry() {
-    return _lastFailureWasPlanning ? _runPlanning(_assessment) : runAssessment();
+    return _lastFailureWasPlanning
+        ? _runPlanning(_assessment)
+        : runAssessment();
   }
 
   Future<void> _runPlanning(GoalAssessment? assessment) async {
     if (cancellation.isCancelled) return;
     _lastFailureWasPlanning = true;
-    _emit(state.value.copyWith(
-      stage: ProjectGenerationStage.planning,
-      status: '正在请求生成月度计划',
-      assessment: assessment,
-      clearError: true,
-      canRetry: false,
-    ));
+    _emit(
+      state.value.copyWith(
+        stage: ProjectGenerationStage.planning,
+        status: '正在请求生成月度计划',
+        assessment: assessment,
+        clearError: true,
+        canRetry: false,
+      ),
+    );
 
     try {
       final generator = PlanGenerator(ai: router.structured);
       final now = DateTime.now();
-      final startDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final startDate =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       final plan = await generator.generate(
         goal: request.goal,
         level: request.level,
         cycleMonths: request.cycleMonths,
         timeConstraint: request.timeConstraint,
         startDate: startDate,
-        assessmentReport: jsonEncode(assessment?.toJson() ?? const <String, Object?>{}),
+        assessmentReport: jsonEncode(
+          assessment?.toJson() ?? const <String, Object?>{},
+        ),
         domainKnowledge: assessment?.domainSummary ?? '（未提供外部领域资料）',
         onProgress: (progress) {
           if (cancellation.isCancelled) return;
-          final validating = progress == PlanGenerationProgress.validating ||
+          final validating =
+              progress == PlanGenerationProgress.validating ||
               progress == PlanGenerationProgress.repairing;
-          _emit(state.value.copyWith(
-            stage: validating
-                ? ProjectGenerationStage.validating
-                : ProjectGenerationStage.planning,
-            status: switch (progress) {
-              PlanGenerationProgress.receiving => '正在接收计划内容',
-              PlanGenerationProgress.validating => '正在校验计划结构',
-              PlanGenerationProgress.repairing => '返回格式需要修复，正在重试一次',
-            },
-          ));
+          _emit(
+            state.value.copyWith(
+              stage: validating
+                  ? ProjectGenerationStage.validating
+                  : ProjectGenerationStage.planning,
+              status: switch (progress) {
+                PlanGenerationProgress.receiving => '正在接收计划内容',
+                PlanGenerationProgress.validating => '正在校验计划结构',
+                PlanGenerationProgress.repairing => '返回格式需要修复，正在重试一次',
+              },
+            ),
+          );
         },
       );
       if (cancellation.isCancelled) return;
       if (plan == null) throw StateError('规划服务没有返回有效结果');
 
-      _emit(state.value.copyWith(
-        stage: ProjectGenerationStage.saving,
-        status: '正在保存项目计划',
-      ));
+      _emit(
+        state.value.copyWith(
+          stage: ProjectGenerationStage.saving,
+          status: '正在保存项目计划',
+        ),
+      );
       await commit(request, assessment, plan);
       if (cancellation.isCancelled) return;
-      _emit(state.value.copyWith(
-        stage: ProjectGenerationStage.completed,
-        status: '计划已生成',
-        clearError: true,
-      ));
+      _emit(
+        state.value.copyWith(
+          stage: ProjectGenerationStage.completed,
+          status: '计划已生成',
+          clearError: true,
+        ),
+      );
       _stopClock();
     } catch (e) {
       if (cancellation.isCancelled) return;
@@ -261,21 +334,25 @@ class ProjectGenerationCoordinator {
   void cancel() {
     cancellation.cancel();
     _stopClock();
-    _emit(state.value.copyWith(
-      stage: ProjectGenerationStage.cancelled,
-      status: '已取消生成',
-      clearError: true,
-      canRetry: false,
-    ));
+    _emit(
+      state.value.copyWith(
+        stage: ProjectGenerationStage.cancelled,
+        status: '已取消生成',
+        clearError: true,
+        canRetry: false,
+      ),
+    );
   }
 
   void _fail(String message) {
-    _emit(state.value.copyWith(
-      stage: ProjectGenerationStage.failed,
-      status: message,
-      error: message,
-      canRetry: true,
-    ));
+    _emit(
+      state.value.copyWith(
+        stage: ProjectGenerationStage.failed,
+        status: message,
+        error: message,
+        canRetry: true,
+      ),
+    );
   }
 
   String _aiFailureMessage(String operation) {
@@ -290,7 +367,7 @@ class ProjectGenerationCoordinator {
       return 'AI 服务拒绝了$operation请求，请检查模型或接口配置。';
     }
     if (error.contains('结构校验失败') || error.contains('JSON')) {
-      return 'AI 返回的$operation内容不完整，自动修复后仍未通过。';
+      return 'AI 返回的$operation格式未通过校验，可重试当前阶段。';
     }
     if (error.contains('超时')) {
       return '$operation服务响应超时，请稍后重试。';

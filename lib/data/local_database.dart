@@ -20,7 +20,7 @@ class SumiLocalDatabase {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 14,
+      version: 15,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -34,6 +34,7 @@ class SumiLocalDatabase {
         await _createEmbeddingDocumentsTable(db);
         await _createMemoryTables(db);
         await _createMemoryExtractionTables(db);
+        await _createStudyTimersTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -71,6 +72,9 @@ class SumiLocalDatabase {
         }
         if (oldVersion < 14) {
           await _migrateV13toV14(db);
+        }
+        if (oldVersion < 15) {
+          await _migrateV14toV15(db);
         }
       },
     );
@@ -237,6 +241,26 @@ class SumiLocalDatabase {
 
   Future<void> _migrateV13toV14(Database db) =>
       _createMemoryExtractionTables(db);
+
+  Future<void> _migrateV14toV15(Database db) => _createStudyTimersTable(db);
+
+  Future<void> _createStudyTimersTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS study_timers (
+      id TEXT PRIMARY KEY,
+      tool_call_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      total_seconds INTEGER NOT NULL,
+      remaining_seconds INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_study_timers_tool_call ON study_timers(tool_call_id)',
+    );
+  }
 
   Future<void> _createMemoryTables(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS memory_items (

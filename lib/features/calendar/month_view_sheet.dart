@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/haptics.dart';
 import '../projects/month_card_pager.dart';
 import '../projects/project_tabs.dart';
 import '../shared/drag_handle.dart';
@@ -30,18 +31,39 @@ class MonthViewSheet extends StatelessWidget {
         children: [
           // 系统状态栏避开
           SizedBox(height: MediaQuery.of(context).padding.top),
-          // 月份标题（居中）
+          // 月份标题与切换按钮。
           Padding(
-            padding: const EdgeInsets.only(top: s16, bottom: s8),
-            child: Center(
-              child: Text(
-                '${store.selectedDate.month}月',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: ink,
+            padding: const EdgeInsets.only(top: s16, bottom: s16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _MonthNavigationButton(
+                  forward: false,
+                  enabled: store.canNavigateMonth(forward: false),
+                  onPressed: () async {
+                    H.click();
+                    await store.navigateMonth(forward: false);
+                  },
                 ),
-              ),
+                const SizedBox(width: s4),
+                Text(
+                  '${store.selectedDate.month}月',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                  ),
+                ),
+                const SizedBox(width: s4),
+                _MonthNavigationButton(
+                  forward: true,
+                  enabled: store.canNavigateMonth(forward: true),
+                  onPressed: () async {
+                    H.click();
+                    await store.navigateMonth(forward: true);
+                  },
+                ),
+              ],
             ),
           ),
           // 可滚动内容
@@ -96,6 +118,42 @@ class MonthViewSheet extends StatelessWidget {
           ),
         ],
       ),
+      ),
+    );
+  }
+}
+
+class _MonthNavigationButton extends StatelessWidget {
+  final bool forward;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  const _MonthNavigationButton({
+    required this.forward,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: forward ? '下个月' : '上个月',
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: IconButton(
+          onPressed: enabled ? onPressed : null,
+          icon: Icon(
+            forward ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_left,
+          ),
+          iconSize: iconSmall,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+          color: primary400,
+          disabledColor: textTertiary.withValues(alpha: 0.45),
+          splashColor: primary100,
+          highlightColor: primary50,
+        ),
       ),
     );
   }

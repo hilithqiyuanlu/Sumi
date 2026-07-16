@@ -7,6 +7,7 @@ import '../../utils/haptics.dart';
 import 'signal_log_page.dart';
 import 'model_router_metrics_page.dart';
 import 'local_retrieval_page.dart';
+import 'local_text_model_page.dart';
 
 class SettingsBody extends StatefulWidget {
   const SettingsBody({super.key});
@@ -52,6 +53,26 @@ class _SettingsBodyState extends State<SettingsBody> {
                 onSave: (v) => store.updateTavilyApiKey(v),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: s12),
+        _buildCard(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              '本地生成',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            subtitle: const Text('用设备模型处理短任务', style: TextStyle(fontSize: 12)),
+            trailing: const Icon(
+              Icons.chevron_right,
+              size: iconSection,
+              color: textTertiary,
+            ),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LocalTextModelPage()),
+            ),
           ),
         ),
         const SizedBox(height: s24),

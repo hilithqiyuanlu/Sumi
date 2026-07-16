@@ -11,6 +11,57 @@ class ModelRouterMetricsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final metrics = SumiScope.read(context).modelRouterMetrics.summaries();
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: paper,
+        appBar: AppBar(
+          title: const Text('模型路由诊断'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: '云端'),
+              Tab(text: '本地检索'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _MetricsPanel(
+              metrics: metrics
+                  .where(
+                    (metric) => metric.capability != ModelCapability.embedding,
+                  )
+                  .toList(growable: false),
+              emptyLabel: '近 7 天暂无云端调用记录',
+            ),
+            _MetricsPanel(
+              metrics: metrics
+                  .where(
+                    (metric) => metric.capability == ModelCapability.embedding,
+                  )
+                  .toList(growable: false),
+              emptyLabel: '近 7 天暂无本地检索记录',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricsPanel extends StatelessWidget {
+  final List<ModelRouterMetricsSummary> metrics;
+  final String emptyLabel;
+
+  const _MetricsPanel({required this.metrics, required this.emptyLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    if (metrics.isEmpty) {
+      return Center(
+        child: Text(emptyLabel, style: const TextStyle(color: textTertiary)),
+      );
+    }
     final total = metrics.fold<int>(0, (sum, item) => sum + item.total);
     final success = metrics.fold<int>(0, (sum, item) => sum + item.success);
     final degraded = metrics.fold<int>(0, (sum, item) => sum + item.degraded);
@@ -20,38 +71,27 @@ class ModelRouterMetricsPage extends StatelessWidget {
     );
     final average = total == 0 ? 0 : duration ~/ total;
 
-    return Scaffold(
-      backgroundColor: paper,
-      appBar: AppBar(title: const Text('模型路由诊断')),
-      body: metrics.isEmpty
-          ? const Center(
-              child: Text(
-                '近 7 天暂无模型调用记录',
-                style: TextStyle(color: textTertiary),
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(s16, s8, s16, s24),
-              children: [
-                _Summary(
-                  total: total,
-                  success: success,
-                  degraded: degraded,
-                  average: average,
-                ),
-                const SizedBox(height: s20),
-                const Text(
-                  '按天汇总',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: textTertiary,
-                  ),
-                ),
-                const SizedBox(height: s8),
-                ...metrics.map(_MetricRow.new),
-              ],
-            ),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(s16, s16, s16, s24),
+      children: [
+        _Summary(
+          total: total,
+          success: success,
+          degraded: degraded,
+          average: average,
+        ),
+        const SizedBox(height: s20),
+        const Text(
+          '按天汇总',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: textTertiary,
+          ),
+        ),
+        const SizedBox(height: s8),
+        ...metrics.map(_MetricRow.new),
+      ],
     );
   }
 }
@@ -130,7 +170,7 @@ class _MetricRow extends StatelessWidget {
       ModelCapability.structured => '结构化生成',
       ModelCapability.memoryExtraction => '记忆提取',
       ModelCapability.webSearch => '搜索',
-      ModelCapability.embedding => '本地检索',
+      ModelCapability.embedding => '语义检索',
     };
     return Container(
       margin: const EdgeInsets.only(bottom: s8),

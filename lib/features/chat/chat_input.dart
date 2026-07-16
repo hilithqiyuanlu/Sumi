@@ -419,6 +419,7 @@ class _ChatInputState extends State<ChatInput> {
                             maxLines: 4,
                             minLines: 1,
                             textInputAction: TextInputAction.newline,
+                            onTapOutside: (_) => _focusNode.unfocus(),
                             style: const TextStyle(fontSize: 16),
                             decoration: InputDecoration(
                               hintText: _placeholderText,

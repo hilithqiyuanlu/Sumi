@@ -4,16 +4,19 @@ import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/chat_database.dart';
 import '../data/embedding_document_store.dart';
 import '../data/local_database.dart';
 import '../data/signal_database.dart';
+import '../data/study_timer_database.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
 import '../services/ai_runtime.dart';
 import '../services/chat_prompt_builder.dart';
+import '../services/chat_tool_registry.dart';
 import '../services/prompt_context.dart';
 import '../services/daily_planning_policy.dart';
 import '../services/embedding_indexer.dart';
@@ -22,12 +25,19 @@ import '../services/local_embedding_runtime.dart';
 import '../services/local_embedding_service.dart';
 import '../services/local_retrieval_coordinator.dart';
 import '../services/local_retrieval_service.dart';
+import '../services/local_text_generation_coordinator.dart';
+import '../services/local_text_generation_runtime.dart';
+import '../services/local_text_model_package.dart';
+import '../services/local_structured_generation.dart';
 import '../services/model_package_manager.dart';
 import '../services/model_router_metrics.dart';
 import '../services/model_router.dart';
 import '../services/project_generation.dart';
+import '../services/project_generation_controller.dart';
 import '../services/secure_settings_store.dart';
 import '../services/signal_service.dart';
+import '../services/study_timer_service.dart';
+import '../services/timer_controller.dart';
 import '../services/snapshot_write_queue.dart';
 import '../services/tool_executor.dart';
 import '../services/user_model_service.dart';
@@ -54,6 +64,12 @@ class AppStore
   late final LocalEmbeddingService _localEmbedding;
   late final LocalRetrievalService _localRetrieval;
   late final LocalRetrievalCoordinator _localRetrievalCoordinator;
+  late final LocalTextGenerationRuntime _localTextRuntime;
+  late final LocalTextGenerationCoordinator _localTextCoordinator;
+  late final TimerController timerController;
+  late final StudyTimerService _studyTimers;
+  final ProjectGenerationController projectGenerationController =
+      ProjectGenerationController();
   ChatDatabase? _chatDatabase;
   ToolExecutor? _toolExecutor;
   VoiceInputService? _voiceService;
@@ -108,13 +124,40 @@ class AppStore
   LocalRetrievalService get localRetrieval => _localRetrieval;
   LocalRetrievalState get localRetrievalState =>
       _localRetrievalCoordinator.state;
+  LocalTextModelState get localTextModelState => _localTextCoordinator.state;
   @override
-  StructuredGenerationCapability? get structuredAi => _modelRouter?.structured;
+  StructuredGenerationCapability? get structuredAi => _modelRouter == null
+      ? null
+      : LocalFirstStructuredGeneration(
+          cloud: _modelRouter!.structured,
+          local: _localTextRuntime,
+        );
   @override
   ChatCapability? get chatAgent => _modelRouter?.chat;
 
   void recordAiDegraded(ModelCapability capability) {
     _modelRouter?.recordDegraded(capability: capability);
+  }
+
+  void _recordLocalEmbeddingMetric({
+    required bool succeeded,
+    required Duration elapsed,
+    required Object? error,
+  }) {
+    modelRouterMetrics.record(
+      ModelRouterMetric(
+        occurredAt: _now(),
+        capability: ModelCapability.embedding,
+        provider: 'local-bge-small-zh-v1.5',
+        outcome: succeeded
+            ? ModelRouteOutcome.success
+            : ModelRouteOutcome.failure,
+        elapsed: elapsed,
+        errorCategory: error == null
+            ? ModelRouterErrorCategory.none
+            : ModelRouterErrorClassifier.fromException(error),
+      ),
+    );
   }
 
   /// 对话数据库。
@@ -127,6 +170,29 @@ class AppStore
 
   /// 语音输入服务。
   VoiceInputService? get voiceService => _voiceService;
+  List<String> get enabledTools => appSettings.enabledTools;
+  bool isToolEnabled(String name) => enabledTools.contains(name);
+
+  void updateEnabledTools(Iterable<String> names) {
+    final values = names
+        .where(ChatToolRegistry.allNames.contains)
+        .toSet()
+        .toList(growable: false);
+    appSettings = appSettings.copyWith(enabledTools: values);
+    afterSettingsMutation();
+  }
+
+  StudyTimer? timerForToolCall(String toolCallId) =>
+      timerController.byToolCallId(toolCallId);
+  Future<void> startStudyTimer(String id) => _studyTimers.start(id);
+  Future<void> pauseStudyTimer(String id) => _studyTimers.pause(id);
+  Future<void> finishStudyTimer(String id) => _studyTimers.finish(id);
+  Future<void> cancelStudyTimer(String id) => _studyTimers.cancel(id);
+  @override
+  Future<void> clearStudyTimers() => _studyTimers.clearAll();
+
+  Future<void> handleAppLifecycle(AppLifecycleState state) =>
+      _studyTimers.handleLifecycle(state == AppLifecycleState.resumed);
 
   /// Thinking 模式开关。
   @override
@@ -191,6 +257,10 @@ class AppStore
     disposeChatView();
     _voiceService?.dispose();
     await _localRetrievalCoordinator.close();
+    await _localTextCoordinator.close();
+    _studyTimers.dispose();
+    timerController.dispose();
+    projectGenerationController.dispose();
     _aiRuntime?.close();
     todoController.dispose();
     projectController.dispose();
@@ -223,6 +293,12 @@ class AppStore
 
     // 初始化对话数据库
     store._chatDatabase = ChatDatabase(db);
+    store.timerController = TimerController();
+    store._studyTimers = StudyTimerService(
+      database: StudyTimerDatabase(db),
+      controller: store.timerController,
+      now: store._now,
+    );
 
     // 07 轮：初始化信号数据库和用户模型服务
     store._signalDb = signalDatabaseOverride ?? SignalDatabase(db);
@@ -241,7 +317,10 @@ class AppStore
     );
     store._embeddingDocuments = EmbeddingDocumentStore(db);
     store._localEmbeddingRuntime = LocalEmbeddingRuntime();
-    store._localEmbedding = LocalEmbeddingService(store._localEmbeddingRuntime);
+    store._localEmbedding = LocalEmbeddingService(
+      store._localEmbeddingRuntime,
+      onMetric: store._recordLocalEmbeddingMetric,
+    );
     final indexer = EmbeddingIndexer(
       documents: store._embeddingDocuments,
       embedding: store._localEmbedding,
@@ -264,6 +343,12 @@ class AppStore
       indexer: indexer,
       stateListener: (_) => store.settingsController.markChanged(),
     );
+    store._localTextRuntime = LocalTextGenerationRuntime();
+    store._localTextCoordinator = LocalTextGenerationCoordinator(
+      packages: LocalTextModelPackage(),
+      runtime: store._localTextRuntime,
+      onState: (_) => store.settingsController.markChanged(),
+    );
 
     // Import legacy files once, then generate USER_MODEL.md only as export.
     await store._migrateLegacyMemory();
@@ -278,6 +363,7 @@ class AppStore
 
     // 从快照恢复数据
     await store.loadFromDb();
+    await store._studyTimers.restore();
 
     // 回填安全存储中的 API Key（快照中不存明文）
     store.appSettings = store.appSettings.copyWith(
@@ -287,6 +373,7 @@ class AppStore
 
     store._initAiService(override: aiServiceOverride);
     unawaited(store._localRetrievalCoordinator.restore());
+    unawaited(store._localTextCoordinator.restore());
 
     // 加载今天的会话
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
@@ -328,6 +415,8 @@ class AppStore
           }
           return '';
         },
+        currentConversationId: () => currentConversationId,
+        isToolEnabled: isToolEnabled,
         readTodos: ({String? filter}) => _readTodosForTool(filter: filter),
         writeTodo:
             ({
@@ -341,6 +430,8 @@ class AppStore
               projectId: projectId,
               body: body,
             ),
+        createStudyTimer: _createStudyTimerForTool,
+        startProjectGeneration: _startProjectGenerationForTool,
       );
     } else {
       _aiRuntime = null;
@@ -455,6 +546,56 @@ class AppStore
     await _getOrCreateConversationForDate(dateKey(selectedDate));
   }
 
+  /// 月历可浏览范围：当前系统月前后各 30 个月。
+  DateTime get firstNavigableMonth {
+    final now = _now();
+    return DateTime(now.year, now.month - 30);
+  }
+
+  DateTime get lastNavigableMonth {
+    final now = _now();
+    return DateTime(now.year, now.month + 30);
+  }
+
+  /// 判断当前选中月份能否继续向左或向右浏览。
+  bool canNavigateMonth({required bool forward}) {
+    final target = DateTime(
+      selectedDate.year,
+      selectedDate.month + (forward ? 1 : -1),
+    );
+    return !target.isBefore(firstNavigableMonth) &&
+        !target.isAfter(lastNavigableMonth);
+  }
+
+  /// 切换月份并复用日期选择流程加载目标日期的会话。
+  ///
+  /// 向右进入下个月 1 日；向左进入上个月最后一天。
+  Future<void> navigateMonth({required bool forward}) async {
+    if (!canNavigateMonth(forward: forward)) return;
+    final target = forward
+        ? DateTime(selectedDate.year, selectedDate.month + 1, 1)
+        : DateTime(selectedDate.year, selectedDate.month, 0);
+    await selectDate(target);
+  }
+
+  /// Loads all persisted messages for one calendar month.
+  Future<List<MonthChatMessage>> loadMonthChatMessages({
+    required DateTime month,
+  }) async {
+    final db = chatDatabase;
+    if (db == null) return const [];
+    return db.loadMessagesForMonth(month);
+  }
+
+  /// Searches persisted user messages across all calendar months.
+  Future<List<ChatSearchResult>> searchUserMessages({
+    required String query,
+  }) async {
+    final db = chatDatabase;
+    if (db == null) return const [];
+    return db.searchUserMessages(query: query);
+  }
+
   // ---------------------------------------------------------------------------
   // 内部
   // ---------------------------------------------------------------------------
@@ -497,6 +638,8 @@ class AppStore
   @override
   Future<void> deleteLocalRetrievalModel() =>
       _localRetrievalCoordinator.deleteModel();
+  Future<void> downloadLocalTextModel() => _localTextCoordinator.download();
+  Future<void> deleteLocalTextModel() => _localTextCoordinator.delete();
   void cancelLocalRetrievalWork() => _localRetrievalCoordinator.cancel();
 
   Timer? _localIndexTimer;
@@ -602,6 +745,68 @@ class AppStore
       return;
     }
     await addSystemTodo(title, projectId, date: date, body: body);
+  }
+
+  Future<String> _createStudyTimerForTool({
+    required String toolCallId,
+    required String conversationId,
+    required String title,
+    required int minutes,
+  }) async {
+    final timer = await _studyTimers.create(
+      id: newSumiId('timer'),
+      toolCallId: toolCallId,
+      conversationId: conversationId,
+      title: title,
+      minutes: minutes,
+    );
+    return '已创建学习计时器「${timer.title}」，时长 $minutes 分钟，等待用户手动开始。';
+  }
+
+  ProjectGenerationSession createProjectGenerationSession(
+    ProjectGenerationRequest request, {
+    String? toolCallId,
+    String? conversationId,
+  }) {
+    final router = _modelRouter;
+    if (router == null) throw StateError('请先配置 DeepSeek API Key');
+    return ProjectGenerationSession(
+      request: request,
+      router: router,
+      commit: commitProjectPlan,
+      toolCallId: toolCallId,
+      conversationId: conversationId,
+    );
+  }
+
+  Future<String> _startProjectGenerationForTool({
+    required String toolCallId,
+    required String conversationId,
+    required String goal,
+    required String level,
+    required int cycleMonths,
+    required int timeConstraint,
+  }) async {
+    final session = createProjectGenerationSession(
+      ProjectGenerationRequest(
+        projectId: newSumiId('proj'),
+        goal: goal,
+        level: level,
+        cycleMonths: cycleMonths,
+        timeConstraint: timeConstraint,
+        color: nextAvailableColor(),
+      ),
+      toolCallId: toolCallId,
+      conversationId: conversationId,
+    );
+    projectGenerationController.add(session);
+    await session.start();
+    return switch (session.state.stage) {
+      ProjectGenerationStage.awaitingConfirmation => '目标评估完成，已打开项目生成页面等待用户确认。',
+      ProjectGenerationStage.cancelled => '项目生成已取消。',
+      ProjectGenerationStage.failed => '项目生成失败：${session.state.error ?? '请重试'}',
+      _ => '项目生成仍在处理。',
+    };
   }
 }
 

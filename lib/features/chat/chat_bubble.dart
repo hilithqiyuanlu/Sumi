@@ -8,6 +8,11 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../theme/app_theme.dart';
 import '../../utils/utils.dart';
+import '../../models/models.dart';
+import '../../services/timer_controller.dart';
+import '../../services/project_generation_controller.dart';
+import '../../services/project_generation.dart';
+import '../../store/sumi_store.dart';
 
 /// 聊天气泡组件 —— 支持用户（右侧 mint）和 AI（左侧白色）两种样式。
 class ChatBubble extends StatelessWidget {
@@ -18,6 +23,13 @@ class ChatBubble extends StatelessWidget {
   final String? activityLabel;
   final String? toolCallsJson;
   final VoidCallback? onDelete;
+  final Future<ChatSendResult> Function(String content)? onEdit;
+  final TimerController? timerController;
+  final Future<void> Function(String id)? onStartTimer;
+  final Future<void> Function(String id)? onPauseTimer;
+  final Future<void> Function(String id)? onFinishTimer;
+  final Future<void> Function(String id)? onCancelTimer;
+  final ProjectGenerationController? projectGenerationController;
 
   const ChatBubble({
     super.key,
@@ -28,6 +40,13 @@ class ChatBubble extends StatelessWidget {
     this.activityLabel,
     this.toolCallsJson,
     this.onDelete,
+    this.onEdit,
+    this.timerController,
+    this.onStartTimer,
+    this.onPauseTimer,
+    this.onFinishTimer,
+    this.onCancelTimer,
+    this.projectGenerationController,
   });
 
   @override
@@ -60,7 +79,23 @@ class ChatBubble extends StatelessWidget {
           // 工具调用指示（仅 AI 且有 tool_calls 时显示，简洁样式）
           if (!isUser && toolCallsJson != null && toolCallsJson!.isNotEmpty)
             _ToolCallIndicator(toolCallsJson: toolCallsJson!),
-          // 气泡（长按删除或复制）
+          if (!isUser && toolCallsJson != null && timerController != null)
+            _StudyTimerFromToolCalls(
+              toolCallsJson: toolCallsJson!,
+              controller: timerController!,
+              onStart: onStartTimer,
+              onPause: onPauseTimer,
+              onFinish: onFinishTimer,
+              onCancel: onCancelTimer,
+            ),
+          if (!isUser &&
+              toolCallsJson != null &&
+              projectGenerationController != null)
+            _ProjectGenerationFromToolCalls(
+              toolCallsJson: toolCallsJson!,
+              controller: projectGenerationController!,
+            ),
+          // 气泡（用户消息可删除；最新一条还可编辑后重新发送）
           GestureDetector(
             onLongPress: () {
               H.medium();
@@ -85,6 +120,14 @@ class ChatBubble extends StatelessWidget {
                       style: TextStyle(fontSize: 14),
                     ),
                     actions: [
+                      if (onEdit != null)
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await _editAndResend(context);
+                          },
+                          child: const Text('编辑'),
+                        ),
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
                         child: const Text('取消'),
@@ -150,6 +193,69 @@ class ChatBubble extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _editAndResend(BuildContext context) async {
+    final controller = TextEditingController(text: content);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    final editedContent = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+        ),
+        title: const Text(
+          '编辑消息',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('重新发送会移除这条消息及之后的对话。', style: TextStyle(fontSize: 14)),
+            const SizedBox(height: s12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 6,
+              textInputAction: TextInputAction.newline,
+              decoration: const InputDecoration(hintText: '输入消息'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('重新发送'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (editedContent == null || !context.mounted) return;
+    final result = await onEdit?.call(editedContent);
+    if (!context.mounted ||
+        result == null ||
+        result == ChatSendResult.accepted) {
+      return;
+    }
+    final message = switch (result) {
+      ChatSendResult.empty => '消息不能为空',
+      ChatSendResult.busy => '正在生成回复，请稍后再编辑',
+      ChatSendResult.missingApiKey => '请先设置 DeepSeek API Key',
+      ChatSendResult.accepted => '',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -332,6 +438,268 @@ class _ToolCallIndicator extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StudyTimerFromToolCalls extends StatelessWidget {
+  final String toolCallsJson;
+  final TimerController controller;
+  final Future<void> Function(String id)? onStart;
+  final Future<void> Function(String id)? onPause;
+  final Future<void> Function(String id)? onFinish;
+  final Future<void> Function(String id)? onCancel;
+
+  const _StudyTimerFromToolCalls({
+    required this.toolCallsJson,
+    required this.controller,
+    this.onStart,
+    this.onPause,
+    this.onFinish,
+    this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    String? toolCallId;
+    try {
+      final calls = jsonDecode(toolCallsJson) as List<Object?>;
+      for (final call in calls) {
+        if (call is Map<String, Object?> &&
+            ((call['function'] as Map<String, Object?>?)?['name'] ==
+                'create_study_timer')) {
+          toolCallId = call['id'] as String?;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (toolCallId == null) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final timer = controller.byToolCallId(toolCallId!);
+        if (timer == null) return const SizedBox.shrink();
+        return _StudyTimerCard(
+          timer: timer,
+          onStart: onStart,
+          onPause: onPause,
+          onFinish: onFinish,
+          onCancel: onCancel,
+        );
+      },
+    );
+  }
+}
+
+class _StudyTimerCard extends StatelessWidget {
+  final StudyTimer timer;
+  final Future<void> Function(String id)? onStart;
+  final Future<void> Function(String id)? onPause;
+  final Future<void> Function(String id)? onFinish;
+  final Future<void> Function(String id)? onCancel;
+
+  const _StudyTimerCard({
+    required this.timer,
+    this.onStart,
+    this.onPause,
+    this.onFinish,
+    this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = timer.remainingAt(DateTime.now());
+    final minutes = (remaining ~/ 60).toString().padLeft(2, '0');
+    final seconds = (remaining % 60).toString().padLeft(2, '0');
+    final finished =
+        timer.status == StudyTimerStatus.completed ||
+        timer.status == StudyTimerStatus.cancelled;
+    final running = timer.status == StudyTimerStatus.running;
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.78,
+      margin: const EdgeInsets.only(bottom: s6),
+      padding: const EdgeInsets.all(s12),
+      decoration: BoxDecoration(
+        color: primary50,
+        borderRadius: BorderRadius.circular(radius8),
+        border: Border.all(color: primary100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.timer_outlined,
+                size: iconMedium,
+                color: primary500,
+              ),
+              const SizedBox(width: s8),
+              Expanded(
+                child: Text(
+                  timer.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                '$minutes:$seconds',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: primary700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: s4),
+          Text(switch (timer.status) {
+            StudyTimerStatus.ready => '准备开始，离开 App 后不会提醒',
+            StudyTimerStatus.running => '正在计时，离开 App 后不会提醒',
+            StudyTimerStatus.paused => '已暂停',
+            StudyTimerStatus.completed => '计时完成',
+            StudyTimerStatus.cancelled => '已取消',
+          }, style: const TextStyle(fontSize: 12, color: textTertiary)),
+          if (!finished) ...[
+            const SizedBox(height: s10),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: running
+                      ? () => onPause?.call(timer.id)
+                      : () => onStart?.call(timer.id),
+                  icon: Icon(
+                    running ? Icons.pause : Icons.play_arrow,
+                    size: iconSmall,
+                  ),
+                  label: Text(running ? '暂停' : '开始'),
+                ),
+                const SizedBox(width: s8),
+                IconButton(
+                  tooltip: '结束',
+                  onPressed: () => onFinish?.call(timer.id),
+                  icon: const Icon(
+                    Icons.stop_circle_outlined,
+                    size: iconMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: '取消',
+                  onPressed: () => onCancel?.call(timer.id),
+                  icon: const Icon(Icons.close, size: iconMedium),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectGenerationFromToolCalls extends StatelessWidget {
+  final String toolCallsJson;
+  final ProjectGenerationController controller;
+
+  const _ProjectGenerationFromToolCalls({
+    required this.toolCallsJson,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    String? toolCallId;
+    try {
+      final calls = jsonDecode(toolCallsJson) as List<Object?>;
+      for (final call in calls) {
+        if (call is Map<String, Object?> &&
+            ((call['function'] as Map<String, Object?>?)?['name'] ==
+                'start_project_generation')) {
+          toolCallId = call['id'] as String?;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (toolCallId == null) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final session = controller.forToolCall(toolCallId!);
+        if (session == null) return const SizedBox.shrink();
+        return _ProjectGenerationCard(state: session.state);
+      },
+    );
+  }
+}
+
+class _ProjectGenerationCard extends StatelessWidget {
+  final ProjectGenerationState state;
+  const _ProjectGenerationCard({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final stages = const [
+      ProjectGenerationStage.searching,
+      ProjectGenerationStage.assessing,
+      ProjectGenerationStage.awaitingConfirmation,
+      ProjectGenerationStage.planning,
+      ProjectGenerationStage.validating,
+      ProjectGenerationStage.saving,
+    ];
+    final activeIndex = stages.indexOf(state.stage);
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.78,
+      margin: const EdgeInsets.only(bottom: s6),
+      padding: const EdgeInsets.all(s12),
+      decoration: BoxDecoration(
+        color: primary50,
+        borderRadius: BorderRadius.circular(radius8),
+        border: Border.all(color: primary100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome, size: iconMedium, color: primary500),
+              SizedBox(width: s8),
+              Text('项目生成', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: s8),
+          Text(state.status, style: const TextStyle(fontSize: 13, color: ink)),
+          const SizedBox(height: s8),
+          for (var index = 0; index < stages.length; index++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: s4),
+              child: Row(
+                children: [
+                  Icon(
+                    index < activeIndex
+                        ? Icons.check_circle
+                        : index == activeIndex
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 15,
+                    color: index <= activeIndex ? primary500 : textSecondary,
+                  ),
+                  const SizedBox(width: s6),
+                  Text(switch (stages[index]) {
+                    ProjectGenerationStage.searching => '资料检索',
+                    ProjectGenerationStage.assessing => '目标评估',
+                    ProjectGenerationStage.awaitingConfirmation => '等待确认',
+                    ProjectGenerationStage.planning => '计划生成',
+                    ProjectGenerationStage.validating => '结构校验',
+                    ProjectGenerationStage.saving => '保存项目',
+                    _ => '',
+                  }, style: const TextStyle(fontSize: 12, color: textTertiary)),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

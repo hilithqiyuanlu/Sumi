@@ -31,8 +31,12 @@ class ChatDatabase {
       dateKey: (r['date_key'] as String?) ?? '',
       title: (r['title'] as String?) ?? '',
       pinned: (r['pinned'] as int?) == 1,
-      createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse((r['updated_at'] as String?) ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse((r['created_at'] as String?) ?? '') ??
+          DateTime.now(),
+      updatedAt:
+          DateTime.tryParse((r['updated_at'] as String?) ?? '') ??
+          DateTime.now(),
     );
   }
 
@@ -81,33 +85,207 @@ class ChatDatabase {
       whereArgs: [conversationId],
       orderBy: 'created_at ASC',
     );
-    return rows.map((r) => ChatMessage(
-      id: r['id'] as String,
-      conversationId: (r['conversation_id'] as String?) ?? '',
-      role: (r['role'] as String?) ?? 'user',
-      content: (r['content'] as String?) ?? '',
-      createdAt: DateTime.tryParse((r['created_at'] as String?) ?? '') ?? DateTime.now(),
-      reasoningContent: r['reasoning_content'] as String?,
-      toolCallsJson: r['tool_calls_json'] as String?,
-      toolCallId: r['tool_call_id'] as String?,
-    )).toList();
+    return rows
+        .map(
+          (r) => ChatMessage(
+            id: r['id'] as String,
+            conversationId: (r['conversation_id'] as String?) ?? '',
+            role: (r['role'] as String?) ?? 'user',
+            content: (r['content'] as String?) ?? '',
+            createdAt:
+                DateTime.tryParse((r['created_at'] as String?) ?? '') ??
+                DateTime.now(),
+            reasoningContent: r['reasoning_content'] as String?,
+            toolCallsJson: r['tool_calls_json'] as String?,
+            toolCallId: r['tool_call_id'] as String?,
+          ),
+        )
+        .toList();
   }
 
   /// Loads persisted messages for rebuilding the local semantic index.
   Future<List<ChatMessage>> loadAllMessages() async {
     final db = await _db;
     final rows = await db.query('messages', orderBy: 'created_at ASC');
-    return rows.map((row) => ChatMessage(
-      id: row['id'] as String,
-      conversationId: (row['conversation_id'] as String?) ?? '',
-      role: (row['role'] as String?) ?? 'user',
-      content: (row['content'] as String?) ?? '',
-      createdAt: DateTime.tryParse((row['created_at'] as String?) ?? '') ?? DateTime.now(),
-      reasoningContent: row['reasoning_content'] as String?,
-      toolCallsJson: row['tool_calls_json'] as String?,
-      toolCallId: row['tool_call_id'] as String?,
-    )).toList(growable: false);
+    return rows
+        .map(
+          (row) => ChatMessage(
+            id: row['id'] as String,
+            conversationId: (row['conversation_id'] as String?) ?? '',
+            role: (row['role'] as String?) ?? 'user',
+            content: (row['content'] as String?) ?? '',
+            createdAt:
+                DateTime.tryParse((row['created_at'] as String?) ?? '') ??
+                DateTime.now(),
+            reasoningContent: row['reasoning_content'] as String?,
+            toolCallsJson: row['tool_calls_json'] as String?,
+            toolCallId: row['tool_call_id'] as String?,
+          ),
+        )
+        .toList(growable: false);
   }
+
+  /// Loads every persisted message in one calendar month, grouped by the
+  /// conversation's date at the caller level.
+  Future<List<MonthChatMessage>> loadMessagesForMonth(DateTime month) async {
+    final startOfMonth = DateTime(month.year, month.month);
+    final startOfNextMonth = DateTime(month.year, month.month + 1);
+    final db = await _db;
+    final rows = await db.rawQuery(
+      '''
+        SELECT
+          messages.id,
+          messages.conversation_id,
+          messages.role,
+          messages.content,
+          messages.created_at,
+          messages.reasoning_content,
+          messages.tool_calls_json,
+          messages.tool_call_id,
+          conversations.date_key
+        FROM messages
+        INNER JOIN conversations
+          ON conversations.id = messages.conversation_id
+        WHERE conversations.date_key >= ?
+          AND conversations.date_key < ?
+        ORDER BY conversations.date_key ASC, messages.created_at ASC
+      ''',
+      [_dateKey(startOfMonth), _dateKey(startOfNextMonth)],
+    );
+    return rows
+        .map(
+          (row) => MonthChatMessage(
+            date:
+                DateTime.tryParse(row['date_key'] as String? ?? '') ??
+                startOfMonth,
+            message: ChatMessage(
+              id: row['id'] as String,
+              conversationId: (row['conversation_id'] as String?) ?? '',
+              role: (row['role'] as String?) ?? 'user',
+              content: (row['content'] as String?) ?? '',
+              createdAt:
+                  DateTime.tryParse(row['created_at'] as String? ?? '') ??
+                  DateTime.now(),
+              reasoningContent: row['reasoning_content'] as String?,
+              toolCallsJson: row['tool_calls_json'] as String?,
+              toolCallId: row['tool_call_id'] as String?,
+            ),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  /// Searches persisted messages within one explicit calendar month.
+  Future<List<ChatSearchResult>> searchMessages({
+    required DateTime month,
+    required String query,
+    String role = 'user',
+    int limit = 50,
+  }) async {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.isEmpty) return const [];
+
+    final startOfMonth = DateTime(month.year, month.month);
+    final startOfNextMonth = DateTime(month.year, month.month + 1);
+    final db = await _db;
+    final rows = await db.rawQuery(
+      '''
+        SELECT
+          messages.id AS message_id,
+          messages.conversation_id,
+          messages.role,
+          messages.content,
+          messages.created_at,
+          conversations.date_key
+        FROM messages
+        INNER JOIN conversations
+          ON conversations.id = messages.conversation_id
+        WHERE messages.role = ?
+          AND conversations.date_key >= ?
+          AND conversations.date_key < ?
+          AND LOWER(messages.content) LIKE LOWER(?) ESCAPE '\\'
+        ORDER BY conversations.date_key DESC, messages.created_at DESC
+        LIMIT ?
+      ''',
+      [
+        role,
+        _dateKey(startOfMonth),
+        _dateKey(startOfNextMonth),
+        '%${_escapeLike(normalizedQuery)}%',
+        limit,
+      ],
+    );
+    return rows
+        .map(
+          (row) => ChatSearchResult(
+            messageId: row['message_id'] as String,
+            conversationId: row['conversation_id'] as String,
+            date:
+                DateTime.tryParse(row['date_key'] as String? ?? '') ??
+                startOfMonth,
+            content: (row['content'] as String?) ?? '',
+            createdAt:
+                DateTime.tryParse(row['created_at'] as String? ?? '') ??
+                DateTime.now(),
+            role: (row['role'] as String?) ?? role,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  /// Searches all persisted user messages across every calendar month.
+  /// Tool calls and assistant responses are excluded by the role filter.
+  Future<List<ChatSearchResult>> searchUserMessages({
+    required String query,
+    int limit = 50,
+  }) async {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.isEmpty) return const [];
+
+    final db = await _db;
+    final rows = await db.rawQuery(
+      '''
+        SELECT
+          messages.id AS message_id,
+          messages.conversation_id,
+          messages.role,
+          messages.content,
+          messages.created_at,
+          conversations.date_key
+        FROM messages
+        INNER JOIN conversations
+          ON conversations.id = messages.conversation_id
+        WHERE messages.role = 'user'
+          AND LOWER(messages.content) LIKE LOWER(?) ESCAPE '\\'
+        ORDER BY conversations.date_key DESC, messages.created_at DESC
+        LIMIT ?
+      ''',
+      ['%${_escapeLike(normalizedQuery)}%', limit],
+    );
+    return rows
+        .map(
+          (row) => ChatSearchResult(
+            messageId: row['message_id'] as String,
+            conversationId: row['conversation_id'] as String,
+            date: DateTime.tryParse(row['date_key'] as String? ?? '') ??
+                DateTime.now(),
+            content: (row['content'] as String?) ?? '',
+            createdAt:
+                DateTime.tryParse(row['created_at'] as String? ?? '') ??
+                DateTime.now(),
+            role: 'user',
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static String _escapeLike(String value) => value
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
+
+  static String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   /// 保存单条消息。
   Future<void> saveMessage(ChatMessage message) async {
@@ -122,8 +300,7 @@ class ChatDatabase {
         'reasoning_content': message.reasoningContent,
       if (message.toolCallsJson != null)
         'tool_calls_json': message.toolCallsJson,
-      if (message.toolCallId != null)
-        'tool_call_id': message.toolCallId,
+      if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
     });
   }
 
@@ -132,11 +309,7 @@ class ChatDatabase {
     if (ids.isEmpty) return;
     final db = await _db;
     final placeholders = ids.map((_) => '?').join(',');
-    await db.delete(
-      'messages',
-      where: 'id IN ($placeholders)',
-      whereArgs: ids,
-    );
+    await db.delete('messages', where: 'id IN ($placeholders)', whereArgs: ids);
   }
 
   /// 删除最后一条助手消息（用于重新生成）。
@@ -172,8 +345,7 @@ class ChatDatabase {
     final createdAt = assistantRows.first['created_at'] as String;
     await db.delete(
       'messages',
-      where:
-          'conversation_id = ? AND role = ? AND created_at >= ?',
+      where: 'conversation_id = ? AND role = ? AND created_at >= ?',
       whereArgs: [conversationId, 'tool', createdAt],
     );
   }
@@ -184,5 +356,4 @@ class ChatDatabase {
     await db.delete('messages');
     await db.delete('conversations');
   }
-
 }

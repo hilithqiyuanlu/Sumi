@@ -16,8 +16,11 @@ import '../calendar/month_view_sheet.dart';
 import '../chat/chat_bubble.dart';
 import '../chat/chat_input.dart';
 import '../todos/todo_chip_carousel.dart';
+import '../todos/split_confirm_sheet.dart';
 import 'settings_panel.dart';
 import '../memory/memory_center_page.dart';
+import '../projects/project_generation_page.dart';
+import '../tools/tools_page.dart';
 import 'side_drawer.dart';
 import 'suggestion_strip.dart';
 
@@ -45,6 +48,10 @@ class _HomePageState extends State<HomePage>
   bool _showScrollToBottom = false;
   DateTime? _lastSelectedDate;
   int _lastDataVersion = 0;
+  List<MonthChatMessage> _monthMessages = const [];
+  int _monthLoadRequest = 0;
+  bool _isLoadingMonthMessages = false;
+  DateTime? _loadedMonth;
   late final SumiStore _store;
   late ChatViewState _lastChatView;
 
@@ -72,28 +79,85 @@ class _HomePageState extends State<HomePage>
     _lastSelectedDate = _store.selectedDate;
     _lastChatView = _store.chatView.value;
     _store.chatView.addListener(_onChatViewChanged);
+    _store.projectGenerationController.addListener(_onProjectGenerationChanged);
     _generateSuggestions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadMonthMessages(_store.selectedDate);
+    });
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _monthLoadRequest++;
     WidgetsBinding.instance.removeObserver(this);
     _store.chatView.removeListener(_onChatViewChanged);
+    _store.projectGenerationController.removeListener(
+      _onProjectGenerationChanged,
+    );
     _scrollController.dispose();
     _monthController.dispose();
     super.dispose();
   }
 
   void _onChatViewChanged() {
+    final previous = _lastChatView;
     final next = _store.chatView.value;
     if (next.messageSentSequence != _lastChatView.messageSentSequence) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _scrollUserMessageToTop(),
       );
     }
-    if (_lastChatView.isStreaming && !next.isStreaming) H.medium();
+    if (previous.isStreaming && !next.isStreaming) {
+      H.medium();
+      _loadMonthMessages(_store.selectedDate, force: true);
+    }
     _lastChatView = next;
+  }
+
+  Future<void> _loadMonthMessages(DateTime month, {bool force = false}) async {
+    if (!force && _loadedMonth != null && _isSameMonth(_loadedMonth!, month)) {
+      return;
+    }
+    final request = ++_monthLoadRequest;
+    if (mounted) {
+      setState(() {
+        _isLoadingMonthMessages = true;
+        _monthMessages = const [];
+      });
+    }
+    try {
+      final messages = await _store.loadMonthChatMessages(month: month);
+      if (!mounted || request != _monthLoadRequest) return;
+      setState(() {
+        _monthMessages = messages;
+        _isLoadingMonthMessages = false;
+        _loadedMonth = DateTime(month.year, month.month);
+      });
+    } catch (_) {
+      if (!mounted || request != _monthLoadRequest) return;
+      setState(() {
+        _monthMessages = const [];
+        _isLoadingMonthMessages = false;
+      });
+    }
+  }
+
+  bool _isSameMonth(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month;
+
+  void _onProjectGenerationChanged() {
+    final session = _store.projectGenerationController.takePendingNavigation();
+    if (session == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProjectGenerationPage(session: session),
+        ),
+      );
+    });
   }
 
   // 07 轮：App 生命周期监听
@@ -144,9 +208,7 @@ class _HomePageState extends State<HomePage>
       final memory = store.memoryService;
       if (memory == null) return;
       final stats = await store.legacyRealtimeStats();
-      final generated = await memory.createSuggestions(
-        realtimeStats: stats,
-      );
+      final generated = await memory.createSuggestions(realtimeStats: stats);
       if (generated.isNotEmpty && mounted) {
         store.cachedSuggestions = generated;
         store.lastSuggestionTime = DateTime.now();
@@ -203,14 +265,30 @@ class _HomePageState extends State<HomePage>
 
   void _openMemory() {
     _closeDrawer();
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const MemoryCenterPage()));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MemoryCenterPage()),
+    );
   }
+
+  void _openTools() {
+    _closeDrawer();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ToolsPage()),
+    );
+  }
+
+  Future<void> _openSearchResult(ChatSearchResult result) =>
+      SumiScope.read(context).selectDate(result.date);
 
   void _handleSuggestionSelect(MemorySuggestion suggestion) {
     final result = _handleChatSend(suggestion.text);
     if (result == ChatSendResult.accepted) {
       final store = SumiScope.read(context);
-      store.memoryService?.recordSelected(suggestion).then((_) => store.scheduleLocalIndex());
+      store.memoryService
+          ?.recordSelected(suggestion)
+          .then((_) => store.scheduleLocalIndex());
     }
   }
 
@@ -255,7 +333,9 @@ class _HomePageState extends State<HomePage>
   Future<void> _handleAddTodo(String title) async {
     final store = SumiScope.read(context);
     if (title.length > SumiStore.todoTitleMaxLength) {
-      await store.splitAndAddTodo(title);
+      final result = await store.splitAndAddTodo(title);
+      if (!mounted || result == null || !result.split) return;
+      await showSplitConfirmSheet(context, store, result.items);
       return;
     } else {
       final todo = await store.addUserTodo(title);
@@ -327,6 +407,7 @@ class _HomePageState extends State<HomePage>
       _showScrollToBottom = false; // 日期切换时重置悬浮按钮状态
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateSuggestions();
+        _loadMonthMessages(selectedDate);
       });
     }
     _lastSelectedDate ??= selectedDate;
@@ -346,128 +427,136 @@ class _HomePageState extends State<HomePage>
       body: Stack(
         children: [
           // 主内容
-          GestureDetector(
-            onTap: _dismissKeyboard,
-            behavior: HitTestBehavior.translucent,
-            child: Column(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragUpdate: _onMonthDragUpdate,
-                  onVerticalDragEnd: _onMonthDragEnd,
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      left: s16,
-                      right: s16,
-                      top: topPadding + s16,
-                      bottom: s8,
-                    ),
-                    child: DateStrip(onExpandMonth: _openMonthView),
+          Column(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: _onMonthDragUpdate,
+                onVerticalDragEnd: _onMonthDragEnd,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: s16,
+                    right: s16,
+                    top: topPadding + s16,
+                    bottom: s8,
                   ),
+                  child: DateStrip(onExpandMonth: _openMonthView),
                 ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: Builder(
-                    builder: (_) {
-                      final sel = dateKey(dateOnly(store.selectedDate));
-                      final todayKey = dateKey(dateOnly(DateTime.now()));
-                      final hasDateTodos = store.todoItems.any(
-                        (t) => TodoItem.belongsToDate(t, sel, todayKey),
-                      );
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (hasDateTodos) const SizedBox(height: s8),
-                          TodoChipCarousel(),
-                        ],
-                      );
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: Builder(
+                  builder: (_) {
+                    final sel = dateKey(dateOnly(store.selectedDate));
+                    final todayKey = dateKey(dateOnly(DateTime.now()));
+                    final hasDateTodos = store.todoItems.any(
+                      (t) => TodoItem.belongsToDate(t, sel, todayKey),
+                    );
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasDateTodos) const SizedBox(height: s8),
+                        TodoChipCarousel(),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              Expanded(
+                child: ValueListenableBuilder<ChatViewState>(
+                  valueListenable: store.chatView,
+                  builder: (context, chat, _) => GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onDoubleTap: () {
+                      final store = SumiScope.read(context);
+                      final today = dateOnly(DateTime.now());
+                      if (!isSameDate(store.selectedDate, today)) {
+                        store.selectDate(today);
+                      }
                     },
-                  ),
-                ),
-                Expanded(
-                  child: ValueListenableBuilder<ChatViewState>(
-                    valueListenable: store.chatView,
-                    builder: (context, chat, _) => GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onDoubleTap: () {
-                        final store = SumiScope.read(context);
-                        final today = dateOnly(DateTime.now());
-                        if (!isSameDate(store.selectedDate, today)) {
-                          store.selectDate(today);
-                        }
-                      },
-                      child: Stack(
-                        children: [
-                          if (chat.messages.isEmpty)
-                            _buildEmptyState(store, userName)
-                          else
-                            _buildMessageList(chat, store),
-                          // 顶部渐变遮罩 —— 衔接日历导航栏
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            height: 24,
-                            child: IgnorePointer(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      paper,
-                                      paper.withValues(alpha: 0.0),
-                                    ],
+                    child: Stack(
+                      children: [
+                        if (_visibleMonthMessages(chat, store).isEmpty)
+                          _isLoadingMonthMessages
+                              ? const Center(
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: primary400,
+                                    ),
                                   ),
+                                )
+                              : _buildEmptyState(store, userName)
+                        else
+                          _buildMonthMessageList(
+                            chat,
+                            store,
+                            _visibleMonthMessages(chat, store),
+                          ),
+                        // 顶部渐变遮罩 —— 衔接日历导航栏
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: 24,
+                          child: IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [paper, paper.withValues(alpha: 0.0)],
                                 ),
                               ),
                             ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedOpacity(
+                opacity: isPast ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 320),
+                curve: isPast ? Curves.easeIn : Curves.easeOut,
+                child: ClipRect(
+                  child: AnimatedAlign(
+                    alignment: Alignment.topCenter,
+                    heightFactor: isPast ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    child: ValueListenableBuilder<ChatViewState>(
+                      valueListenable: store.chatView,
+                      builder: (context, chat, _) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SuggestionStrip(
+                            suggestions: _suggestions,
+                            onSelect: _handleSuggestionSelect,
+                            onFeedback: _handleSuggestionFeedback,
+                            enabled: !chat.isStreaming,
+                          ),
+                          ChatInput(
+                            mode: _inputMode,
+                            isFutureDate: isFuture,
+                            onSend: _handleChatSend,
+                            onAddTodo: _handleAddTodo,
+                            onModeChanged: _switchMode,
+                            enabled: !chat.isStreaming,
+                            voiceService: store.voiceService,
                           ),
                         ],
                       ),
                     ),
                   ),
                 ),
-                AnimatedOpacity(
-                  opacity: isPast ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 320),
-                  curve: isPast ? Curves.easeIn : Curves.easeOut,
-                  child: ClipRect(
-                    child: AnimatedAlign(
-                      alignment: Alignment.topCenter,
-                      heightFactor: isPast ? 0.0 : 1.0,
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic,
-                      child: ValueListenableBuilder<ChatViewState>(
-                        valueListenable: store.chatView,
-                        builder: (context, chat, _) => Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SuggestionStrip(
-                              suggestions: _suggestions,
-                              onSelect: _handleSuggestionSelect,
-                              onFeedback: _handleSuggestionFeedback,
-                              enabled: !chat.isStreaming,
-                            ),
-                            ChatInput(
-                              mode: _inputMode,
-                              isFutureDate: isFuture,
-                              onSend: _handleChatSend,
-                              onAddTodo: _handleAddTodo,
-                              onModeChanged: _switchMode,
-                              enabled: !chat.isStreaming,
-                              voiceService: store.voiceService,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           // 滚动到底部按钮（位于月视图遮罩之下）
           _buildScrollToBottomButton(bottomPadding),
@@ -505,6 +594,8 @@ class _HomePageState extends State<HomePage>
             onClose: _closeDrawer,
             onOpenSettings: _openSettings,
             onOpenMemory: _openMemory,
+            onOpenTools: _openTools,
+            onOpenSearchResult: _openSearchResult,
           ),
           // 左边缘手势区：仅覆盖内容区域，避开顶部 DateStrip 和底部输入栏
           _buildGestureArea(topPadding, bottomPadding),
@@ -521,9 +612,9 @@ class _HomePageState extends State<HomePage>
 
     final String title;
     if (isPast) {
-      title = '这一天没有对话';
+      title = '这个月没有对话';
     } else if (isFuture) {
-      title = '前方的区域还没有开放，过段时间再来探索吧';
+      title = '这个月还没有对话';
     } else if (_inputMode == InputMode.todo) {
       title = userName.isEmpty
           ? '嗨，今天要和 Sumi 一起做点什么？'
@@ -556,9 +647,119 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildMessageList(ChatViewState chat, SumiStore store) {
-    final messages = chat.messages;
-    final filtered = messages.where((m) => m.role != 'tool').toList();
+  List<MonthChatMessage> _visibleMonthMessages(
+    ChatViewState chat,
+    SumiStore store,
+  ) {
+    final currentConversationId = chat.conversationId;
+    final messages = _monthMessages
+        .where((entry) => entry.message.conversationId != currentConversationId)
+        .toList(growable: true);
+    if (!chat.isLoadingConversation && currentConversationId != null) {
+      messages.addAll(
+        chat.messages.map(
+          (message) => MonthChatMessage(
+            date: dateOnly(store.selectedDate),
+            message: message,
+          ),
+        ),
+      );
+    }
+    messages.removeWhere(
+      (entry) =>
+          entry.message.role != 'user' && entry.message.role != 'assistant',
+    );
+    messages.sort((a, b) {
+      final dateCompare = a.date.compareTo(b.date);
+      if (dateCompare != 0) return dateCompare;
+      return a.message.createdAt.compareTo(b.message.createdAt);
+    });
+    return messages;
+  }
+
+  Widget _buildMonthMessageList(
+    ChatViewState chat,
+    SumiStore store,
+    List<MonthChatMessage> messages,
+  ) {
+    final days = <_MonthMessageDay>[];
+    for (final entry in messages) {
+      if (days.isEmpty || !isSameDate(days.last.date, entry.date)) {
+        days.add(_MonthMessageDay(date: dateOnly(entry.date)));
+      }
+      days.last.messages.add(entry.message);
+    }
+
+    String? streamingAssistantId;
+    if (chat.isStreaming) {
+      for (final message in chat.messages.reversed) {
+        if (message.role == 'assistant') {
+          streamingAssistantId = message.id;
+          break;
+        }
+      }
+    }
+
+    String? latestUserMessageId;
+    if (!chat.isStreaming) {
+      for (final message in chat.messages.reversed) {
+        if (message.role == 'user') {
+          latestUserMessageId = message.id;
+          break;
+        }
+      }
+    }
+
+    final children = <Widget>[];
+    for (final day in days) {
+      children.add(_buildMonthDayHeader(day.date, store));
+      for (final message in day.messages) {
+        final originalIndex = chat.messages.indexWhere(
+          (current) => current.id == message.id,
+        );
+        final isCurrentConversation =
+            message.conversationId == chat.conversationId;
+        children.add(
+          ChatBubble(
+            content: message.content,
+            isUser: message.role == 'user',
+            isStreaming: message.id == streamingAssistantId,
+            timestamp: message.role == 'user' ? message.createdAt : null,
+            activityLabel: message.id == streamingAssistantId
+                ? chat.activityLabel
+                : null,
+            toolCallsJson: message.toolCallsJson,
+            timerController: store.timerController,
+            onStartTimer: store.startStudyTimer,
+            onPauseTimer: store.pauseStudyTimer,
+            onFinishTimer: store.finishStudyTimer,
+            onCancelTimer: store.cancelStudyTimer,
+            projectGenerationController: store.projectGenerationController,
+            onDelete:
+                message.role == 'user' &&
+                    isCurrentConversation &&
+                    originalIndex >= 0
+                ? () => store.deleteMessagePair(originalIndex)
+                : null,
+            onEdit:
+                message.role == 'user' &&
+                    isCurrentConversation &&
+                    message.id == latestUserMessageId &&
+                    originalIndex >= 0
+                ? (content) => store.editAndResendMessage(
+                    originalIndex,
+                    content,
+                    currentGreeting: _chatGreeting,
+                  )
+                : null,
+          ),
+        );
+      }
+    }
+    if (chat.failure != null) {
+      children.add(_buildChatFailure(chat.failure!, store));
+    }
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
       switchInCurve: Curves.easeOut,
@@ -566,36 +767,50 @@ class _HomePageState extends State<HomePage>
       transitionBuilder: (child, animation) {
         return FadeTransition(opacity: animation, child: child);
       },
-      child: ListView.builder(
-        key: ValueKey(chat.conversationId),
+      child: ListView(
+        key: ValueKey(
+          'month-${store.selectedDate.year}-${store.selectedDate.month}',
+        ),
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: s16),
-        itemCount: filtered.length + (chat.failure == null ? 0 : 1),
-        itemBuilder: (context, index) {
-          if (index == filtered.length) {
-            final failure = chat.failure!;
-            return _buildChatFailure(failure, store);
-          }
-          final msg = filtered[index];
-          final isLastAi =
-              msg.role == 'assistant' && index == filtered.length - 1;
-          // 找到该消息在原始 messages 列表中的索引（用于删除）
-          final origIndex = messages.indexOf(msg);
+        children: children,
+      ),
+    );
+  }
 
-          return ChatBubble(
-            content: msg.content,
-            isUser: msg.role == 'user',
-            isStreaming: isLastAi && chat.isStreaming,
-            timestamp: msg.role == 'user' ? msg.createdAt : null,
-            activityLabel: isLastAi && chat.isStreaming
-                ? chat.activityLabel
-                : null,
-            toolCallsJson: msg.toolCallsJson,
-            onDelete: msg.role == 'user'
-                ? () => store.deleteMessagePair(origIndex)
-                : null,
-          );
+  Widget _buildMonthDayHeader(DateTime date, SumiStore store) {
+    const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+    final selected = isSameDate(date, store.selectedDate);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(s16, s12, s16, s6),
+      child: InkWell(
+        onTap: () {
+          H.light();
+          store.selectDate(date);
         },
+        borderRadius: BorderRadius.circular(radius8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: s8, vertical: s6),
+          child: Row(
+            children: [
+              Text(
+                '${date.month}月${date.day}日 周${weekdays[date.weekday - 1]}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? primary500 : textTertiary,
+                ),
+              ),
+              const SizedBox(width: s6),
+              Expanded(
+                child: Container(
+                  height: 1,
+                  color: selected ? primary100 : line,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -696,4 +911,11 @@ class _HomePageState extends State<HomePage>
       ),
     );
   }
+}
+
+class _MonthMessageDay {
+  final DateTime date;
+  final List<ChatMessage> messages = [];
+
+  _MonthMessageDay({required this.date});
 }

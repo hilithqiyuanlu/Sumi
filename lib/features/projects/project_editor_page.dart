@@ -25,17 +25,50 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
   late int _timeConstraint;
 
   static const _cycleLabels = [
-    '1 个月', '2 个月', '3 个月', '4 个月', '5 个月',
-    '6 个月', '7 个月', '8 个月', '9 个月', '10 个月', '11 个月',
-    '1 年', '1.5 年', '2 年', '1 坤年',
+    '1 个月',
+    '2 个月',
+    '3 个月',
+    '4 个月',
+    '5 个月',
+    '6 个月',
+    '7 个月',
+    '8 个月',
+    '9 个月',
+    '10 个月',
+    '11 个月',
+    '1 年',
+    '1.5 年',
+    '2 年',
+    '1 坤年',
   ];
   static const _cycleValues = [
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24, 30,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    18,
+    24,
+    30,
   ];
 
   static const _hourLabels = [
-    '6 小时', '10 小时', '15 小时', '20 小时',
-    '30 小时', '40 小时', '50 小时', '60 小时', '70 小时',
+    '6 小时',
+    '10 小时',
+    '15 小时',
+    '20 小时',
+    '30 小时',
+    '40 小时',
+    '50 小时',
+    '60 小时',
+    '70 小时',
   ];
   static const _hourValues = [6, 10, 15, 20, 30, 40, 50, 60, 70];
 
@@ -46,10 +79,14 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
     _levelCtrl = TextEditingController();
     _color = SumiScope.read(context).nextAvailableColor();
     _cycleMonths = 3;
-    if (!_cycleValues.contains(_cycleMonths)) _cycleMonths = _cycleValues.first;
+    if (!_cycleValues.contains(_cycleMonths)) {
+      _cycleMonths = _cycleValues.first;
+    }
 
     _timeConstraint = 0;
-    if (!_hourValues.contains(_timeConstraint)) _timeConstraint = _hourValues.first;
+    if (!_hourValues.contains(_timeConstraint)) {
+      _timeConstraint = _hourValues.first;
+    }
 
     // 监听目标输入以更新按钮状态
     _goalCtrl.addListener(() => setState(() {}));
@@ -87,9 +124,10 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
       timeConstraint: _timeConstraint,
       color: _color,
     );
+    final session = store.createProjectGenerationSession(request);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ProjectGenerationPage(request: request),
+        builder: (_) => ProjectGenerationPage(session: session),
       ),
     );
   }
@@ -107,8 +145,10 @@ class _ProjectEditorPageState extends State<ProjectEditorPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 颜色选择
-              const Text('颜色',
-                  style: TextStyle(fontSize: 13, color: textTertiary)),
+              const Text(
+                '颜色',
+                style: TextStyle(fontSize: 13, color: textTertiary),
+              ),
               const SizedBox(height: s8),
               Wrap(
                 spacing: s6,
@@ -249,8 +289,10 @@ class _PickerColumnState<T> extends State<_PickerColumn<T>> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(widget.label,
-            style: const TextStyle(fontSize: 13, color: textTertiary)),
+        Text(
+          widget.label,
+          style: const TextStyle(fontSize: 13, color: textTertiary),
+        ),
         const SizedBox(height: s6),
         SizedBox(
           height: 120,
@@ -288,7 +330,9 @@ class _PickerColumnState<T> extends State<_PickerColumn<T>> {
                         label,
                         style: TextStyle(
                           fontSize: selected ? 17 : 15,
-                          fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w400,
                           color: selected ? mintDeep : textTertiary,
                         ),
                       ),

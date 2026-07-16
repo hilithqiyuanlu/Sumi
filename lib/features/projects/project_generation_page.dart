@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/models.dart';
 import '../../services/project_generation.dart';
@@ -9,43 +10,45 @@ import '../../widgets/score_bar.dart';
 import '../../widgets/verdict_badge.dart';
 
 class ProjectGenerationPage extends StatefulWidget {
-  final ProjectGenerationRequest request;
+  final ProjectGenerationRequest? request;
+  final ProjectGenerationSession? session;
 
-  const ProjectGenerationPage({required this.request, super.key});
+  const ProjectGenerationPage({this.request, this.session, super.key})
+    : assert(request != null || session != null);
 
   @override
   State<ProjectGenerationPage> createState() => _ProjectGenerationPageState();
 }
 
 class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
-  late final ProjectGenerationCoordinator _coordinator;
+  late final ProjectGenerationSession _session;
+  ProjectGenerationCoordinator get _coordinator => _session.coordinator;
+  late final bool _ownsSession;
 
   @override
   void initState() {
     super.initState();
-    final store = SumiScope.read(context);
-    _coordinator = ProjectGenerationCoordinator(
-      request: widget.request,
-      router: store.modelRouter!,
-      commit: store.commitProjectPlan,
-    );
-    _coordinator.start();
+    _ownsSession = widget.session == null;
+    _session =
+        widget.session ??
+        SumiScope.read(context).createProjectGenerationSession(widget.request!);
+    unawaited(_session.start());
   }
 
   @override
   void dispose() {
-    _coordinator.dispose();
+    if (_ownsSession) _session.disposeSession();
     super.dispose();
   }
 
   bool _isRunning(ProjectGenerationStage stage) => switch (stage) {
-        ProjectGenerationStage.searching ||
-        ProjectGenerationStage.assessing ||
-        ProjectGenerationStage.planning ||
-        ProjectGenerationStage.validating ||
-        ProjectGenerationStage.saving => true,
-        _ => false,
-      };
+    ProjectGenerationStage.searching ||
+    ProjectGenerationStage.assessing ||
+    ProjectGenerationStage.planning ||
+    ProjectGenerationStage.validating ||
+    ProjectGenerationStage.saving => true,
+    _ => false,
+  };
 
   Future<void> _handleBack() async {
     final state = _coordinator.state.value;
@@ -89,16 +92,6 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
             appBar: isCompleted
                 ? null
                 : AppBar(
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    scrolledUnderElevation: 0,
-                    surfaceTintColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    systemOverlayStyle: const SystemUiOverlayStyle(
-                      statusBarColor: Colors.transparent,
-                      statusBarIconBrightness: Brightness.dark,
-                      statusBarBrightness: Brightness.light,
-                    ),
                     leading: IconButton(
                       onPressed: _handleBack,
                       icon: const Icon(Icons.arrow_back),
@@ -107,16 +100,19 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
                   ),
             body: SafeArea(
               top: false,
-              child: Builder(builder: (_) {
-                if (state.stage == ProjectGenerationStage.awaitingConfirmation &&
-                    state.assessment != null) {
-                  return _buildAssessment(state.assessment!, state);
-                }
-                if (state.stage == ProjectGenerationStage.completed) {
-                  return _buildCompleted(state);
-                }
-                return _buildProgress(state);
-              }),
+              child: Builder(
+                builder: (_) {
+                  if (state.stage ==
+                          ProjectGenerationStage.awaitingConfirmation &&
+                      state.assessment != null) {
+                    return _buildAssessment(state.assessment!, state);
+                  }
+                  if (state.stage == ProjectGenerationStage.completed) {
+                    return _buildCompleted(state);
+                  }
+                  return _buildProgress(state);
+                },
+              ),
             ),
           );
         },
@@ -125,8 +121,8 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
   }
 
   Widget _buildProgress(ProjectGenerationState state) {
-    final waitingLong = state.elapsed >= const Duration(seconds: 15) &&
-        _isRunning(state.stage);
+    final waitingLong =
+        state.elapsed >= const Duration(seconds: 15) && _isRunning(state.stage);
     return Padding(
       padding: const EdgeInsets.fromLTRB(s24, s24, s24, s20),
       child: Column(
@@ -214,15 +210,23 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
                 ScoreBar(label: '可衡量性', score: assessment.measurability),
                 if (assessment.concerns.isNotEmpty) ...[
                   const SizedBox(height: s20),
-                  const Text('需要注意', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  const Text(
+                    '需要注意',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: s8),
                   ...assessment.concerns.map((item) => _InfoLine(text: item)),
                 ],
                 if (assessment.suggestions.isNotEmpty) ...[
                   const SizedBox(height: s20),
-                  const Text('调整建议', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  const Text(
+                    '调整建议',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: s8),
-                  ...assessment.suggestions.map((item) => _InfoLine(text: item)),
+                  ...assessment.suggestions.map(
+                    (item) => _InfoLine(text: item),
+                  ),
                 ],
               ],
             ),
@@ -263,12 +267,19 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
           children: [
             const Icon(Icons.check_circle, size: 52, color: primary500),
             const SizedBox(height: s16),
-            const Text('计划已生成', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+            const Text(
+              '计划已生成',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: s6),
-            Text('总用时 ${state.elapsed.inSeconds} 秒', style: const TextStyle(color: textTertiary)),
+            Text(
+              '总用时 ${state.elapsed.inSeconds} 秒',
+              style: const TextStyle(color: textTertiary),
+            ),
             const SizedBox(height: s24),
             FilledButton(
-              onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+              onPressed: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
               child: const Text('查看项目'),
             ),
           ],
@@ -301,20 +312,33 @@ class _StageTimeline extends StatelessWidget {
     return Column(
       children: List.generate(stages.length, (index) {
         final done = current >= 0 && index < current;
-        final active = index == current ||
+        final active =
+            index == current ||
             (state.stage == ProjectGenerationStage.failed &&
-                index == stages.indexWhere((item) => item.$1 ==
-                    (state.assessment == null
-                        ? ProjectGenerationStage.assessing
-                        : ProjectGenerationStage.planning)));
+                index ==
+                    stages.indexWhere(
+                      (item) =>
+                          item.$1 ==
+                          (state.assessment == null
+                              ? ProjectGenerationStage.assessing
+                              : ProjectGenerationStage.planning),
+                    ));
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: s6),
           child: Row(
             children: [
               Icon(
-                done ? Icons.check_circle : active ? Icons.radio_button_checked : Icons.circle_outlined,
+                done
+                    ? Icons.check_circle
+                    : active
+                    ? Icons.radio_button_checked
+                    : Icons.circle_outlined,
                 size: 18,
-                color: done ? primary500 : active ? mintDeep : textTertiary,
+                color: done
+                    ? primary500
+                    : active
+                    ? mintDeep
+                    : textTertiary,
               ),
               const SizedBox(width: s10),
               Text(
@@ -350,7 +374,16 @@ class _InfoLine extends StatelessWidget {
             child: Icon(Icons.circle, size: 5, color: textTertiary),
           ),
           const SizedBox(width: s8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13, height: 1.45, color: textSecondary))),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.45,
+                color: textSecondary,
+              ),
+            ),
+          ),
         ],
       ),
     );

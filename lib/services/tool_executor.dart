@@ -10,6 +10,8 @@ class ToolExecutor {
   final MemoryService memoryService;
   final SignalDatabase signalDatabase;
   final String Function() currentUserMessage;
+  final String? Function() currentConversationId;
+  final bool Function(String name) isToolEnabled;
   final String Function({String? filter}) readTodos;
   final Future<void> Function({
     required String title,
@@ -18,18 +20,39 @@ class ToolExecutor {
     String? body,
   })
   writeTodo;
+  final Future<String> Function({
+    required String toolCallId,
+    required String conversationId,
+    required String title,
+    required int minutes,
+  })
+  createStudyTimer;
+  final Future<String> Function({
+    required String toolCallId,
+    required String conversationId,
+    required String goal,
+    required String level,
+    required int cycleMonths,
+    required int timeConstraint,
+  })
+  startProjectGeneration;
 
   ToolExecutor({
     this.searchService,
     required this.memoryService,
     required this.signalDatabase,
     required this.currentUserMessage,
+    required this.currentConversationId,
+    required this.isToolEnabled,
     required this.readTodos,
     required this.writeTodo,
+    required this.createStudyTimer,
+    required this.startProjectGeneration,
   });
 
   /// 执行单个 tool call，返回字符串结果（作为 tool role 消息的 content）。
   Future<String> execute(ToolCall call) async {
+    if (!isToolEnabled(call.name)) return '工具已关闭，无法执行。';
     switch (call.name) {
       case 'search_web':
         return _searchWeb(call.arguments);
@@ -41,8 +64,48 @@ class ToolExecutor {
         return await _writeTodo(call.arguments);
       case 'read_signals':
         return await _readSignals(call.arguments);
+      case 'create_study_timer':
+        return _createStudyTimer(call);
+      case 'start_project_generation':
+        return _startProjectGeneration(call);
       default:
         return '未知工具：${call.name}';
+    }
+  }
+
+  Future<String> _startProjectGeneration(ToolCall call) async {
+    final conversationId = currentConversationId();
+    if (conversationId == null || conversationId.isEmpty) {
+      return '启动项目生成失败：当前对话不可用。';
+    }
+    try {
+      return await startProjectGeneration(
+        toolCallId: call.id,
+        conversationId: conversationId,
+        goal: call.arguments['goal'] as String,
+        level: call.arguments['level'] as String,
+        cycleMonths: call.arguments['cycleMonths'] as int,
+        timeConstraint: call.arguments['timeConstraint'] as int,
+      );
+    } catch (error) {
+      return '启动项目生成失败：$error';
+    }
+  }
+
+  Future<String> _createStudyTimer(ToolCall call) async {
+    final conversationId = currentConversationId();
+    if (conversationId == null || conversationId.isEmpty) {
+      return '创建学习计时器失败：当前对话不可用。';
+    }
+    try {
+      return await createStudyTimer(
+        toolCallId: call.id,
+        conversationId: conversationId,
+        title: (call.arguments['title'] as String?)?.trim() ?? '',
+        minutes: call.arguments['minutes'] as int? ?? 0,
+      );
+    } catch (error) {
+      return '创建学习计时器失败：$error';
     }
   }
 

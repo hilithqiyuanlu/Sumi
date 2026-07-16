@@ -8,19 +8,22 @@ import 'sumi_scope.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
-  await runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-    final store = await SumiStore.create();
+      final store = await SumiStore.create();
 
-    FlutterError.onError = (details) {
-      debugPrint('FlutterError: ${details.exceptionAsString()}');
-    };
+      FlutterError.onError = (details) {
+        debugPrint('FlutterError: ${details.exceptionAsString()}');
+      };
 
-    runApp(SumiApp(store: store));
-  }, (error, stack) {
-    debugPrint('Uncaught error: $error\n$stack');
-  });
+      runApp(SumiApp(store: store));
+    },
+    (error, stack) {
+      debugPrint('Uncaught error: $error\n$stack');
+    },
+  );
 }
 
 class SumiApp extends StatefulWidget {
@@ -40,6 +43,7 @@ class _SumiAppState extends State<SumiApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    unawaited(widget.store.handleAppLifecycle(state));
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {

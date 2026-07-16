@@ -83,6 +83,7 @@ class _Chat implements ChatCapability {
     bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
+    Set<String>? enabledTools,
   }) {
     calls++;
     return events();

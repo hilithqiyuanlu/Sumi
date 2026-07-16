@@ -10,36 +10,37 @@ import 'package:sumi/services/model_router.dart';
 import 'package:sumi/services/project_generation.dart';
 
 http.Response _assessmentResponse() => http.Response(
-      jsonEncode({
-        'choices': [
-          {
-            'message': {
-              'content': jsonEncode({
-                'clarity': 0.8,
-                'feasibility': 0.8,
-                'challengeFit': 0.7,
-                'decomposability': 0.8,
-                'timeRealism': 0.7,
-                'motivationPotential': 0.7,
-                'resourceAccess': 0.9,
-                'measurability': 0.8,
-                'verdict': 'a',
-                'concerns': <String>[],
-                'suggestions': <String>[],
-                'goalSummary': '学习测试',
-                'domainSummary': '测试领域资料',
-              }),
-            },
-          },
-        ],
-      }),
-      200,
-      headers: const {'content-type': 'application/json; charset=utf-8'},
-    );
+  jsonEncode({
+    'choices': [
+      {
+        'message': {
+          'content': jsonEncode({
+            'clarity': 0.8,
+            'feasibility': 0.8,
+            'challengeFit': 0.7,
+            'decomposability': 0.8,
+            'timeRealism': 0.7,
+            'motivationPotential': 0.7,
+            'resourceAccess': 0.9,
+            'measurability': 0.8,
+            'verdict': 'a',
+            'concerns': <String>[],
+            'suggestions': <String>[],
+            'goalSummary': '学习测试',
+            'domainSummary': '测试领域资料',
+          }),
+        },
+      },
+    ],
+  }),
+  200,
+  headers: const {'content-type': 'application/json; charset=utf-8'},
+);
 
 String _planJson() {
   final now = DateTime.now();
-  final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  final date =
+      '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   return jsonEncode({
     'monthPlans': [
       {
@@ -55,25 +56,25 @@ String _planJson() {
 }
 
 http.Response _sse(String content) => http.Response(
-      'data: ${jsonEncode({
-        'choices': [
-          {
-            'delta': {'content': content},
-          },
-        ],
-      })}\n\ndata: [DONE]\n\n',
-      200,
-      headers: const {'content-type': 'text/event-stream; charset=utf-8'},
-    );
+  'data: ${jsonEncode({
+    'choices': [
+      {
+        'delta': {'content': content},
+      },
+    ],
+  })}\n\ndata: [DONE]\n\n',
+  200,
+  headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+);
 
 ProjectGenerationRequest _request() => const ProjectGenerationRequest(
-      projectId: 'project-new',
-      goal: '学习测试技术',
-      level: '零基础',
-      cycleMonths: 1,
-      timeConstraint: 6,
-      color: ProjectColor.mint,
-    );
+  projectId: 'project-new',
+  goal: '学习测试技术',
+  level: '零基础',
+  cycleMonths: 1,
+  timeConstraint: 6,
+  color: ProjectColor.mint,
+);
 
 void main() {
   test('统一流程按真实阶段评估、确认、生成、校验和提交', () async {
@@ -97,10 +98,15 @@ void main() {
     );
     addTearDown(coordinator.dispose);
     final stages = <ProjectGenerationStage>[];
-    coordinator.state.addListener(() => stages.add(coordinator.state.value.stage));
+    coordinator.state.addListener(
+      () => stages.add(coordinator.state.value.stage),
+    );
 
     await coordinator.start();
-    expect(coordinator.state.value.stage, ProjectGenerationStage.awaitingConfirmation);
+    expect(
+      coordinator.state.value.stage,
+      ProjectGenerationStage.awaitingConfirmation,
+    );
     expect(coordinator.state.value.searchSkipped, isTrue);
 
     await coordinator.continueWithPlan();
@@ -142,7 +148,9 @@ void main() {
     );
     addTearDown(coordinator.dispose);
     final stages = <ProjectGenerationStage>[];
-    coordinator.state.addListener(() => stages.add(coordinator.state.value.stage));
+    coordinator.state.addListener(
+      () => stages.add(coordinator.state.value.stage),
+    );
 
     await coordinator.start();
     await coordinator.continueWithPlan();
@@ -150,6 +158,31 @@ void main() {
     expect(coordinator.state.value.stage, ProjectGenerationStage.completed);
     expect(stages, contains(ProjectGenerationStage.validating));
     expect(calls, 3);
+  });
+
+  test('流式规划夹带解释文字时提取完整 JSON，不触发修复', () async {
+    var calls = 0;
+    final runtime = AiRuntime(
+      apiKey: 'key',
+      httpClient: MockClient((_) async {
+        calls++;
+        return calls == 1
+            ? _assessmentResponse()
+            : _sse('以下是计划：\n${_planJson()}\n请按节奏执行。');
+      }),
+    );
+    final coordinator = ProjectGenerationCoordinator(
+      request: _request(),
+      router: ModelRouter.fromRuntime(runtime),
+      commit: (_, _, _) async {},
+    );
+    addTearDown(coordinator.dispose);
+
+    await coordinator.start();
+    await coordinator.continueWithPlan();
+
+    expect(coordinator.state.value.stage, ProjectGenerationStage.completed);
+    expect(calls, 2);
   });
 
   test('取消后忽略迟到评估结果且不提交', () async {

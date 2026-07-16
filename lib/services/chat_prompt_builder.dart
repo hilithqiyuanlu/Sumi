@@ -1,3 +1,4 @@
+import 'chat_tool_registry.dart';
 import 'prompt_context.dart';
 
 class ChatPromptBuilder {
@@ -30,8 +31,27 @@ class ChatPromptBuilder {
     String hypotheses = '',
     List<Map<String, Object?>> projects = const [],
     String? greeting,
+    Iterable<String> enabledTools = const [],
   }) {
     final blocks = <String>[basePrompt];
+    final enabled = enabledTools.toSet();
+    if (enabled.isNotEmpty) {
+      blocks.add('## 当前可用工具');
+      blocks.add(
+        ChatToolRegistry.definitions
+            .where((tool) => enabled.contains(tool.name))
+            .map((tool) => '- ${tool.name}：${tool.description}')
+            .join('\n'),
+      );
+      if (enabled.contains('start_project_generation')) {
+        blocks.add(
+          '当用户想新建学习项目时，用自然语言逐项收集目标、当前水平、周期和每周投入。信息不全时只追问缺失项；四项完整后才调用 start_project_generation，绝不猜测参数。',
+        );
+      }
+      if (enabled.contains('create_study_timer')) {
+        blocks.add('只有用户明确提出学习计时或倒计时请求时才调用 create_study_timer。创建后由用户在卡片上手动开始。');
+      }
+    }
     if (hotMemory.trim().isNotEmpty ||
         hypotheses.trim().isNotEmpty ||
         projects.isNotEmpty) {

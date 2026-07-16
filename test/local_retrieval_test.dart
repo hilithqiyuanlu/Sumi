@@ -63,6 +63,7 @@ void main() {
     );
 
     expect(service.shouldRetrieve('量子力学是什么'), isFalse);
+    expect(service.shouldRetrieve('今晚怎么安排学习'), isTrue);
     expect(await service.retrieve('量子力学是什么'), isEmpty);
     expect(embedding.calls, 0);
   });

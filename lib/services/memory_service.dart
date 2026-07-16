@@ -526,6 +526,7 @@ class MemoryService {
     String query, {
     String? projectId,
     int limit = 8,
+    Map<String, double> semanticScores = const {},
   }) async {
     final normalized = query.trim().toLowerCase();
     final candidates = await list(includeHistorical: false);
@@ -544,19 +545,37 @@ class MemoryService {
               : '';
           final haystack = '${item.category} ${item.content} $topicText'
               .toLowerCase();
-          final score = _matchScore(normalized, haystack);
+          final keywordScore = _matchScore(normalized, haystack);
+          final semanticScore = semanticScores[item.id] ?? 0;
           final projectBoost = projectId != null && item.projectId == projectId
-              ? 2
+              ? 2.5
               : 0;
+          final typePriority = switch (item.type) {
+            MemoryType.current => 3.5,
+            MemoryType.explicit => 3.0,
+            MemoryType.implicit => .5,
+            MemoryType.imported => 0.0,
+          };
+          final categoryPriority = item.category == 'constraint' ? 1.5 : 0.0;
+          final isRelevant =
+              normalized.isEmpty ||
+              keywordScore > 0 ||
+              semanticScore >= .35 ||
+              (projectId != null &&
+                  item.projectId == projectId &&
+                  item.type == MemoryType.current);
           return (
             item: item,
+            isRelevant: isRelevant,
             score:
-                score +
+                (keywordScore * 1.2) +
+                (semanticScore * 5) +
                 projectBoost +
-                (item.type == MemoryType.current ? 1 : 0),
+                typePriority +
+                categoryPriority,
           );
         })
-        .where((value) => normalized.isEmpty || value.score > 0)
+        .where((value) => value.isRelevant)
         .toList();
     scored.sort((a, b) => b.score.compareTo(a.score));
     return scored
@@ -565,15 +584,29 @@ class MemoryService {
         .toList(growable: false);
   }
 
-  Future<List<MemoryItem>> hotForAgent(String query, {String? projectId}) =>
-      search(query, projectId: projectId, limit: 4);
+  Future<List<MemoryItem>> hotForAgent(
+    String query, {
+    String? projectId,
+    Map<String, double> semanticScores = const {},
+  }) => search(
+    query,
+    projectId: projectId,
+    limit: 4,
+    semanticScores: semanticScores,
+  );
 
   Future<String> formatForAgent(
     String query, {
     String? projectId,
     int limit = 8,
+    Map<String, double> semanticScores = const {},
   }) async {
-    final items = await search(query, projectId: projectId, limit: limit);
+    final items = await search(
+      query,
+      projectId: projectId,
+      limit: limit,
+      semanticScores: semanticScores,
+    );
     if (items.isEmpty) return '（没有相关记忆）';
     return jsonEncode([
       for (final item in items)

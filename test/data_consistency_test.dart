@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -8,6 +9,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sumi/data/chat_database.dart';
 import 'package:sumi/data/local_database.dart';
 import 'package:sumi/data/signal_database.dart';
+import 'package:sumi/features/calendar/month_view_sheet.dart';
 import 'package:sumi/models/models.dart';
 import 'package:sumi/services/ai_service.dart';
 import 'package:sumi/services/daily_planning_policy.dart';
@@ -18,6 +20,7 @@ import 'package:sumi/services/memory_extraction.dart';
 import 'package:sumi/services/project_generation.dart';
 import 'package:sumi/services/signal_service.dart';
 import 'package:sumi/services/snapshot_write_queue.dart';
+import 'package:sumi/sumi_scope.dart';
 import 'package:sumi/store/sumi_store.dart';
 import 'package:sumi/utils/utils.dart';
 
@@ -208,6 +211,20 @@ Future<Database> _openDatabase() async {
       id TEXT PRIMARY KEY, todo_id TEXT NOT NULL UNIQUE, original_date TEXT NOT NULL,
       suggested_date TEXT NOT NULL, hypothesis_id TEXT NOT NULL, shown_at TEXT NOT NULL,
       accepted_at TEXT, context_json TEXT NOT NULL DEFAULT '{}'
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE study_timers (
+      id TEXT PRIMARY KEY,
+      tool_call_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      total_seconds INTEGER NOT NULL,
+      remaining_seconds INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     )
   ''');
   return db;
@@ -470,6 +487,102 @@ void main() {
     expect(store.chatView.value.messages.last.content, '可以正常回答');
   });
 
+  test('只能编辑最新用户消息，编辑后从该消息重新发送', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient(
+        (_) async => http.Response(
+          'data: ${jsonEncode({
+            'choices': [
+              {
+                'delta': {'content': '编辑后的回复'},
+              },
+            ],
+          })}\n\ndata: [DONE]\n\n',
+          200,
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+        ),
+      ),
+    );
+    final store = await _createStore(db, ai: ai);
+    await store.selectDate(DateTime.now());
+    final conversationId = store.currentConversationId!;
+    final chat = store.chatDatabase!;
+    final now = DateTime.now().subtract(const Duration(seconds: 10));
+    final existing = [
+      ChatMessage(
+        id: 'user-1',
+        conversationId: conversationId,
+        role: 'user',
+        content: '第一条',
+        createdAt: now,
+      ),
+      ChatMessage(
+        id: 'assistant-1',
+        conversationId: conversationId,
+        role: 'assistant',
+        content: '第一条回复',
+        createdAt: now.add(const Duration(seconds: 1)),
+      ),
+      ChatMessage(
+        id: 'user-2',
+        conversationId: conversationId,
+        role: 'user',
+        content: '需要修改的内容',
+        createdAt: now.add(const Duration(seconds: 2)),
+      ),
+      ChatMessage(
+        id: 'assistant-2',
+        conversationId: conversationId,
+        role: 'assistant',
+        content: '旧回复',
+        createdAt: now.add(const Duration(seconds: 3)),
+      ),
+    ];
+    for (final message in existing) {
+      await chat.saveMessage(message);
+    }
+    await store.selectDate(DateTime.now().subtract(const Duration(days: 1)));
+    await store.selectDate(DateTime.now());
+
+    expect(
+      await store.editAndResendMessage(0, '不应编辑旧消息'),
+      ChatSendResult.empty,
+    );
+    expect(store.currentMessages, hasLength(4));
+
+    final completed = Completer<void>();
+    store.chatView.addListener(() {
+      final messages = store.chatView.value.messages;
+      if (messages.isNotEmpty &&
+          !store.chatView.value.isStreaming &&
+          messages.last.content == '编辑后的回复' &&
+          !completed.isCompleted) {
+        completed.complete();
+      }
+    });
+    expect(
+      await store.editAndResendMessage(2, '修改后的内容'),
+      ChatSendResult.accepted,
+    );
+    await completed.future.timeout(const Duration(seconds: 2));
+
+    expect(store.currentMessages.map((message) => message.content), [
+      '第一条',
+      '第一条回复',
+      '修改后的内容',
+      '编辑后的回复',
+    ]);
+    expect(
+      (await chat.loadMessages(
+        conversationId,
+      )).map((message) => message.content),
+      ['第一条', '第一条回复', '修改后的内容', '编辑后的回复'],
+    );
+  });
+
   test('行为统计失败时聊天降级回答而不是静默停止', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
@@ -725,6 +838,47 @@ void main() {
     expect(await memory.list(), hasLength(1));
   });
 
+  test('记忆召回优先明确约束，且不混入其他项目的当前事项', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final memory = MemoryService(SumiLocalDatabase(database: db));
+    final constraint = await memory.addManual(
+      type: MemoryType.explicit,
+      category: 'constraint',
+      content: '晚上不安排任务',
+    );
+    final preference = await memory.addManual(
+      type: MemoryType.explicit,
+      category: 'preference',
+      content: '喜欢复盘学习进度',
+    );
+    final projectCurrent = await memory.addManual(
+      type: MemoryType.current,
+      category: 'focus',
+      content: '准备日语考试',
+      projectId: 'project-a',
+    );
+    final otherProject = await memory.addManual(
+      type: MemoryType.current,
+      category: 'focus',
+      content: '复习数学竞赛',
+      projectId: 'project-b',
+    );
+
+    final result = await memory.hotForAgent(
+      '今晚怎么安排学习',
+      projectId: 'project-a',
+      semanticScores: {
+        constraint.id: .82,
+        preference.id: .98,
+        otherProject.id: .99,
+      },
+    );
+    expect(result.first.id, constraint.id);
+    expect(result.any((item) => item.id == projectCurrent.id), isTrue);
+    expect(result.any((item) => item.id == otherProject.id), isFalse);
+  });
+
   test('清空数据后清除结构化记忆', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
@@ -921,6 +1075,100 @@ void main() {
       '今天的问题',
       '原会话的回复',
     ]);
+  });
+
+  test('月份导航遵循方向规则并受五年范围限制', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final now = DateTime(2026, 7, 15, 10);
+    final store = await _createStore(db, now: () => now);
+
+    expect(store.firstNavigableMonth, DateTime(2024, 1));
+    expect(store.lastNavigableMonth, DateTime(2029, 1));
+
+    await store.selectDate(DateTime(2026, 7, 15));
+    await store.navigateMonth(forward: true);
+    expect(store.selectedDate, DateTime(2026, 8, 1));
+
+    await store.navigateMonth(forward: false);
+    expect(store.selectedDate, DateTime(2026, 7, 31));
+
+    await store.selectDate(DateTime(2026, 12, 31));
+    await store.navigateMonth(forward: true);
+    expect(store.selectedDate, DateTime(2027, 1, 1));
+
+    await store.selectDate(DateTime(2026, 3, 1));
+    await store.navigateMonth(forward: false);
+    expect(store.selectedDate, DateTime(2026, 2, 28));
+
+    await store.selectDate(store.firstNavigableMonth);
+    expect(store.canNavigateMonth(forward: false), isFalse);
+    await store.navigateMonth(forward: false);
+    expect(store.selectedDate, store.firstNavigableMonth);
+
+    await store.selectDate(store.lastNavigableMonth);
+    expect(store.canNavigateMonth(forward: true), isFalse);
+    await store.navigateMonth(forward: true);
+    expect(store.selectedDate, store.lastNavigableMonth);
+  });
+
+  test('月份导航加载目标日期已有的对话', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final local = SumiLocalDatabase(database: db);
+    final chatDb = ChatDatabase(local);
+    final conversation = await chatDb.createConversationForDate('2026-07-01');
+    await chatDb.saveMessage(
+      ChatMessage(
+        id: 'july-message',
+        conversationId: conversation.id,
+        role: 'user',
+        content: '七月的对话',
+        createdAt: DateTime(2026, 7, 1, 9),
+      ),
+    );
+    final store = await _createStore(db, now: () => DateTime(2026, 7, 15));
+
+    await store.selectDate(DateTime(2026, 6, 30));
+    await store.navigateMonth(forward: true);
+
+    expect(store.selectedDate, DateTime(2026, 7, 1));
+    expect(store.chatView.value.messages.single.content, '七月的对话');
+  });
+
+  testWidgets('月视图按钮切换月份并在边界禁用', (tester) async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final store = await _createStore(db, now: () => DateTime(2026, 7, 15));
+    await store.selectDate(DateTime(2026, 7, 15));
+
+    await tester.pumpWidget(
+      SumiScope(
+        store: store,
+        child: const MaterialApp(home: Scaffold(body: MonthViewSheet())),
+      ),
+    );
+
+    final previousButton = find.widgetWithIcon(
+      IconButton,
+      Icons.keyboard_arrow_left,
+    );
+    final nextButton = find.widgetWithIcon(
+      IconButton,
+      Icons.keyboard_arrow_right,
+    );
+    expect(previousButton, findsOneWidget);
+    expect(nextButton, findsOneWidget);
+    expect(find.text('7月'), findsOneWidget);
+
+    await tester.tap(nextButton);
+    await tester.pump();
+    expect(store.selectedDate, DateTime(2026, 8, 1));
+    expect(find.text('8月'), findsOneWidget);
+
+    await store.selectDate(store.lastNavigableMonth);
+    await tester.pump();
+    expect(tester.widget<IconButton>(nextButton).onPressed, isNull);
   });
 
   test('旧版 v2 快照无需迁移即可装载到分域控制器', () async {

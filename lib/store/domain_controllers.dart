@@ -82,6 +82,7 @@ class ChatController {
   void dispose() => view.dispose();
 }
 
+
 class SelectionController extends ChangeNotifier {
   int navigateToTodaySequence = 0;
 

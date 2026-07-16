@@ -80,7 +80,7 @@ class HybridRetriever {
     for (final result in results) {
       if (!seenSources.add(result.document.sourceKey)) continue;
       deduped.add(result);
-      if (deduped.length == min(limit, 6)) break;
+      if (deduped.length == min(limit, 12)) break;
     }
     return deduped;
   }

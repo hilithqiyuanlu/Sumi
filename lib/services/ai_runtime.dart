@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 import 'ai_contracts.dart';
 import 'ai_service.dart';
+import 'chat_tool_registry.dart';
 import 'memory_extraction.dart';
 import 'prompt_context.dart';
 
@@ -92,7 +93,9 @@ class ChatAgentService {
     bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
+    Set<String>? enabledTools,
   }) async* {
+    final allowedTools = enabledTools ?? ChatToolRegistry.allNames.toSet();
     for (var turn = 0; turn < maxTurns; turn++) {
       List<ToolCall>? pendingCalls;
       final contentBuf = StringBuffer();
@@ -102,6 +105,7 @@ class ChatAgentService {
       await for (final event in _client.streamChatMessages(
         messages,
         thinkingEnabled: thinkingEnabled,
+        tools: ChatToolRegistry.schemasFor(allowedTools),
       )) {
         switch (event) {
           case ContentDelta(text: final text):
@@ -151,6 +155,7 @@ class ChatAgentService {
           call.name,
           call.arguments,
           validProjectIds: validProjectIds,
+          enabledTools: allowedTools,
         );
         final validatedCall = validation.isValid
             ? ToolCall(
@@ -184,6 +189,8 @@ class ChatAgentService {
       'read_todos' => '正在读取事项',
       'write_todo' => '正在创建事项',
       'read_signals' => '正在分析行为记录',
+      'create_study_timer' => '正在创建学习计时器',
+      'start_project_generation' => '正在准备项目生成',
       _ => '正在使用工具',
     };
   }

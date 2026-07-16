@@ -253,10 +253,12 @@ class AiContracts {
     String name,
     Map<String, Object?> args, {
     required Set<String> validProjectIds,
+    required Set<String> enabledTools,
   }) {
     final errors = <String>[];
     final normalized = Map<String, Object?>.of(args);
     if (id.trim().isEmpty) errors.add('工具调用缺少 id');
+    if (!enabledTools.contains(name)) errors.add('工具已关闭：$name');
     switch (name) {
       case 'search_web':
         final query = _text(args['query']);
@@ -338,6 +340,63 @@ class AiContracts {
           _validateProjectId(_text(projectId), validProjectIds, errors);
         }
         normalized['range'] = range;
+      case 'create_study_timer':
+        final title = _text(args['title']);
+        final minutes = _integer(args['minutes']);
+        if (!_lengthBetween(title, 2, 32)) {
+          errors.add('title 必须为 2-32 字');
+        }
+        if (minutes == null || minutes < 1 || minutes > 480) {
+          errors.add('minutes 必须为 1-480 的整数');
+        } else {
+          normalized['minutes'] = minutes;
+        }
+        normalized['title'] = title;
+      case 'start_project_generation':
+        final goal = _text(args['goal']);
+        final level = _text(args['level']);
+        final cycleMonths = _integer(args['cycleMonths']);
+        final timeConstraint = _integer(args['timeConstraint']);
+        if (!_lengthBetween(goal, 2, 300)) errors.add('goal 必须为 2-300 字');
+        if (!_lengthBetween(level, 1, 80)) errors.add('level 必须为 1-80 字');
+        if (!const {
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          18,
+          24,
+          30,
+        }.contains(cycleMonths)) {
+          errors.add('cycleMonths 不是支持的周期');
+        }
+        if (!const {
+          6,
+          10,
+          15,
+          20,
+          30,
+          40,
+          50,
+          60,
+          70,
+        }.contains(timeConstraint)) {
+          errors.add('timeConstraint 不是支持的每周投入');
+        }
+        normalized['goal'] = goal;
+        normalized['level'] = level;
+        if (cycleMonths != null) normalized['cycleMonths'] = cycleMonths;
+        if (timeConstraint != null) {
+          normalized['timeConstraint'] = timeConstraint;
+        }
       default:
         errors.add('未知工具：$name');
     }
@@ -444,12 +503,24 @@ class ToolCallValidator {
     String name,
     Map<String, Object?> arguments, {
     required Set<String> validProjectIds,
+    Set<String>? enabledTools,
   }) {
     return AiContracts.toolCall(
       id,
       name,
       arguments,
       validProjectIds: validProjectIds,
+      enabledTools:
+          enabledTools ??
+          const {
+            'search_web',
+            'read_memory',
+            'read_todos',
+            'read_signals',
+            'write_todo',
+            'create_study_timer',
+            'start_project_generation',
+          },
     );
   }
 }

@@ -35,4 +35,10 @@ sealed class H {
       HapticFeedback.mediumImpact,
     );
   }
+
+  static void timerFinished() {
+    for (var index = 0; index < 5; index++) {
+      Future.delayed(Duration(milliseconds: index * 350), heavy);
+    }
+  }
 }

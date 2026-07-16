@@ -17,7 +17,9 @@ Future<void> showSplitConfirmSheet(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(radiusCardHeader),
+      ),
     ),
     builder: (ctx) {
       return StatefulBuilder(
@@ -57,8 +59,7 @@ Future<void> showSplitConfirmSheet(
                     child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: items.length,
-                      separatorBuilder: (_, _) =>
-                          const Divider(height: 1),
+                      separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         return CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
@@ -109,7 +110,7 @@ Future<void> showSplitConfirmSheet(
   if (confirmed == true) {
     for (var i = 0; i < items.length; i++) {
       if (selected[i]) {
-        store.addUserTodo(items[i]);
+        await store.addUserTodo(items[i]);
       }
     }
   }

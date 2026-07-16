@@ -11,17 +11,20 @@
 
 ## 功能
 
-- **💬 AI 对话** — 首页即对话，流式输出 Markdown 渲染，支持 Thinking 过程展示与 Function Calling 工具调用；按日期组织对话，侧边抽屉切换/删除历史会话
+- **💬 AI 对话** — 首页即对话，流式输出 Markdown 渲染，支持 Thinking 过程展示与 Function Calling 工具调用（搜索/记忆/事项/信号/计时/创建项目 7 种工具）；按日期组织对话，侧边抽屉管理会话；对话中可直接创建学习计时卡和项目
 - **📋 事项管理** — 输入 >16 字自动触发 AI 智能拆分；支持置顶、完成态、长按拖拽排序；关联项目的事项 Chip 显示项目主题色
 - **📂 学习项目** — AI 生成月度学习计划，月卡解锁机制逐月推进；AI 凝练目标摘要作为卡片标题，支持项目主题色区分
-- **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 8 维度评分，流式生成学习计划；统一生成管线（搜索→评估→确认→规划→校验→保存），支持取消/重试/跳过评估
+- **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 8 维度评分，流式生成学习计划；统一生成管线（搜索→评估→确认→规划→校验→保存），支持取消/重试/跳过评估；也可从对话中由 AI 收集信息后直接启动
 - **📅 日历导航** — 折叠日期条 + 展开月视图，垂直拖拽手势自然切换；历史日期只读，仅可查看过往对话
 - **🎤 语音输入** — 长按说话松开发送、上滑取消，支持连续识别与自动提交
 - **🧭 侧边抽屉** — 左滑唤出会话列表，新建 / 切换 / 删除对话，支持置顶与自定义标题
 - **🧠 用户记忆系统** — SQLite 驱动的结构化记忆引擎，四类记忆（明确/当前/隐性/导入）+ 证据链追溯；每次对话后自动提取偏好/目标/约束，支持替换/去重/停用；USER_MODEL.md 降级为兼容性导出
+- **⏱️ 学习计时** — AI 可在对话中创建学习计时卡（1-480 分钟），支持开始/暂停/完成/取消，计时结束触觉反馈；应用进入后台自动对账计时状态
 - **📡 行为信号** — todo 创建/完成/编辑/拖拽、项目目标/水平/周期设定等 10 种信号自动采集，AI 通过 read_signals 工具查询历史模式；信号数据同时嵌入本地向量库供混合检索
 - **🔍 本地检索** — 端侧 BGE-small-zh-v1.5 嵌入模型，混合检索（语义相似度 65% + 关键词 15% + 来源可信度 12% + 时间衰减 8%），无需网络即可从历史对话/记忆/项目中检索相关内容注入 prompt
 - **🔀 模型路由** — 能力接口抽象（Chat/Structured/MemoryExtraction/WebSearch/Embedding），统一度量采集（耗时/成功率/错误分类），当前全部路由云端，本地模型可插拔扩展
+- **🔧 工具注册中心** — ChatToolRegistry 集中管理所有工具定义（名称/标签/描述/分组/JSON Schema），执行器按注册表动态启用工具
+- **🖥️ 端侧文本生成** — 可选下载本地语言模型（ONNX Runtime），支持端侧结构化生成与记忆提取，无网络也能使用基础 AI 能力
 - **🛡️ AI 契约校验** — 所有 AI 结构化输出经 AiContracts 强校验（字段类型、长度、取值范围），非法输出自动拦截，防止脏数据落库
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Keychain 安全存储，无需服务器
 
@@ -75,18 +78,21 @@ lib/
 │   ├── local_database.dart              # SQLite 主库（含 signals / memory / embedding 表）
 │   ├── chat_database.dart               # 对话数据 CRUD
 │   ├── signal_database.dart             # 信号数据持久化
-│   └── embedding_document_store.dart    # 本地嵌入向量文档存储
+│   ├── embedding_document_store.dart    # 本地嵌入向量文档存储
+│   └── study_timer_database.dart        # 学习计时持久化
 ├── services/
 │   ├── ai_service.dart                  # AiTransport — DeepSeek HTTP 传输层
 │   ├── ai_contracts.dart                # AI 输出契约校验（split/polish/plan/assess/suggestions/toolCall）
 │   ├── ai_runtime.dart                  # AiRuntime — 组合 transport + structured/chat/search/memoryExtraction facade
 │   ├── chat_prompt_builder.dart         # 系统 prompt 组装（basePrompt + 上下文注入）
 │   ├── prompt_context.dart              # 数据/指令分离封装（防 prompt 注入）
+│   ├── chat_tool_registry.dart          # 工具注册中心 — 7 种工具的名称/Schema/分组集中管理
 │   ├── tool_executor.dart               # Function Calling 工具执行
 │   ├── voice_input_service.dart         # speech_to_text 语音识别
 │   ├── goal_assessor.dart               # 目标评估（搜索 + 多维分析）
 │   ├── plan_generator.dart              # 学习计划生成器（流式 + 降级 + 自动修复）
 │   ├── project_generation.dart          # 项目生成协调器（搜索→评估→确认→规划→校验→保存）
+│   ├── project_generation_controller.dart # 项目生成状态控制器
 │   ├── daily_planning_policy.dart       # 日计划业务规则（周期计数、月卡查询）
 │   ├── user_model_service.dart          # USER_MODEL.md 兼容读写 / 统计 / 导出
 │   ├── signal_service.dart              # 信号采集 / 编辑区分 / 凝练还原保护
@@ -102,6 +108,12 @@ lib/
 │   ├── hybrid_retriever.dart            # 混合检索器（语义 + 关键词 + 来源 + 时间衰减）
 │   ├── local_retrieval_coordinator.dart # 本地检索协调器
 │   ├── local_retrieval_service.dart     # 本地检索服务
+│   ├── study_timer_service.dart          # 学习计时服务 — 创建/开始/暂停/完成/取消 + 生命周期对账
+│   ├── timer_controller.dart             # 计时器状态控制器（ChangeNotifier）
+│   ├── local_text_generation_coordinator.dart # 端侧文本生成协调器
+│   ├── local_text_generation_runtime.dart     # 端侧文本生成运行时
+│   ├── local_text_model_package.dart          # 端侧文本模型包管理
+│   ├── local_structured_generation.dart       # 端侧结构化生成
 │   └── secure_settings_store.dart       # Keychain 安全存储
 ├── widgets/
 │   ├── score_bar.dart                   # 评估分数条
@@ -128,14 +140,18 @@ lib/
 │   │   ├── month_card_pager.dart
 │   │   ├── project_editor_page.dart
 │   │   └── project_generation_page.dart
-│   ├── settings/                        # 设置、用户模型编辑器、信号日志、本地检索、路由诊断、假设管理
+│   ├── settings/                        # 设置、用户模型编辑器、信号日志、本地检索、路由诊断、本地文本模型
 │   │   ├── settings_body.dart
 │   │   ├── user_model_editor_page.dart
 │   │   ├── signal_log_page.dart
 │   │   ├── local_retrieval_page.dart
+│   │   ├── local_text_model_page.dart
 │   │   ├── model_router_metrics_page.dart
 │   │   └── user_hypotheses_page.dart
-│   ├── memory/                          # 记忆管理页面
+│   ├── memory/                          # 记忆管理中心
+│   │   └── memory_center_page.dart
+│   ├── tools/                           # AI 工具浏览页
+│   │   └── tools_page.dart
 │   └── shared/                          # 拖拽把手
 │       └── drag_handle.dart
 ├── android/.../EmbeddingEngine.kt       # Android 端侧嵌入引擎

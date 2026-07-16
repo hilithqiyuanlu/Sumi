@@ -149,38 +149,140 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(s16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item.content,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: s12),
-              const Text(
-                '来源',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: s6),
-              ...evidence.map(
-                (entry) => Padding(
-                  padding: const EdgeInsets.only(bottom: s8),
-                  child: Text(
-                    '${entry.summary}\n${entry.occurredAt.toLocal().toString().substring(0, 16)}',
-                    style: const TextStyle(fontSize: 13, color: textSecondary),
+        child: Container(
+          constraints: BoxConstraints(
+            minHeight: 260,
+            maxHeight: MediaQuery.of(context).size.height * 0.78,
+          ),
+          decoration: const BoxDecoration(
+            color: paper,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(radiusCardHeader),
+            ),
+            boxShadow: shadow4,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(s20, s10, s20, s20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: line,
+                      borderRadius: BorderRadius.circular(radiusPill),
+                    ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: s16),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '记忆详情',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: ink,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close, size: iconMedium),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: s12),
+                Wrap(
+                  spacing: s8,
+                  runSpacing: s8,
+                  children: [
+                    _detailTag(_titleFor(item.type), primary50, primary700),
+                    _detailTag(item.category, surfaceChip, textSecondary),
+                  ],
+                ),
+                const SizedBox(height: s20),
+                Text(
+                  item.content,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                    color: ink,
+                  ),
+                ),
+                const SizedBox(height: s20),
+                Text(
+                  evidence.isEmpty ? '暂无来源记录' : '来源记录',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: textTertiary,
+                  ),
+                ),
+                const SizedBox(height: s8),
+                if (evidence.isEmpty)
+                  const Text(
+                    '这条记忆由手动添加或历史数据导入。',
+                    style: TextStyle(fontSize: 13, color: textSecondary),
+                  )
+                else
+                  ...evidence.map(_buildEvidence),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _detailTag(String label, Color background, Color foreground) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(radiusPill),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: foreground,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEvidence(MemoryEvidence entry) {
+    final occurredAt = entry.occurredAt.toLocal();
+    final date =
+        '${occurredAt.year}/${occurredAt.month.toString().padLeft(2, '0')}/${occurredAt.day.toString().padLeft(2, '0')} '
+        '${occurredAt.hour.toString().padLeft(2, '0')}:${occurredAt.minute.toString().padLeft(2, '0')}';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: s8),
+      padding: const EdgeInsets.all(s12),
+      decoration: BoxDecoration(
+        color: surfaceAlt,
+        borderRadius: BorderRadius.circular(radius8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            entry.summary,
+            style: const TextStyle(fontSize: 13, color: ink, height: 1.4),
+          ),
+          const SizedBox(height: s4),
+          Text(date, style: const TextStyle(fontSize: 11, color: textTertiary)),
+        ],
       ),
     );
   }
@@ -247,56 +349,79 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
     );
   }
 
-  Widget _buildItem(MemoryItem item) => Material(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(radiusCard),
-    child: ListTile(
-      title: Text(
-        item.content,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        '${item.category} · ${_sourceText(item.source)}',
-        style: const TextStyle(fontSize: 12, color: textSecondary),
-      ),
-      onTap: () => _showDetails(item),
-      trailing: PopupMenuButton<String>(
-        onSelected: (action) async {
-          final service = SumiScope.read(context).memoryService;
-          if (action == 'edit') {
-            await _showEditor(item: item);
-          }
-          if (action == 'end') {
-            await service?.setStatus(item.id, MemoryStatus.inactive);
-          }
-          if (action == 'toggle') {
-            await service?.setStatus(
-              item.id,
-              item.status == MemoryStatus.active
-                  ? MemoryStatus.disabled
-                  : MemoryStatus.active,
-            );
-          }
-          if (action == 'delete') {
-            await service?.delete(item.id);
-          }
-          await service?.exportUserModel();
-          if (mounted) SumiScope.read(context).scheduleLocalIndex();
-          await _load();
-        },
-        itemBuilder: (_) => [
-          if (item.type == MemoryType.explicit ||
-              item.type == MemoryType.current)
-            const PopupMenuItem(value: 'edit', child: Text('编辑')),
-          if (item.type == MemoryType.current &&
-              item.status == MemoryStatus.active)
-            const PopupMenuItem(value: 'end', child: Text('结束当前事项')),
-          PopupMenuItem(
-            value: 'toggle',
-            child: Text(item.status == MemoryStatus.active ? '停用' : '重新启用'),
+  Widget _buildItem(MemoryItem item) => Container(
+    margin: const EdgeInsets.only(bottom: s8),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(radiusCard),
+      border: Border.all(color: line),
+      boxShadow: const [...shadow1],
+    ),
+    child: Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(radiusCard),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        contentPadding: const EdgeInsets.only(left: s16, right: s8),
+        title: Text(
+          item.content,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          '${item.category} · ${_sourceText(item.source)}',
+          style: const TextStyle(fontSize: 12, color: textSecondary),
+        ),
+        onTap: () => _showDetails(item),
+        trailing: PopupMenuButton<String>(
+          tooltip: '更多操作',
+          icon: const Icon(
+            Icons.more_horiz,
+            size: iconMedium,
+            color: textTertiary,
           ),
-          const PopupMenuItem(value: 'delete', child: Text('删除')),
-        ],
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radius8),
+          ),
+          color: paper,
+          elevation: 2,
+          onSelected: (action) async {
+            final service = SumiScope.read(context).memoryService;
+            if (action == 'edit') {
+              await _showEditor(item: item);
+            }
+            if (action == 'end') {
+              await service?.setStatus(item.id, MemoryStatus.inactive);
+            }
+            if (action == 'toggle') {
+              await service?.setStatus(
+                item.id,
+                item.status == MemoryStatus.active
+                    ? MemoryStatus.disabled
+                    : MemoryStatus.active,
+              );
+            }
+            if (action == 'delete') {
+              await service?.delete(item.id);
+            }
+            await service?.exportUserModel();
+            if (mounted) SumiScope.read(context).scheduleLocalIndex();
+            await _load();
+          },
+          itemBuilder: (_) => [
+            if (item.type == MemoryType.explicit ||
+                item.type == MemoryType.current)
+              const PopupMenuItem(value: 'edit', child: Text('编辑')),
+            if (item.type == MemoryType.current &&
+                item.status == MemoryStatus.active)
+              const PopupMenuItem(value: 'end', child: Text('结束当前事项')),
+            PopupMenuItem(
+              value: 'toggle',
+              child: Text(item.status == MemoryStatus.active ? '停用' : '重新启用'),
+            ),
+            const PopupMenuItem(value: 'delete', child: Text('删除')),
+          ],
+        ),
       ),
     ),
   );

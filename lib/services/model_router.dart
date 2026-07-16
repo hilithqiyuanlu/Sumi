@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import '../models/models.dart';
 import 'ai_runtime.dart';
 import 'ai_service.dart';
@@ -65,6 +63,7 @@ abstract interface class ChatCapability {
     bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
+    Set<String>? enabledTools,
   });
 }
 
@@ -177,6 +176,7 @@ class _CloudChatCapability implements ChatCapability {
     bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
+    Set<String>? enabledTools,
   }) {
     return _delegate.sendAgentLoop(
       messages: messages,
@@ -185,6 +185,7 @@ class _CloudChatCapability implements ChatCapability {
       thinkingEnabled: thinkingEnabled,
       maxTurns: maxTurns,
       validProjectIds: validProjectIds,
+      enabledTools: enabledTools,
     );
   }
 }
@@ -301,9 +302,7 @@ class ModelRouter {
     _cloud.id,
     _record,
   );
-  late final EmbeddingCapability? embedding = _embedding == null
-      ? null
-      : _MeasuredEmbeddingCapability(_embedding, _record);
+  late final EmbeddingCapability? embedding = _embedding;
 
   ModelRouter({
     required ModelProvider cloudProvider,
@@ -366,48 +365,6 @@ class ModelRouter {
   }
 }
 
-class _MeasuredEmbeddingCapability implements EmbeddingCapability {
-  final EmbeddingCapability _delegate;
-  final _MetricRecorder _record;
-
-  const _MeasuredEmbeddingCapability(this._delegate, this._record);
-
-  @override
-  bool get isAvailable => _delegate.isAvailable;
-
-  @override
-  String? get unavailableReason => _delegate.unavailableReason;
-
-  @override
-  String? get embeddingVersion => _delegate.embeddingVersion;
-
-  @override
-  Future<List<Float32List>> embed(List<String> texts) async {
-    final watch = Stopwatch()..start();
-    try {
-      final result = await _delegate.embed(texts);
-      _record(
-        capability: ModelCapability.embedding,
-        provider: 'local-bge-small-zh-v1.5',
-        outcome: ModelRouteOutcome.success,
-        elapsed: watch.elapsed,
-      );
-      return result;
-    } catch (error) {
-      _record(
-        capability: ModelCapability.embedding,
-        provider: 'local-bge-small-zh-v1.5',
-        outcome: ModelRouteOutcome.failure,
-        elapsed: watch.elapsed,
-        errorCategory: ModelRouterErrorClassifier.fromException(error),
-      );
-      rethrow;
-    } finally {
-      watch.stop();
-    }
-  }
-}
-
 typedef _MetricRecorder = void Function({
   required ModelCapability capability,
   required String provider,
@@ -431,6 +388,7 @@ class _MeasuredChatCapability implements ChatCapability {
     bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
+    Set<String>? enabledTools,
   }) async* {
     final watch = Stopwatch()..start();
     ModelRouterErrorCategory? error;
@@ -442,6 +400,7 @@ class _MeasuredChatCapability implements ChatCapability {
         thinkingEnabled: thinkingEnabled,
         maxTurns: maxTurns,
         validProjectIds: validProjectIds,
+        enabledTools: enabledTools,
       )) {
         if (event case AgentErrorEvent(message: final message)) {
           error = ModelRouterErrorClassifier.fromMessage(message);

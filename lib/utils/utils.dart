@@ -9,6 +9,8 @@ const _toolNameMap = {
   'read_todos': '查看事项',
   'write_todo': '创建事项',
   'read_signals': '查询信号',
+  'create_study_timer': '学习计时',
+  'start_project_generation': '新建项目',
 };
 
 /// 工具名称 → 中文标签。

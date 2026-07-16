@@ -184,5 +184,37 @@ void main() {
       expect(result.isValid, isTrue, reason: result.errors.join('；'));
       expect(result.value?['projectId'], 'project-1');
     });
+
+    test('关闭工具和非法计时、项目参数会被拒绝', () {
+      final disabled = ToolCallValidator.validate(
+        'call-4',
+        'create_study_timer',
+        {'title': '阅读英语', 'minutes': 30},
+        validProjectIds: const {},
+        enabledTools: const {'read_todos'},
+      );
+      expect(disabled.isValid, isFalse);
+
+      final invalidTimer = ToolCallValidator.validate(
+        'call-5',
+        'create_study_timer',
+        {'title': '读', 'minutes': 481},
+        validProjectIds: const {},
+      );
+      expect(invalidTimer.isValid, isFalse);
+
+      final project = ToolCallValidator.validate(
+        'call-6',
+        'start_project_generation',
+        {
+          'goal': '完成日语入门学习',
+          'level': '零基础',
+          'cycleMonths': 3,
+          'timeConstraint': 10,
+        },
+        validProjectIds: const {},
+      );
+      expect(project.isValid, isTrue, reason: project.errors.join('；'));
+    });
   });
 }

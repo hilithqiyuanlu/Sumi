@@ -20,6 +20,7 @@ mixin SumiStoreChat {
   List<Project> get projectList;
   ChatController get chatController;
   LocalRetrievalService get localRetrieval;
+  String? get currentProjectId;
   void scheduleLocalIndex();
 
   // --- 状态 ---
@@ -224,6 +225,45 @@ mixin SumiStoreChat {
     _currentMessages.removeRange(userMsgIndex, endIndex + 1);
     scheduleLocalIndex();
     _publishChatState();
+  }
+
+  /// 编辑最新一条用户消息时，从该消息起清除后续对话后重新发送。
+  ///
+  /// 更早的用户消息不允许编辑，避免历史回答与其依赖的上下文脱节。
+  Future<ChatSendResult> editAndResendMessage(
+    int userMsgIndex,
+    String content, {
+    String? currentGreeting,
+  }) async {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) return ChatSendResult.empty;
+    if (_isStreaming) return ChatSendResult.busy;
+    if (userMsgIndex < 0 || userMsgIndex >= _currentMessages.length) {
+      return ChatSendResult.empty;
+    }
+    if (_currentMessages[userMsgIndex].role != 'user' ||
+        _currentMessages
+            .skip(userMsgIndex + 1)
+            .any((message) => message.role == 'user')) {
+      return ChatSendResult.empty;
+    }
+    if (chatAgent == null || toolExecutor == null) {
+      return ChatSendResult.missingApiKey;
+    }
+
+    final messagesToRemove = _currentMessages.sublist(userMsgIndex);
+    if (!_isTemporaryConversation && chatDatabase != null) {
+      await chatDatabase!.deleteMessagesByIds(
+        messagesToRemove.map((message) => message.id).toList(),
+      );
+    }
+    _currentMessages.removeRange(userMsgIndex, _currentMessages.length);
+    _chatFailure = null;
+    _chatFailureConversationId = null;
+    scheduleLocalIndex();
+    _publishChatState();
+
+    return sendMessage(trimmed, currentGreeting: currentGreeting);
   }
 
   /// 清除全部对话数据。
@@ -572,6 +612,7 @@ mixin SumiStoreChat {
         messages: messages,
         thinkingEnabled: thinkingEnabled,
         validProjectIds: projectList.map((project) => project.id).toSet(),
+        enabledTools: appSettings.enabledTools.toSet(),
         onToolCall: (call) {
           toolCallsList.add({
             'id': call.id,
@@ -581,6 +622,14 @@ mixin SumiStoreChat {
               'arguments': jsonEncode(call.arguments),
             },
           });
+          _updateCurrentAssistantMessage(
+            conversationId: convId,
+            assistantMessageId: assistantMsgId,
+            content: contentBuf.toString(),
+            toolCallsJson: jsonEncode(toolCallsList),
+            insertIfMissing: true,
+          );
+          _publishChatState();
         },
         executeTool: (call) async {
           final result = await exec.execute(call);
@@ -690,19 +739,25 @@ mixin SumiStoreChat {
   // 内部：消息构建
   // ---------------------------------------------------------------------------
 
-  Future<String> _buildSystemPrompt({String? greeting}) async {
+  Future<String> _buildSystemPrompt({
+    String? greeting,
+    required String query,
+    Map<String, double> memorySemanticScores = const {},
+  }) async {
     var hotPrompt = '';
-    final query =
-        _currentMessages
-            .where((message) => message.role == 'user')
-            .cast<ChatMessage?>()
-            .lastWhere((message) => message != null, orElse: () => null)
-            ?.content ??
-        '';
     if (memoryService != null && query.isNotEmpty) {
       try {
-        final memories = await memoryService!.hotForAgent(query);
-        hotPrompt = memories.map((item) => '- ${item.content}').join('\n');
+        final memories = await memoryService!.hotForAgent(
+          query,
+          projectId: currentProjectId,
+          semanticScores: memorySemanticScores,
+        );
+        hotPrompt = memories
+            .map(
+              (item) =>
+                  '- [${item.type.name}/${item.category}] ${item.content}',
+            )
+            .join('\n');
       } catch (e) {
         debugPrint('[chatContext] 记忆不可用，已跳过: $e');
       }
@@ -721,6 +776,7 @@ mixin SumiStoreChat {
           )
           .toList(),
       greeting: greeting,
+      enabledTools: appSettings.enabledTools,
     );
   }
 
@@ -733,38 +789,54 @@ mixin SumiStoreChat {
       greeting = _activeGreeting;
       _activeGreeting = null;
     }
-    final systemPrompt = await _buildSystemPrompt(greeting: greeting);
-
-    final messages = <Map<String, Object?>>[
-      {'role': 'system', 'content': systemPrompt},
-    ];
-
     final userQuery = _currentMessages
         .where((message) => message.role == 'user')
         .cast<ChatMessage?>()
         .lastWhere((message) => message != null, orElse: () => null)
         ?.content;
+    var retrieved = const <HybridRetrievalResult>[];
     if (userQuery != null && localRetrieval.shouldRetrieve(userQuery)) {
       try {
         _currentToolCallLabel = '正在查找你的学习记录';
         _publishChatState();
-        final retrieved = await localRetrieval.retrieve(userQuery);
-        if (retrieved.isNotEmpty) {
-          messages.add({
-            'role': 'system',
-            'content': PromptContext.dataBlock(
-              kind: 'local_retrieval',
-              source: 'on_device_embedding',
-              data: LocalRetrievalService.promptData(retrieved),
-            ),
-          });
-        }
+        retrieved = await localRetrieval.retrieve(userQuery, limit: 10);
       } catch (error) {
         debugPrint('[localRetrieval] 已跳过: $error');
       } finally {
         _currentToolCallLabel = '正在生成回复';
         _publishChatState();
       }
+    }
+
+    final memorySemanticScores = <String, double>{
+      for (final result in retrieved)
+        if (result.document.source == EmbeddingDocumentSource.userMemory)
+          result.document.sourceId: result.semanticScore,
+    };
+    final systemPrompt = await _buildSystemPrompt(
+      greeting: greeting,
+      query: userQuery ?? '',
+      memorySemanticScores: memorySemanticScores,
+    );
+    final messages = <Map<String, Object?>>[
+      {'role': 'system', 'content': systemPrompt},
+    ];
+    final nonMemoryResults = retrieved
+        .where(
+          (result) =>
+              result.document.source != EmbeddingDocumentSource.userMemory,
+        )
+        .take(6)
+        .toList(growable: false);
+    if (nonMemoryResults.isNotEmpty) {
+      messages.add({
+        'role': 'system',
+        'content': PromptContext.dataBlock(
+          kind: 'local_retrieval',
+          source: 'on_device_embedding',
+          data: LocalRetrievalService.promptData(nonMemoryResults),
+        ),
+      });
     }
 
     final contextMessages = _selectCompleteTurns(
