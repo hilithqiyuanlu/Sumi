@@ -55,6 +55,8 @@ class _SettingsBodyState extends State<SettingsBody> {
             ],
           ),
         ),
+        const SizedBox(height: s24),
+        _sectionHeader('本地智能'),
         const SizedBox(height: s12),
         _buildCard(
           child: ListTile(
@@ -75,8 +77,6 @@ class _SettingsBodyState extends State<SettingsBody> {
             ),
           ),
         ),
-        const SizedBox(height: s24),
-        _sectionHeader('本地智能'),
         const SizedBox(height: s12),
         _buildCard(
           child: ListTile(
@@ -155,11 +155,15 @@ class _SettingsBodyState extends State<SettingsBody> {
                 contentPadding: EdgeInsets.zero,
                 title: const Text(
                   '模型路由诊断',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: ink,
+                  ),
                 ),
                 subtitle: const Text(
                   '查看近 7 天的本地调用汇总，不包含对话内容',
-                  style: TextStyle(fontSize: 12),
+                  style: TextStyle(fontSize: 12, color: textSecondary),
                 ),
                 trailing: const Icon(
                   Icons.chevron_right,

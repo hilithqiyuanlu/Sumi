@@ -197,7 +197,6 @@ class _SideDrawerState extends State<SideDrawer> {
         child: InkWell(
           onTap: () {
             H.click();
-            widget.onClose();
             widget.onOpenSettings();
           },
           borderRadius: BorderRadius.circular(radius12),
@@ -228,7 +227,6 @@ class _SideDrawerState extends State<SideDrawer> {
     child: InkWell(
       onTap: () {
         H.click();
-        widget.onClose();
         widget.onOpenMemory();
       },
       borderRadius: BorderRadius.circular(radius12),
@@ -236,7 +234,7 @@ class _SideDrawerState extends State<SideDrawer> {
         padding: EdgeInsets.symmetric(horizontal: s12, vertical: s12),
         child: Row(
           children: [
-            Icon(Icons.psychology_outlined, size: 24, color: primary500),
+            Icon(Icons.auto_awesome, size: 24, color: primary500),
             SizedBox(width: s12),
             Text(
               '记忆',
@@ -257,7 +255,6 @@ class _SideDrawerState extends State<SideDrawer> {
     child: InkWell(
       onTap: () {
         H.click();
-        widget.onClose();
         widget.onOpenTools();
       },
       borderRadius: BorderRadius.circular(radius12),

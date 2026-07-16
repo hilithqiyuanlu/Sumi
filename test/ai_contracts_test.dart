@@ -216,5 +216,34 @@ void main() {
       );
       expect(project.isValid, isTrue, reason: project.errors.join('；'));
     });
+
+    test('立即计时和未来闹钟会保留正确参数', () {
+      final immediateTimer = ToolCallValidator.validate(
+        'call-7',
+        'create_study_timer',
+        {
+          'title': '阅读教材',
+          'kind': 'timer',
+          'minutes': 30,
+          'startImmediately': true,
+        },
+        validProjectIds: const {},
+      );
+      expect(
+        immediateTimer.isValid,
+        isTrue,
+        reason: immediateTimer.errors.join('；'),
+      );
+      expect(immediateTimer.value?['startImmediately'], isTrue);
+
+      final alarmAt = DateTime.now().add(const Duration(minutes: 30));
+      final alarm = ToolCallValidator.validate('call-8', 'create_study_timer', {
+        'title': '开始背单词',
+        'kind': 'alarm',
+        'alertAt': alarmAt.toIso8601String(),
+      }, validProjectIds: const {});
+      expect(alarm.isValid, isTrue, reason: alarm.errors.join('；'));
+      expect(alarm.value?['kind'], 'alarm');
+    });
   });
 }

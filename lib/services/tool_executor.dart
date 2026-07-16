@@ -24,7 +24,10 @@ class ToolExecutor {
     required String toolCallId,
     required String conversationId,
     required String title,
-    required int minutes,
+    required String kind,
+    int? minutes,
+    String? alertAt,
+    required bool startImmediately,
   })
   createStudyTimer;
   final Future<String> Function({
@@ -102,7 +105,10 @@ class ToolExecutor {
         toolCallId: call.id,
         conversationId: conversationId,
         title: (call.arguments['title'] as String?)?.trim() ?? '',
-        minutes: call.arguments['minutes'] as int? ?? 0,
+        kind: call.arguments['kind'] as String? ?? 'timer',
+        minutes: call.arguments['minutes'] as int?,
+        alertAt: call.arguments['alertAt'] as String?,
+        startImmediately: call.arguments['startImmediately'] as bool? ?? false,
       );
     } catch (error) {
       return '创建学习计时器失败：$error';

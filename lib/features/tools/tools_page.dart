@@ -20,8 +20,8 @@ class ToolsPage extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(s16, s8, s16, s24),
         children: [
           const Text(
-            '关闭后，Sumi 不会看到或执行该工具。已开始的计时和项目生成不会中断。',
-            style: TextStyle(fontSize: 13, height: 1.5, color: textTertiary),
+            '按需启用工具。',
+            style: TextStyle(fontSize: 13, color: textSecondary),
           ),
           const SizedBox(height: s20),
           for (final group in groups) ...[
@@ -55,6 +55,7 @@ class ToolsPage extends StatelessWidget {
                                 style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
+                                  color: ink,
                                 ),
                               ),
                               const SizedBox(height: s2),
@@ -63,7 +64,7 @@ class ToolsPage extends StatelessWidget {
                                 style: const TextStyle(
                                   fontSize: 12,
                                   height: 1.4,
-                                  color: textTertiary,
+                                  color: textSecondary,
                                 ),
                               ),
                             ],

@@ -86,18 +86,16 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
       child: ValueListenableBuilder<ProjectGenerationState>(
         valueListenable: _coordinator.state,
         builder: (context, state, _) {
-          final isCompleted = state.stage == ProjectGenerationStage.completed;
           return Scaffold(
             backgroundColor: paper,
-            appBar: isCompleted
-                ? null
-                : AppBar(
-                    leading: IconButton(
-                      onPressed: _handleBack,
-                      icon: const Icon(Icons.arrow_back),
-                      tooltip: '返回',
-                    ),
-                  ),
+            appBar: AppBar(
+              title: Text(_appBarTitle(state.stage)),
+              leading: IconButton(
+                onPressed: _handleBack,
+                icon: const Icon(Icons.arrow_back),
+                tooltip: '返回',
+              ),
+            ),
             body: SafeArea(
               top: false,
               child: Builder(
@@ -119,6 +117,12 @@ class _ProjectGenerationPageState extends State<ProjectGenerationPage> {
       ),
     );
   }
+
+  String _appBarTitle(ProjectGenerationStage stage) => switch (stage) {
+    ProjectGenerationStage.awaitingConfirmation => '目标评估',
+    ProjectGenerationStage.completed => '规划已生成',
+    _ => '生成规划',
+  };
 
   Widget _buildProgress(ProjectGenerationState state) {
     final waitingLong =

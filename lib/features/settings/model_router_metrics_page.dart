@@ -18,6 +18,8 @@ class ModelRouterMetricsPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('模型路由诊断'),
           bottom: const TabBar(
+            labelColor: primary500,
+            unselectedLabelColor: textSecondary,
             tabs: [
               Tab(text: '云端'),
               Tab(text: '本地检索'),
@@ -59,7 +61,7 @@ class _MetricsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     if (metrics.isEmpty) {
       return Center(
-        child: Text(emptyLabel, style: const TextStyle(color: textTertiary)),
+        child: Text(emptyLabel, style: const TextStyle(color: textSecondary)),
       );
     }
     final total = metrics.fold<int>(0, (sum, item) => sum + item.total);
@@ -86,7 +88,7 @@ class _MetricsPanel extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: textTertiary,
+            color: textSecondary,
           ),
         ),
         const SizedBox(height: s8),
@@ -151,7 +153,7 @@ class _Stat extends StatelessWidget {
           ),
         ),
         const SizedBox(height: s2),
-        Text(label, style: const TextStyle(fontSize: 11, color: textTertiary)),
+        Text(label, style: const TextStyle(fontSize: 11, color: textSecondary)),
       ],
     ),
   );
@@ -191,19 +193,20 @@ class _MetricRow extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
+                    color: ink,
                   ),
                 ),
                 const SizedBox(height: s2),
                 Text(
                   metric.provider,
-                  style: const TextStyle(fontSize: 12, color: textTertiary),
+                  style: const TextStyle(fontSize: 12, color: textSecondary),
                 ),
               ],
             ),
           ),
           Text(
             '${metric.total} 次',
-            style: const TextStyle(fontSize: 12, color: textTertiary),
+            style: const TextStyle(fontSize: 12, color: textSecondary),
           ),
           const SizedBox(width: s10),
           Text(

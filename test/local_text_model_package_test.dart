@@ -50,4 +50,39 @@ void main() {
     expect(await File(p.join(active.path, 'old.gguf')).exists(), isFalse);
     expect((await manager.installedManifest())?.version, '1.0.0');
   });
+
+  test('完整临时文件会校验恢复，不发送非法 Range 请求', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'sumi-text-resume-test-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final model = utf8.encode('complete-qwen-gguf');
+    final manifest = LocalTextModelManifest(
+      id: LocalTextModelPackage.repositoryId,
+      version: '1.0.0',
+      modelFile: 'model.gguf',
+      sizeBytes: model.length,
+      sha256: sha256.convert(model).toString(),
+    );
+    final staging = Directory(p.join(root.path, '.staging-1.0.0'));
+    await staging.create(recursive: true);
+    await File(p.join(staging.path, 'model.gguf')).writeAsBytes(model);
+    var requested = false;
+    final manager = LocalTextModelPackage(
+      root: () async => root,
+      client: MockClient((_) async {
+        requested = true;
+        return http.Response('', 416);
+      }),
+    );
+
+    final candidate = await manager.download(manifest, onProgress: (_, _) {});
+
+    expect(candidate.path, staging.path);
+    expect(requested, isFalse);
+    expect(
+      await File(p.join(candidate.path, 'manifest.json')).exists(),
+      isTrue,
+    );
+  });
 }

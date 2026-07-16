@@ -35,74 +35,43 @@ class LocalRetrievalPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(s16, s8, s16, s24),
         children: [
-          Container(
-            padding: const EdgeInsets.all(s16),
-            decoration: BoxDecoration(
-              color: primary50,
-              borderRadius: BorderRadius.circular(radius8),
-              border: Border.all(color: primary100),
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '学习记录只在本机查找',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: ink,
-                  ),
-                ),
-                SizedBox(height: s6),
-                Text(
-                  '模型会在设备上理解项目、事项、记忆、信号和历史对话；不会将这些文本上传用于生成向量。',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.5,
-                    color: textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: s20),
-          _Row(label: '模型', value: 'bge-small-zh-v1.5 · ONNX INT8'),
-          _Row(label: '状态', value: _statusLabel(state)),
-          if (state.version != null) _Row(label: '版本', value: state.version!),
-          if (ready)
-            _Row(label: '索引版本', value: state.indexVersion ?? '正在安全升级索引'),
+          const _LocalIntro(),
+          const SizedBox(height: s24),
+          const _SectionLabel('模型状态'),
+          const SizedBox(height: s8),
+          _ModelStatusCard(state: state, ready: ready, busy: busy),
           if (busy || state.totalBytes > 0) ...[
-            const SizedBox(height: s12),
-            LinearProgressIndicator(value: progress == 0 ? null : progress),
-            const SizedBox(height: s6),
-            Text(
-              '${_bytes(state.downloadedBytes)} / ${_bytes(state.totalBytes)}',
-              style: const TextStyle(fontSize: 12, color: textTertiary),
+            const SizedBox(height: s16),
+            _ProgressPanel(
+              title: _statusLabel(state),
+              value: progress == 0 ? null : progress,
+              detail:
+                  '${_bytes(state.downloadedBytes)} / ${_bytes(state.totalBytes)}',
             ),
           ],
           if (index.running || index.total > 0) ...[
-            const SizedBox(height: s20),
-            const Text(
-              '建立学习记录索引',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: s8),
-            LinearProgressIndicator(
+            const SizedBox(height: s16),
+            _ProgressPanel(
+              title: '建立学习记录索引',
               value: indexProgress == 0 ? null : indexProgress,
-            ),
-            const SizedBox(height: s6),
-            Text(
-              index.running
+              detail: index.running
                   ? '${index.completed} / ${index.total}'
                   : (index.message ?? '等待索引'),
-              style: const TextStyle(fontSize: 12, color: textTertiary),
             ),
           ],
           if (state.error != null) ...[
             const SizedBox(height: s16),
-            Text(
-              state.error!,
-              style: const TextStyle(fontSize: 13, color: danger),
+            Container(
+              padding: const EdgeInsets.all(s12),
+              decoration: BoxDecoration(
+                color: error50,
+                borderRadius: BorderRadius.circular(radius8),
+                border: Border.all(color: error100),
+              ),
+              child: Text(
+                state.error!,
+                style: const TextStyle(fontSize: 13, color: danger),
+              ),
             ),
           ],
           const SizedBox(height: s24),
@@ -141,9 +110,10 @@ class LocalRetrievalPage extends StatelessWidget {
               ],
             ),
           if (busy || index.running)
-            TextButton(
+            TextButton.icon(
               onPressed: store.cancelLocalRetrievalWork,
-              child: const Text('暂停当前任务'),
+              icon: const Icon(Icons.pause_circle_outline, size: iconSmall),
+              label: const Text('暂停当前任务'),
             ),
         ],
       ),
@@ -184,6 +154,145 @@ class LocalRetrievalPage extends StatelessWidget {
     );
     if (confirmed == true) await store.deleteLocalRetrievalModel();
   }
+}
+
+class _LocalIntro extends StatelessWidget {
+  const _LocalIntro();
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: primary50,
+          borderRadius: BorderRadius.circular(radius12),
+        ),
+        child: const Icon(Icons.manage_search, color: primary500),
+      ),
+      const SizedBox(width: s12),
+      const Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '学习记录只在本机查找',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: s4),
+            Text(
+              '项目、事项、记忆、信号和历史对话不会被上传用于建立索引。',
+              style: TextStyle(fontSize: 13, height: 1.45, color: textTertiary),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: const TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: textTertiary,
+    ),
+  );
+}
+
+class _ModelStatusCard extends StatelessWidget {
+  final LocalRetrievalState state;
+  final bool ready;
+  final bool busy;
+
+  const _ModelStatusCard({
+    required this.state,
+    required this.ready,
+    required this.busy,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(s16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(radius8),
+      border: Border.all(color: line),
+    ),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Icon(
+              ready
+                  ? Icons.verified_outlined
+                  : busy
+                  ? Icons.downloading_outlined
+                  : Icons.download_outlined,
+              size: iconMedium,
+              color: ready ? success500 : primary500,
+            ),
+            const SizedBox(width: s8),
+            Expanded(
+              child: Text(
+                LocalRetrievalPage._statusLabel(state),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: s12),
+        const _Row(label: '模型', value: 'bge-small-zh-v1.5 · ONNX INT8'),
+        if (state.version != null) _Row(label: '版本', value: state.version!),
+        if (ready) _Row(label: '索引', value: state.indexVersion ?? '正在安全升级索引'),
+      ],
+    ),
+  );
+}
+
+class _ProgressPanel extends StatelessWidget {
+  final String title;
+  final double? value;
+  final String detail;
+
+  const _ProgressPanel({
+    required this.title,
+    required this.value,
+    required this.detail,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(s12),
+    decoration: BoxDecoration(
+      color: surfaceAlt,
+      borderRadius: BorderRadius.circular(radius8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: s10),
+        LinearProgressIndicator(value: value),
+        const SizedBox(height: s8),
+        Text(detail, style: const TextStyle(fontSize: 12, color: textTertiary)),
+      ],
+    ),
+  );
 }
 
 class _Row extends StatelessWidget {

@@ -751,16 +751,35 @@ class AppStore
     required String toolCallId,
     required String conversationId,
     required String title,
-    required int minutes,
+    required String kind,
+    int? minutes,
+    String? alertAt,
+    required bool startImmediately,
   }) async {
+    final timerKind = StudyTimerKind.values.firstWhere(
+      (value) => value.name == kind,
+      orElse: () => StudyTimerKind.timer,
+    );
+    final alarmAt = alertAt == null ? null : DateTime.tryParse(alertAt);
     final timer = await _studyTimers.create(
       id: newSumiId('timer'),
       toolCallId: toolCallId,
       conversationId: conversationId,
       title: title,
+      kind: timerKind,
       minutes: minutes,
+      alertAt: alarmAt,
+      startImmediately: startImmediately,
     );
-    return '已创建学习计时器「${timer.title}」，时长 $minutes 分钟，等待用户手动开始。';
+    if (timer.kind == StudyTimerKind.alarm) {
+      final alert = timer.alertAt!.toLocal();
+      final time =
+          '${alert.month}月${alert.day}日 ${alert.hour.toString().padLeft(2, '0')}:${alert.minute.toString().padLeft(2, '0')}';
+      return '已创建闹钟「${timer.title}」，会在 $time 通过系统声音和震动提醒。';
+    }
+    return startImmediately
+        ? '已开始学习计时「${timer.title}」，$minutes 分钟后会通过系统声音和震动提醒。'
+        : '已创建学习计时器「${timer.title}」，时长 $minutes 分钟；点击卡片开始后会通过系统声音和震动提醒。';
   }
 
   ProjectGenerationSession createProjectGenerationSession(

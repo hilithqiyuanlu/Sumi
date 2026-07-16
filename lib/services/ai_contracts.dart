@@ -342,16 +342,39 @@ class AiContracts {
         normalized['range'] = range;
       case 'create_study_timer':
         final title = _text(args['title']);
-        final minutes = _integer(args['minutes']);
+        final kind = _text(args['kind']).isEmpty
+            ? 'timer'
+            : _text(args['kind']);
         if (!_lengthBetween(title, 2, 32)) {
           errors.add('title 必须为 2-32 字');
         }
-        if (minutes == null || minutes < 1 || minutes > 480) {
-          errors.add('minutes 必须为 1-480 的整数');
+        if (!const {'timer', 'alarm'}.contains(kind)) {
+          errors.add('kind 只能是 timer 或 alarm');
+        }
+        final startImmediately = args['startImmediately'];
+        if (startImmediately != null && startImmediately is! bool) {
+          errors.add('startImmediately 必须是布尔值');
+        }
+        if (kind == 'timer') {
+          final minutes = _integer(args['minutes']);
+          if (minutes == null || minutes < 1 || minutes > 480) {
+            errors.add('timer 的 minutes 必须为 1-480 的整数');
+          } else {
+            normalized['minutes'] = minutes;
+          }
         } else {
-          normalized['minutes'] = minutes;
+          final alertAt = DateTime.tryParse(_text(args['alertAt']));
+          if (alertAt == null || !alertAt.isAfter(DateTime.now())) {
+            errors.add('alarm 的 alertAt 必须是未来的 ISO 8601 时间');
+          } else if (alertAt.difference(DateTime.now()).inDays > 366) {
+            errors.add('alarm 的 alertAt 不能超过一年');
+          } else {
+            normalized['alertAt'] = alertAt.toIso8601String();
+          }
         }
         normalized['title'] = title;
+        normalized['kind'] = kind;
+        normalized['startImmediately'] = startImmediately as bool? ?? false;
       case 'start_project_generation':
         final goal = _text(args['goal']);
         final level = _text(args['level']);

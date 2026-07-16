@@ -49,7 +49,9 @@ class ChatPromptBuilder {
         );
       }
       if (enabled.contains('create_study_timer')) {
-        blocks.add('只有用户明确提出学习计时或倒计时请求时才调用 create_study_timer。创建后由用户在卡片上手动开始。');
+        blocks.add(
+          '只有用户明确提出学习计时、倒计时或闹钟请求时才调用 create_study_timer。用户明确说“现在开始”“立刻开始”时才传 startImmediately=true；否则计时器保持待开始。创建闹钟必须取得明确的未来时间并传 alarm + alertAt；时间含糊时先追问，不能猜测。',
+        );
       }
     }
     if (hotMemory.trim().isNotEmpty ||

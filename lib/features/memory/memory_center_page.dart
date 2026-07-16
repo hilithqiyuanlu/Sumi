@@ -153,7 +153,6 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
       builder: (context) => SafeArea(
         child: Container(
           constraints: BoxConstraints(
-            minHeight: 260,
             maxHeight: MediaQuery.of(context).size.height * 0.78,
           ),
           decoration: const BoxDecoration(

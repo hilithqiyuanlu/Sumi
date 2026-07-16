@@ -123,6 +123,18 @@ class LocalTextModelPackage {
       await target.delete();
       existing = 0;
     }
+    if (existing == manifest.sizeBytes) {
+      try {
+        await _verify(manifest, directory);
+        await File(
+          p.join(directory.path, 'manifest.json'),
+        ).writeAsString(jsonEncode(manifest.toJson()));
+        return directory;
+      } on LocalTextModelPackageException {
+        await target.delete();
+        existing = 0;
+      }
+    }
     final request = http.Request('GET', _url(manifest.modelFile));
     if (existing > 0) request.headers['Range'] = 'bytes=$existing-';
     final response = await _client

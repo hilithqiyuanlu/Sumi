@@ -97,66 +97,9 @@ class ChatBubble extends StatelessWidget {
             ),
           // 气泡（用户消息可删除；最新一条还可编辑后重新发送）
           GestureDetector(
-            onLongPress: () {
-              H.medium();
-              if (onDelete != null) {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(
-                        Radius.circular(radiusCard),
-                      ),
-                    ),
-                    title: const Text(
-                      '删除这条对话？',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    content: const Text(
-                      '将同时删除这一来一回的全部内容，包括工具信息。',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    actions: [
-                      if (onEdit != null)
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            await _editAndResend(context);
-                          },
-                          child: const Text('编辑'),
-                        ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('取消'),
-                      ),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: danger,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          onDelete!.call();
-                        },
-                        child: const Text('删除'),
-                      ),
-                    ],
-                  ),
-                );
-              } else {
-                Clipboard.setData(ClipboardData(text: content));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('已复制'),
-                    duration: Duration(seconds: 1),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
+            onLongPress: isUser
+                ? () => _showUserMessageActions(context)
+                : () => _copyContent(context),
             child: Container(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.78,
@@ -192,6 +135,64 @@ class ChatBubble extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showUserMessageActions(BuildContext context) {
+    H.medium();
+    if (onDelete == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
+        ),
+        title: const Text(
+          '删除这条对话？',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        content: const Text(
+          '将同时删除这一来一回的全部内容，包括工具信息。',
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          if (onEdit != null)
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _editAndResend(context);
+              },
+              child: const Text('编辑'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: danger,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              onDelete!.call();
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyContent(BuildContext context) {
+    H.medium();
+    Clipboard.setData(ClipboardData(text: content));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已复制'),
+        duration: Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -510,6 +511,7 @@ class _StudyTimerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remaining = timer.remainingAt(DateTime.now());
+    final isAlarm = timer.kind == StudyTimerKind.alarm;
     final minutes = (remaining ~/ 60).toString().padLeft(2, '0');
     final seconds = (remaining % 60).toString().padLeft(2, '0');
     final finished =
@@ -530,8 +532,8 @@ class _StudyTimerCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.timer_outlined,
+              Icon(
+                isAlarm ? Icons.alarm_outlined : Icons.timer_outlined,
                 size: iconMedium,
                 color: primary500,
               ),
@@ -557,9 +559,12 @@ class _StudyTimerCard extends StatelessWidget {
           ),
           const SizedBox(height: s4),
           Text(switch (timer.status) {
-            StudyTimerStatus.ready => '准备开始，离开 App 后不会提醒',
-            StudyTimerStatus.running => '正在计时，离开 App 后不会提醒',
+            StudyTimerStatus.ready => '准备开始，开始后会通过系统声音和震动提醒',
+            StudyTimerStatus.running when isAlarm =>
+              '将在 ${_clock(timer.alertAt)} 通过系统声音和震动提醒',
+            StudyTimerStatus.running => '正在计时，到点会通过系统声音和震动提醒',
             StudyTimerStatus.paused => '已暂停',
+            StudyTimerStatus.completed when isAlarm => '闹钟已到',
             StudyTimerStatus.completed => '计时完成',
             StudyTimerStatus.cancelled => '已取消',
           }, style: const TextStyle(fontSize: 12, color: textTertiary)),
@@ -567,25 +572,28 @@ class _StudyTimerCard extends StatelessWidget {
             const SizedBox(height: s10),
             Row(
               children: [
-                OutlinedButton.icon(
-                  onPressed: running
-                      ? () => onPause?.call(timer.id)
-                      : () => onStart?.call(timer.id),
-                  icon: Icon(
-                    running ? Icons.pause : Icons.play_arrow,
-                    size: iconSmall,
+                if (!isAlarm)
+                  OutlinedButton.icon(
+                    onPressed: running
+                        ? () => onPause?.call(timer.id)
+                        : () => onStart?.call(timer.id),
+                    icon: Icon(
+                      running ? Icons.pause : Icons.play_arrow,
+                      size: iconSmall,
+                    ),
+                    label: Text(running ? '暂停' : '开始'),
                   ),
-                  label: Text(running ? '暂停' : '开始'),
-                ),
-                const SizedBox(width: s8),
-                IconButton(
-                  tooltip: '结束',
-                  onPressed: () => onFinish?.call(timer.id),
-                  icon: const Icon(
-                    Icons.stop_circle_outlined,
-                    size: iconMedium,
+                if (!isAlarm) ...[
+                  const SizedBox(width: s8),
+                  IconButton(
+                    tooltip: '结束',
+                    onPressed: () => onFinish?.call(timer.id),
+                    icon: const Icon(
+                      Icons.stop_circle_outlined,
+                      size: iconMedium,
+                    ),
                   ),
-                ),
+                ],
                 IconButton(
                   tooltip: '取消',
                   onPressed: () => onCancel?.call(timer.id),
@@ -597,6 +605,12 @@ class _StudyTimerCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _clock(DateTime? value) {
+    if (value == null) return '设定时间';
+    final local = value.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 }
 

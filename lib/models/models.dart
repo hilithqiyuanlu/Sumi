@@ -105,15 +105,19 @@ class AppSettings {
 
 enum StudyTimerStatus { ready, running, paused, completed, cancelled }
 
+enum StudyTimerKind { timer, alarm }
+
 class StudyTimer {
   final String id;
   final String toolCallId;
   final String conversationId;
   final String title;
+  final StudyTimerKind kind;
   final int totalSeconds;
   final int remainingSeconds;
   final StudyTimerStatus status;
   final DateTime? startedAt;
+  final DateTime? alertAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -122,17 +126,29 @@ class StudyTimer {
     required this.toolCallId,
     required this.conversationId,
     required this.title,
+    this.kind = StudyTimerKind.timer,
     required this.totalSeconds,
     required this.remainingSeconds,
     required this.status,
     required this.createdAt,
     required this.updatedAt,
     this.startedAt,
+    this.alertAt,
   });
+
+  DateTime? get triggerAt {
+    if (status != StudyTimerStatus.running) return null;
+    if (kind == StudyTimerKind.alarm) return alertAt;
+    if (startedAt == null) return null;
+    return startedAt!.add(Duration(seconds: remainingSeconds));
+  }
 
   int remainingAt(DateTime now) {
     if (status != StudyTimerStatus.running || startedAt == null) {
       return remainingSeconds;
+    }
+    if (kind == StudyTimerKind.alarm && alertAt != null) {
+      return alertAt!.difference(now).inSeconds.clamp(0, totalSeconds);
     }
     return (remainingSeconds - now.difference(startedAt!).inSeconds).clamp(
       0,
@@ -151,10 +167,12 @@ class StudyTimer {
     toolCallId: toolCallId,
     conversationId: conversationId,
     title: title,
+    kind: kind,
     totalSeconds: totalSeconds,
     remainingSeconds: remainingSeconds ?? this.remainingSeconds,
     status: status ?? this.status,
     startedAt: clearStartedAt ? null : startedAt ?? this.startedAt,
+    alertAt: alertAt,
     createdAt: createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );

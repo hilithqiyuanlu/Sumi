@@ -35,10 +35,12 @@ class StudyTimerDatabase {
     'tool_call_id': timer.toolCallId,
     'conversation_id': timer.conversationId,
     'title': timer.title,
+    'kind': timer.kind.name,
     'total_seconds': timer.totalSeconds,
     'remaining_seconds': timer.remainingSeconds,
     'status': timer.status.name,
     'started_at': timer.startedAt?.toIso8601String(),
+    'alert_at': timer.alertAt?.toIso8601String(),
     'created_at': timer.createdAt.toIso8601String(),
     'updated_at': timer.updatedAt.toIso8601String(),
   };
@@ -48,6 +50,10 @@ class StudyTimerDatabase {
     toolCallId: row['tool_call_id'] as String,
     conversationId: row['conversation_id'] as String,
     title: row['title'] as String,
+    kind: StudyTimerKind.values.firstWhere(
+      (value) => value.name == row['kind'],
+      orElse: () => StudyTimerKind.timer,
+    ),
     totalSeconds: (row['total_seconds'] as num).toInt(),
     remainingSeconds: (row['remaining_seconds'] as num).toInt(),
     status: StudyTimerStatus.values.firstWhere(
@@ -55,6 +61,7 @@ class StudyTimerDatabase {
       orElse: () => StudyTimerStatus.cancelled,
     ),
     startedAt: DateTime.tryParse(row['started_at'] as String? ?? ''),
+    alertAt: DateTime.tryParse(row['alert_at'] as String? ?? ''),
     createdAt:
         DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now(),
     updatedAt:

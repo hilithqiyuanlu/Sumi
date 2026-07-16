@@ -135,21 +135,38 @@ class ChatToolRegistry {
     ),
     ChatToolDefinition(
       name: 'create_study_timer',
-      label: '学习计时',
-      description: '创建可手动开始、暂停和取消的学习计时卡。',
+      label: '计时与闹钟',
+      description: '创建学习倒计时或按时间提醒的闹钟卡片。',
       group: '创建与执行',
       schema: {
         'type': 'function',
         'function': {
           'name': 'create_study_timer',
-          'description': '仅在用户明确提出学习计时或倒计时请求时，创建待开始的学习计时卡。',
+          'description':
+              '仅在用户明确提出学习计时、倒计时或闹钟请求时调用。timer 需要 minutes；alarm 需要未来的 alertAt。用户说“现在开始”时 startImmediately 为 true。',
           'parameters': {
             'type': 'object',
             'properties': {
               'title': {'type': 'string', 'description': '学习内容，2-32 字'},
-              'minutes': {'type': 'integer', 'description': '时长，1-480 分钟'},
+              'kind': {
+                'type': 'string',
+                'enum': ['timer', 'alarm'],
+                'description': 'timer 为倒计时，alarm 为指定时刻提醒',
+              },
+              'minutes': {
+                'type': 'integer',
+                'description': 'timer 时长，1-480 分钟',
+              },
+              'alertAt': {
+                'type': 'string',
+                'description': 'alarm 的未来本地时间，ISO 8601 格式',
+              },
+              'startImmediately': {
+                'type': 'boolean',
+                'description': '仅用户明确要求现在开始时为 true',
+              },
             },
-            'required': ['title', 'minutes'],
+            'required': ['title', 'kind'],
           },
         },
       },

@@ -219,10 +219,12 @@ Future<Database> _openDatabase() async {
       tool_call_id TEXT NOT NULL,
       conversation_id TEXT NOT NULL,
       title TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'timer',
       total_seconds INTEGER NOT NULL,
       remaining_seconds INTEGER NOT NULL,
       status TEXT NOT NULL,
       started_at TEXT,
+      alert_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -1075,6 +1077,47 @@ void main() {
       '今天的问题',
       '原会话的回复',
     ]);
+  });
+
+  test('日期会话互不混合，未来日期保持临时且不落库', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final local = SumiLocalDatabase(database: db);
+    final chatDb = ChatDatabase(local);
+    final today = dateOnly(DateTime.now());
+    final yesterday = today.subtract(const Duration(days: 1));
+    final first = await chatDb.createConversationForDate(dateKey(yesterday));
+    final second = await chatDb.createConversationForDate(dateKey(today));
+    await chatDb.saveMessage(
+      ChatMessage(
+        id: 'yesterday-message',
+        conversationId: first.id,
+        role: 'user',
+        content: '昨天的对话',
+        createdAt: yesterday,
+      ),
+    );
+    await chatDb.saveMessage(
+      ChatMessage(
+        id: 'today-message',
+        conversationId: second.id,
+        role: 'user',
+        content: '今天的对话',
+        createdAt: today,
+      ),
+    );
+    final store = await _createStore(db);
+
+    await store.selectDate(yesterday);
+    expect(store.chatView.value.messages.single.content, '昨天的对话');
+
+    await store.selectDate(today);
+    expect(store.chatView.value.messages.single.content, '今天的对话');
+
+    final tomorrow = today.add(const Duration(days: 1));
+    await store.selectDate(tomorrow);
+    expect(store.chatView.value.isTemporaryConversation, isTrue);
+    expect(await chatDb.findConversationByDate(dateKey(tomorrow)), isNull);
   });
 
   test('月份导航遵循方向规则并受五年范围限制', () async {

@@ -20,7 +20,7 @@ class SumiLocalDatabase {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 15,
+      version: 16,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -75,6 +75,9 @@ class SumiLocalDatabase {
         }
         if (oldVersion < 15) {
           await _migrateV14toV15(db);
+        }
+        if (oldVersion < 16) {
+          await _migrateV15toV16(db);
         }
       },
     );
@@ -244,16 +247,30 @@ class SumiLocalDatabase {
 
   Future<void> _migrateV14toV15(Database db) => _createStudyTimersTable(db);
 
+  Future<void> _migrateV15toV16(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(study_timers)');
+    if (!columns.any((column) => column['name'] == 'kind')) {
+      await db.execute(
+        "ALTER TABLE study_timers ADD COLUMN kind TEXT NOT NULL DEFAULT 'timer'",
+      );
+    }
+    if (!columns.any((column) => column['name'] == 'alert_at')) {
+      await db.execute('ALTER TABLE study_timers ADD COLUMN alert_at TEXT');
+    }
+  }
+
   Future<void> _createStudyTimersTable(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS study_timers (
       id TEXT PRIMARY KEY,
       tool_call_id TEXT NOT NULL,
       conversation_id TEXT NOT NULL,
       title TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'timer',
       total_seconds INTEGER NOT NULL,
       remaining_seconds INTEGER NOT NULL,
       status TEXT NOT NULL,
       started_at TEXT,
+      alert_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )''');
