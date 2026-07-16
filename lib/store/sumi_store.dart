@@ -15,6 +15,7 @@ import '../data/schedule_proposal_database.dart';
 import '../data/study_timer_database.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
+import '../services/app_update_service.dart';
 import '../services/ai_runtime.dart';
 import '../services/chat_prompt_builder.dart';
 import '../services/chat_tool_registry.dart';
@@ -38,10 +39,10 @@ import '../services/project_generation_controller.dart';
 import '../services/secure_settings_store.dart';
 import '../services/signal_service.dart';
 import '../services/study_timer_service.dart';
-import '../services/system_reminder_service.dart';
 import '../services/timer_controller.dart';
 import '../services/snapshot_write_queue.dart';
 import '../services/schedule_load_service.dart';
+import '../services/today_suggestion_mapper.dart';
 import '../services/tool_executor.dart';
 import '../services/user_model_service.dart';
 import '../services/memory_service.dart';
@@ -53,6 +54,16 @@ part 'sumi_store_persist.dart';
 part 'sumi_store_todos.dart';
 part 'sumi_store_projects.dart';
 part 'sumi_store_chat.dart';
+
+enum TodayLoadFlowState {
+  idle,
+  armed,
+  screening,
+  attention,
+  analyzing,
+  preview,
+  completed,
+}
 
 /// 应用协调器。可变状态由分域控制器持有，AppStore 本身不广播 UI 更新。
 class AppStore
@@ -69,15 +80,23 @@ class AppStore
   late final LocalRetrievalCoordinator _localRetrievalCoordinator;
   late final LocalTextGenerationRuntime _localTextRuntime;
   late final LocalTextGenerationCoordinator _localTextCoordinator;
+  late final AppUpdateService _appUpdates;
   late final TimerController timerController;
   late final StudyTimerService _studyTimers;
   late final ScheduleProposalDatabase _scheduleProposals;
   final ScheduleLoadAssessor _scheduleLoadAssessor = ScheduleLoadAssessor();
   ScheduleRebalanceProposal? _pendingScheduleProposal;
+  List<ScheduleRebalanceProposal> _scheduleCards = const [];
   bool _scheduleAssessmentRunning = false;
   bool _rollingPlanningRunning = false;
+  Timer? _todayLoadWindowTimer;
+  Timer? _regularSuggestionTimer;
   bool _appInForeground = true;
-  String? _scheduleNotificationSentProposalId;
+  List<MemorySuggestion> _todayLoadSuggestions = const [];
+  String? _activeTodayLoadFingerprint;
+  bool _todayLoadChangedDuringRequest = false;
+  bool _startupTodayLoadChecked = false;
+  TodayLoadFlowState _todayLoadFlowState = TodayLoadFlowState.idle;
   final ProjectGenerationController projectGenerationController =
       ProjectGenerationController();
   ChatDatabase? _chatDatabase;
@@ -135,13 +154,21 @@ class AppStore
   LocalRetrievalState get localRetrievalState =>
       _localRetrievalCoordinator.state;
   LocalTextModelState get localTextModelState => _localTextCoordinator.state;
+  bool get localTextGenerationEnabled => appSettings.localTextGenerationEnabled;
+  AppUpdateState get appUpdateState => _appUpdates.state.value;
   @override
-  StructuredGenerationCapability? get structuredAi => _modelRouter == null
-      ? null
-      : LocalFirstStructuredGeneration(
-          cloud: _modelRouter!.structured,
-          local: _localTextRuntime,
-        );
+  StructuredGenerationCapability? get structuredAi {
+    final router = _modelRouter;
+    if (router == null) return null;
+    if (!localTextGenerationEnabled) return router.structured;
+    return LocalFirstStructuredGeneration(
+      cloud: router.structured,
+      local: _localTextRuntime,
+      metrics: modelRouterMetrics,
+      clock: _now,
+    );
+  }
+
   @override
   ChatCapability? get chatAgent => _modelRouter?.chat;
 
@@ -202,6 +229,10 @@ class AppStore
   Future<void> clearStudyTimers() => _studyTimers.clearAll();
   ScheduleRebalanceProposal? get pendingScheduleProposal =>
       _pendingScheduleProposal;
+  List<ScheduleRebalanceProposal> get scheduleCards =>
+      List.unmodifiable(_scheduleCards);
+  List<MemorySuggestion> get todayLoadSuggestions => _todayLoadSuggestions;
+  TodayLoadFlowState get todayLoadFlowState => _todayLoadFlowState;
 
   /// Thinking 模式开关。
   @override
@@ -262,11 +293,14 @@ class AppStore
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _todayLoadWindowTimer?.cancel();
+    _regularSuggestionTimer?.cancel();
     await flushPersistence();
     disposeChatView();
     _voiceService?.dispose();
     await _localRetrievalCoordinator.close();
     await _localTextCoordinator.close();
+    _appUpdates.close();
     _studyTimers.dispose();
     timerController.dispose();
     projectGenerationController.dispose();
@@ -359,6 +393,8 @@ class AppStore
       runtime: store._localTextRuntime,
       onState: (_) => store.settingsController.markChanged(),
     );
+    store._appUpdates = AppUpdateService();
+    store._appUpdates.state.addListener(store.settingsController.markChanged);
 
     // Import legacy files once, then generate USER_MODEL.md only as export.
     await store._migrateLegacyMemory();
@@ -391,10 +427,16 @@ class AppStore
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
 
     // 检测并生成每日 todo —— 不阻塞启动，后台静默执行
-    unawaited(store._runRollingPlanAndScheduleAssessment());
+    unawaited(store._runRollingPlanning());
+    unawaited(store._runStartupTodayLoadScreening());
 
     return store;
   }
+
+  Future<void> prepareAppUpdate() => _appUpdates.prepare();
+  Future<void> checkForAppUpdate() => _appUpdates.check();
+  Future<void> downloadAppUpdate() => _appUpdates.download();
+  Future<void> installAppUpdate() => _appUpdates.install();
 
   // ---------------------------------------------------------------------------
   // AI
@@ -466,22 +508,30 @@ class AppStore
   /// 返回 null 表示已降级直接创建（调用方无需再处理）。
   /// 返回 SplitResult(split: false) 表示 AI 判断无需拆分，已直接创建。
   /// 返回 SplitResult(split: true) 表示需要拆分确认。
-  Future<SplitResult?> splitAndAddTodo(String text) async {
+  Future<SplitResult?> splitAndAddTodo(
+    String text, {
+    bool Function()? isCancelled,
+  }) async {
+    bool cancelled() => isCancelled?.call() ?? false;
     final ai = structuredAi;
     if (ai == null) {
       recordAiDegraded(ModelCapability.structured);
+      if (cancelled()) return null;
       addUserTodo(text);
       return null;
     }
 
     final result = await ai.splitTodo(text);
+    if (cancelled()) return null;
     if (result == null) {
       recordAiDegraded(ModelCapability.structured);
       // AI 调用失败 → 若超长尝试凝练，否则直接创建
       if (text.length > todoTitleMaxLength) {
         final condensed = await polishText(text);
+        if (cancelled()) return null;
         addUserTodo(condensed ?? text, condensedFrom: text);
       } else {
+        if (cancelled()) return null;
         addUserTodo(text);
       }
       return null;
@@ -492,8 +542,10 @@ class AppStore
       final single = result.items.isNotEmpty ? result.items.first : text;
       if (single.length > todoTitleMaxLength) {
         final condensed = await polishText(single);
+        if (cancelled()) return null;
         addUserTodo(condensed ?? single, condensedFrom: text);
       } else {
+        if (cancelled()) return null;
         addUserTodo(single, condensedFrom: text);
       }
       return null;
@@ -502,8 +554,10 @@ class AppStore
     // 需要拆分 → 确保每项不超长
     final polishedItems = <String>[];
     for (final item in result.items) {
+      if (cancelled()) return null;
       if (item.length > todoTitleMaxLength) {
         final condensed = await polishText(item);
+        if (cancelled()) return null;
         polishedItems.add(condensed ?? item);
       } else {
         polishedItems.add(item);
@@ -534,6 +588,11 @@ class AppStore
   /// 切换 thinking 模式。
   void setThinkingEnabled(bool v) {
     appSettings = appSettings.copyWith(thinkingEnabled: v);
+    afterSettingsMutation();
+  }
+
+  void setLocalTextGenerationEnabled(bool value) {
+    appSettings = appSettings.copyWith(localTextGenerationEnabled: value);
     afterSettingsMutation();
   }
 
@@ -626,22 +685,25 @@ class AppStore
   Future<void> flushPersistence() => _snapshotWrites.flush();
 
   @override
-  void afterTodoMutation() {
+  void afterTodoMutation({bool affectsTodayLoad = false}) {
     _persist();
     todoController.markChanged();
     _scheduleLocalIndex();
-    unawaited(_assessScheduleAfterChange());
+    _scheduleRegularSuggestionRefresh();
+    if (affectsTodayLoad) _armTodayLoadScreening();
   }
 
   @override
-  void afterProjectMutation() {
+  void afterProjectMutation({bool affectsTodayLoad = false}) {
     _persist();
     projectController.markChanged();
     todoController.markChanged();
     _scheduleLocalIndex();
     if (!_rollingPlanningRunning) {
-      unawaited(_runRollingPlanAndScheduleAssessment());
+      unawaited(_runRollingPlanning());
     }
+    _scheduleRegularSuggestionRefresh();
+    if (affectsTodayLoad) _armTodayLoadScreening();
   }
 
   void afterSettingsMutation() {
@@ -653,15 +715,14 @@ class AppStore
     await _studyTimers.handleLifecycle(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
-      await _runRollingPlanAndScheduleAssessment();
+      await _runRollingPlanning();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _appInForeground = false;
-      unawaited(_notifyPendingScheduleProposalIfNeeded());
     }
   }
 
-  Future<void> _runRollingPlanAndScheduleAssessment() async {
+  Future<void> _runRollingPlanning() async {
     if (_rollingPlanningRunning) return;
     _rollingPlanningRunning = true;
     try {
@@ -669,44 +730,209 @@ class AppStore
     } finally {
       _rollingPlanningRunning = false;
     }
-    await _assessScheduleAfterChange();
   }
 
-  Future<void> _assessScheduleAfterChange() async {
+  void _armTodayLoadScreening() {
+    if (!_appInForeground) return;
+    if (_todayLoadFlowState == TodayLoadFlowState.screening ||
+        _todayLoadFlowState == TodayLoadFlowState.analyzing) {
+      _todayLoadChangedDuringRequest = true;
+      return;
+    }
+    if (_todayLoadFlowState == TodayLoadFlowState.attention ||
+        _todayLoadFlowState == TodayLoadFlowState.preview) {
+      unawaited(_dismissForTodoChange());
+      return;
+    }
+    if (_todayLoadFlowState == TodayLoadFlowState.completed) {
+      _pendingScheduleProposal = null;
+      _todayLoadFlowState = TodayLoadFlowState.idle;
+    }
+    if (_todayLoadFlowState != TodayLoadFlowState.idle) return;
+    _todayLoadFlowState = TodayLoadFlowState.armed;
+    _todayLoadWindowTimer ??= Timer(const Duration(seconds: 60), () {
+      _todayLoadWindowTimer = null;
+      unawaited(_screenTodayLoad());
+    });
+  }
+
+  void _scheduleRegularSuggestionRefresh() {
+    if (_regularSuggestionTimer != null) return;
+    _regularSuggestionTimer = Timer(const Duration(minutes: 2), () {
+      _regularSuggestionTimer = null;
+      setSuggestionsDirty(true);
+      todoController.markChanged();
+    });
+  }
+
+  Future<void> _runStartupTodayLoadScreening() async {
+    if (_startupTodayLoadChecked) return;
+    _startupTodayLoadChecked = true;
+    await _screenTodayLoad();
+  }
+
+  Future<void> _screenTodayLoad() async {
     if (_scheduleAssessmentRunning) return;
+    final ai = structuredAi;
+    if (ai == null) {
+      _todayLoadFlowState = TodayLoadFlowState.idle;
+      return;
+    }
     _scheduleAssessmentRunning = true;
+    _todayLoadFlowState = TodayLoadFlowState.screening;
     try {
-      final assessment = _scheduleLoadAssessor.assess(
-        projects: projectList,
-        todos: todoItems,
-        today: _now(),
-      );
-      final lastProposal = await _scheduleProposals.latest();
-      if (!assessment.overloaded ||
-          _pendingScheduleProposal != null ||
-          await _scheduleProposals.hasFingerprint(assessment.fingerprint) ||
-          (lastProposal != null &&
-              assessment.score <= lastProposal.overloadScore + .5)) {
+      final today = _now();
+      final todayKey = dateKey(today);
+      final candidates = _todayLoadCandidates(todayKey);
+      if (candidates.isEmpty) {
+        if (_todayLoadSuggestions.isNotEmpty) {
+          _todayLoadSuggestions = const [];
+          setSuggestionsDirty(true);
+          todoController.markChanged();
+        }
+        _finishTodayLoadRound();
         return;
       }
-      final proposal = _scheduleLoadAssessor.propose(
-        assessment: assessment,
-        todos: todoItems,
-        today: _now(),
+      final inputFingerprint = jsonEncode({
+        'date': todayKey,
+        'todos': candidates,
+      });
+      _activeTodayLoadFingerprint = inputFingerprint;
+      final screening = await ai.screenTodayLoad(
+        date: todayKey,
+        todos: candidates,
       );
-      if (proposal == null) return;
+      if (_todayLoadChangedDuringRequest ||
+          _activeTodayLoadFingerprint != inputFingerprint) {
+        _todayLoadChangedDuringRequest = false;
+        _todayLoadFlowState = TodayLoadFlowState.idle;
+        _armTodayLoadScreening();
+        return;
+      }
+      if (screening != null) {
+        _todayLoadSuggestions = TodaySuggestionMapper.fromScreening(
+          screening: screening,
+          fingerprint: inputFingerprint,
+        );
+        dataVersion++;
+        todoController.markChanged();
+      }
+      if (screening == null ||
+          !screening.needsAttention ||
+          await _scheduleProposals.hasFingerprint(inputFingerprint)) {
+        _finishTodayLoadRound();
+        return;
+      }
+      if (_pendingScheduleProposal != null) {
+        await _scheduleProposals.updateStatus(
+          _pendingScheduleProposal!.id,
+          ScheduleProposalStatus.dismissed,
+        );
+        _pendingScheduleProposal = null;
+      }
+      final proposal = ScheduleRebalanceProposal(
+        id: newSumiId('rebalance'),
+        createdAt: _now(),
+        fingerprint: inputFingerprint,
+        overloadScore: screening.risk,
+        reasons: screening.reasons,
+        moves: const [],
+        unscheduledTodoIds: const [],
+        stage: ScheduleProposalStage.attention,
+        conversationId: currentConversationId,
+        displayAnchorMessageId: streamingAssistantMessageId,
+      );
       await _scheduleProposals.save(proposal);
       _pendingScheduleProposal = proposal;
+      await refreshScheduleCardsForConversation(proposal.conversationId);
+      _todayLoadFlowState = TodayLoadFlowState.attention;
       todoController.markChanged();
-      unawaited(_notifyPendingScheduleProposalIfNeeded());
     } finally {
       _scheduleAssessmentRunning = false;
     }
   }
 
+  String? _currentStreamingAssistantId() => streamingAssistantMessageId;
+
+  Future<void> _dismissForTodoChange() async {
+    final proposal = _pendingScheduleProposal;
+    _pendingScheduleProposal = null;
+    _todayLoadFlowState = TodayLoadFlowState.idle;
+    if (proposal != null) {
+      await _scheduleProposals.updateStatus(
+        proposal.id,
+        ScheduleProposalStatus.dismissed,
+      );
+    }
+    _armTodayLoadScreening();
+    todoController.markChanged();
+  }
+
+  List<Map<String, Object?>> _todayLoadCandidates(String todayKey) {
+    final candidates = <Map<String, Object?>>[];
+    for (final todo in todoItems) {
+      if (todo.done || todo.date != todayKey) continue;
+      final project = todo.projectId == null
+          ? null
+          : projectList.cast<Project?>().firstWhere(
+              (item) => item?.id == todo.projectId,
+              orElse: () => null,
+            );
+      candidates.add({
+        'id': todo.id,
+        'title': todo.title,
+        'source': todo.source.name,
+        'pinned': todo.pinned,
+        'hasReminder': todo.reminderTime != null,
+        if (project != null)
+          'project': {
+            'name': project.name,
+            'goal': project.goal,
+            'level': project.level,
+          },
+        if (todo.body != null && todo.body!.isNotEmpty) 'body': todo.body,
+      });
+    }
+    return candidates;
+  }
+
+  void _finishTodayLoadRound() {
+    _todayLoadWindowTimer?.cancel();
+    _todayLoadWindowTimer = null;
+    _todayLoadChangedDuringRequest = false;
+    _activeTodayLoadFingerprint = null;
+    _todayLoadFlowState = TodayLoadFlowState.idle;
+  }
+
+  List<Map<String, Object?>> _futureDaySummaries({
+    required DateTime start,
+    required int days,
+  }) => [
+    for (var offset = 0; offset < days; offset++)
+      () {
+        final date = dateKey(start.add(Duration(days: offset)));
+        return <String, Object?>{
+          'date': date,
+          'todos': [
+            for (final todo in todoItems)
+              if (!todo.done && todo.date == date)
+                {
+                  'title': todo.title,
+                  'source': todo.source.name,
+                  'pinned': todo.pinned,
+                  'hasReminder': todo.reminderTime != null,
+                  if (todo.projectId != null) 'projectId': todo.projectId,
+                },
+          ],
+        };
+      }(),
+  ];
+
   Future<void> acceptScheduleProposal() async {
     final proposal = _pendingScheduleProposal;
-    if (proposal == null || proposal.status != ScheduleProposalStatus.pending) {
+    if (proposal == null ||
+        proposal.status != ScheduleProposalStatus.pending ||
+        proposal.stage != ScheduleProposalStage.preview) {
       return;
     }
     final originalDates = <String, String>{};
@@ -732,32 +958,128 @@ class AppStore
       _persist();
       _scheduleLocalIndex();
     }
-    await _scheduleProposals.updateStatus(
+    final completed = await _scheduleProposals.complete(
       proposal.id,
-      ScheduleProposalStatus.accepted,
+      movedCount: originalDates.length,
+      displayAnchorMessageId: _currentStreamingAssistantId(),
     );
-    _pendingScheduleProposal = null;
+    _pendingScheduleProposal = completed;
+    await refreshScheduleCardsForConversation(proposal.conversationId);
+    _todayLoadFlowState = TodayLoadFlowState.completed;
     todoController.markChanged();
   }
 
-  Future<void> _notifyPendingScheduleProposalIfNeeded() async {
+  Future<void> requestScheduleAdvice() async {
     final proposal = _pendingScheduleProposal;
-    if (_appInForeground ||
-        proposal == null ||
-        proposal.status != ScheduleProposalStatus.pending ||
-        proposal.notificationSent ||
-        _scheduleNotificationSentProposalId == proposal.id) {
+    final ai = structuredAi;
+    if (proposal == null ||
+        proposal.stage != ScheduleProposalStage.attention ||
+        ai == null ||
+        _todayLoadFlowState == TodayLoadFlowState.analyzing) {
       return;
     }
-    _scheduleNotificationSentProposalId = proposal.id;
-    final updated = await _scheduleProposals.markNotificationSent(proposal.id);
-    if (updated == null || !updated.notificationSent) return;
-    if (_pendingScheduleProposal?.id == updated.id) {
-      _pendingScheduleProposal = updated;
+    final today = _now();
+    final todayKey = dateKey(today);
+    final candidates = _todayLoadCandidates(todayKey);
+    final inputFingerprint = jsonEncode({
+      'date': todayKey,
+      'todos': candidates,
+    });
+    if (inputFingerprint != proposal.fingerprint) {
+      await _dismissForTodoChange();
+      return;
     }
-    await SystemReminderService().showScheduleRebalanceAlert(
-      moveCount: proposal.moves.length,
+    _todayLoadFlowState = TodayLoadFlowState.analyzing;
+    _todayLoadChangedDuringRequest = false;
+    final firstWindow = _futureDaySummaries(
+      start: today.add(const Duration(days: 1)),
+      days: 14,
     );
+    try {
+      final initialAnalysis = await ai.analyzeTodayLoad(
+        date: todayKey,
+        todos: candidates,
+        futureDays: firstWindow,
+      );
+      if (_todayLoadChangedDuringRequest ||
+          _todayLoadCandidates(todayKey).toString() != candidates.toString()) {
+        await _dismissForTodoChange();
+        return;
+      }
+      if (initialAnalysis == null) return;
+      var analysis = initialAnalysis;
+      var preview = _scheduleLoadAssessor.proposeForToday(
+        analysis: analysis,
+        todos: todoItems,
+        today: today,
+        fingerprint: proposal.fingerprint,
+        conversationId: proposal.conversationId,
+      );
+      for (
+        var week = 3;
+        preview != null && preview.moves.isEmpty && week <= 12;
+        week++
+      ) {
+        final window = _futureDaySummaries(
+          start: today.add(Duration(days: (week - 1) * 7 + 1)),
+          days: 7,
+        );
+        final later = await ai.analyzeTodayLoad(
+          date: todayKey,
+          todos: candidates,
+          futureDays: window,
+        );
+        if (_todayLoadChangedDuringRequest) {
+          await _dismissForTodoChange();
+          return;
+        }
+        if (later == null) return;
+        analysis = analysis.withFutureDayPressure(later.futureDayPressure);
+        preview = _scheduleLoadAssessor.proposeForToday(
+          analysis: analysis,
+          todos: todoItems,
+          today: today,
+          fingerprint: proposal.fingerprint,
+          conversationId: proposal.conversationId,
+        );
+      }
+      if (preview == null) {
+        await dismissScheduleProposal();
+        return;
+      }
+      final updated = proposal.copyWith(
+        stage: ScheduleProposalStage.preview,
+        updatedAt: _now(),
+        displayAnchorMessageId: _currentStreamingAssistantId(),
+      );
+      // Keep the exact moves from the validated local preview.
+      final persisted = ScheduleRebalanceProposal(
+        id: updated.id,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        fingerprint: updated.fingerprint,
+        overloadScore: analysis.risk,
+        reasons: analysis.reasons,
+        moves: preview.moves,
+        unscheduledTodoIds: preview.unscheduledTodoIds,
+        status: updated.status,
+        stage: updated.stage,
+        displayAnchorMessageId: updated.displayAnchorMessageId,
+        conversationId: updated.conversationId,
+      );
+      _pendingScheduleProposal = await _scheduleProposals.save(persisted);
+      await refreshScheduleCardsForConversation(proposal.conversationId);
+      _todayLoadSuggestions = TodaySuggestionMapper.fromAnalysis(
+        analysis: analysis,
+        fingerprint: proposal.fingerprint,
+      );
+      _todayLoadFlowState = TodayLoadFlowState.preview;
+      todoController.markChanged();
+    } finally {
+      if (_todayLoadFlowState == TodayLoadFlowState.analyzing) {
+        _todayLoadFlowState = TodayLoadFlowState.attention;
+      }
+    }
   }
 
   Future<void> dismissScheduleProposal() async {
@@ -768,13 +1090,25 @@ class AppStore
       ScheduleProposalStatus.dismissed,
     );
     _pendingScheduleProposal = null;
+    await refreshScheduleCardsForConversation(proposal.conversationId);
+    _finishTodayLoadRound();
     todoController.markChanged();
   }
 
   @override
   Future<void> clearScheduleProposals() async {
     _pendingScheduleProposal = null;
+    _scheduleCards = const [];
     await _scheduleProposals.clearAll();
+  }
+
+  @override
+  Future<void> refreshScheduleCardsForConversation(
+    String? conversationId,
+  ) async {
+    _scheduleCards = conversationId == null
+        ? const []
+        : await _scheduleProposals.visibleForConversation(conversationId);
   }
 
   Future<void> downloadLocalRetrievalModel() =>

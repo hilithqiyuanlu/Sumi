@@ -127,6 +127,31 @@ void main() {
     expect(calls, 1);
   });
 
+  test('今日负荷轻检测只发送当天数据，不生成排期字段', () async {
+    Map<String, Object?>? requestBody;
+    final client = MockClient((request) async {
+      requestBody = jsonDecode(request.body) as Map<String, Object?>;
+      return _jsonChatResponse('{"risk":0.75,"reasons":["两个深度任务连续安排，切换成本较高"]}');
+    });
+
+    final result = await AiService(apiKey: 'key', client: client)
+        .screenTodayLoad(
+          date: '2026-07-16',
+          todos: const [
+            {'id': 'todo-1', 'title': '完成章节练习', 'projectName': '英语阅读'},
+          ],
+        );
+
+    expect(result?.needsAttention, isTrue);
+    expect(requestBody?['temperature'], 0.2);
+    expect(requestBody?['max_tokens'], 300);
+    final messages = requestBody?['messages'] as List<Object?>;
+    final prompt = (messages.last as Map<String, Object?>)['content'] as String;
+    expect(prompt, contains('todo-1'));
+    expect(prompt, isNot(contains('futureDays')));
+    expect(prompt, isNot(contains('movableTodoIds')));
+  });
+
   test('记忆提取只发送当前消息和最多三条候选，且不重试', () async {
     var calls = 0;
     Map<String, Object?>? requestBody;

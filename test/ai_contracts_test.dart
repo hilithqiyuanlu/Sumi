@@ -150,6 +150,53 @@ void main() {
       );
       expect(invalid.isValid, isFalse);
     });
+
+    test('今日负荷分析必须覆盖未来日期并限定可移动事项', () {
+      final valid = AiContracts.todayLoad(
+        {
+          'risk': .8,
+          'reasons': ['两项深度任务集中，切换成本较高'],
+          'suggestion': '先完成报告，再处理整理任务。',
+          'movableTodoIds': ['todo-2'],
+          'futureDayPressure': [
+            {'date': '2026-07-16', 'pressure': .4},
+            {'date': '2026-07-17', 'pressure': .8},
+          ],
+        },
+        validTodoIds: const {'todo-1', 'todo-2'},
+        futureDates: const {'2026-07-16', '2026-07-17'},
+      );
+      expect(valid.isValid, isTrue, reason: valid.errors.join('；'));
+
+      final invalid = AiContracts.todayLoad(
+        {
+          'risk': .8,
+          'reasons': ['两项深度任务集中，切换成本较高'],
+          'suggestion': '先完成报告，再处理整理任务。',
+          'movableTodoIds': ['unknown'],
+          'futureDayPressure': [
+            {'date': '2026-07-16', 'pressure': .4},
+          ],
+        },
+        validTodoIds: const {'todo-1'},
+        futureDates: const {'2026-07-16', '2026-07-17'},
+      );
+      expect(invalid.isValid, isFalse);
+    });
+
+    test('今日负荷轻检测只接受风险和简短原因', () {
+      final valid = AiContracts.todayLoadScreening({
+        'risk': .72,
+        'reasons': ['两个深度任务集中，完成质量可能下降'],
+      });
+      expect(valid.isValid, isTrue, reason: valid.errors.join('；'));
+
+      final invalid = AiContracts.todayLoadScreening({
+        'risk': 1.2,
+        'reasons': const <String>[],
+      });
+      expect(invalid.isValid, isFalse);
+    });
   });
 
   group('记忆提取契约', () {

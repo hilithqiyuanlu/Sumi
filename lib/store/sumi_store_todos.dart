@@ -10,7 +10,12 @@ mixin SumiStoreTodos {
   DateTime get selectedDate;
   StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
-  void afterTodoMutation();
+  void afterTodoMutation({bool affectsTodayLoad = false});
+
+  bool _affectsTodayLoad(String? before, [String? after]) {
+    final today = dateKey(DateTime.now());
+    return before == today || after == today;
+  }
 
   // ---------------------------------------------------------------------------
   // 创建
@@ -36,7 +41,7 @@ mixin SumiStoreTodos {
       condensedFrom: condensedFrom,
     );
     todoItems.add(todo);
-    afterTodoMutation();
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
     await signalService?.emitTodoCreated(todo);
     return todo;
   }
@@ -61,7 +66,7 @@ mixin SumiStoreTodos {
       createdAt: DateTime.now(),
     );
     todoItems.add(todo);
-    afterTodoMutation();
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
     await signalService?.emitTodoCreated(todo);
     return todo;
   }
@@ -90,7 +95,7 @@ mixin SumiStoreTodos {
       done: isCompleting,
       completedAt: isCompleting ? DateTime.now() : null,
     );
-    afterTodoMutation();
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
     if (todoItems[i].done) {
       await signalService?.emitTodoCompleted(todoItems[i]);
     } else {
@@ -106,7 +111,7 @@ mixin SumiStoreTodos {
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可删除
     await signalService?.emitTodoDeleted(todo);
     todoItems.removeWhere((t) => t.id == id);
-    afterTodoMutation();
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
   }
 
   /// 更新标题（含编辑区分 + 凝练还原保护）。
@@ -157,7 +162,7 @@ mixin SumiStoreTodos {
         await signalService?.emitTodoEdited(todo, todo.title, newTitle.trim());
         todoItems[i] = todo.copyWith(title: newTitle.trim());
     }
-    afterTodoMutation();
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
   }
 
   // ---------------------------------------------------------------------------
@@ -186,7 +191,7 @@ mixin SumiStoreTodos {
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可拖拽
     final oldDate = todo.date ?? '';
     todoItems[i] = todo.copyWith(date: date);
-    afterTodoMutation();
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(oldDate, date));
     await signalService?.emitTodoMovedDate(todoItems[i], oldDate, date ?? '');
   }
 
@@ -284,7 +289,7 @@ mixin SumiStoreTodos {
         case EditClassification.cleared:
           await signalService?.emitTodoDeleted(todo);
           todoItems.removeWhere((t) => t.id == id);
-          afterTodoMutation();
+          afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
           return;
         case EditClassification.major:
           await signalService?.emitTodoDeleted(todo, reason: 'largeEdit');
@@ -321,7 +326,12 @@ mixin SumiStoreTodos {
         reminderTime: reminderTimeArg,
       );
     }
-    afterTodoMutation();
+    afterTodoMutation(
+      affectsTodayLoad:
+          title != null &&
+          title.trim() != todo.title &&
+          _affectsTodayLoad(todo.date),
+    );
   }
 
   // ---------------------------------------------------------------------------

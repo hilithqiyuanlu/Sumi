@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "buildNumber": 1,
+  "notes": "首个公开测试版本。",
+  "apk": {
+    "url": "https://github.com/hilithqiyuanlu/Sumi/releases/download/v1.0.0/app-arm64-v8a-release.apk",
+    "sizeBytes": 1,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

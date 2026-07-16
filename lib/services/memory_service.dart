@@ -668,7 +668,9 @@ class MemoryService {
 
   Future<List<MemorySuggestion>> createSuggestions({
     required Map<String, String> realtimeStats,
+    int limit = 4,
   }) async {
+    assert(limit > 0);
     final all = await list();
     final activeTopics = all
         .where(
@@ -698,7 +700,7 @@ class MemoryService {
           await _recordShown(text, topic, item.id, 'memory', realtimeStats),
         );
       }
-      if (result.length == 4) return result;
+      if (result.length == limit) return result;
     }
     for (final topic in _defaultTopics(realtimeStats)) {
       if (!disabled.contains(topic) && used.add(topic)) {
@@ -712,7 +714,7 @@ class MemoryService {
           ),
         );
       }
-      if (result.length == 4) break;
+      if (result.length == limit) break;
     }
     return result;
   }
@@ -970,7 +972,7 @@ class MemoryService {
   }
 
   List<String> _defaultTopics(Map<String, String> stats) {
-    final topics = <String>['plan', 'priority', 'review', 'method'];
+    final topics = <String>['plan', 'priority', 'review', 'method', 'resource'];
     if (RegExp(r'^[1-9]').hasMatch(stats['planDeviationRate'] ?? '')) {
       topics.insert(0, 'adjust');
     }

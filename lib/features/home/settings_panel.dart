@@ -9,6 +9,8 @@ class SettingsPanel extends StatefulWidget {
     Navigator.push(
       context,
       PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.transparent,
         pageBuilder: (_, animation, secondaryAnimation) => const SettingsPanel(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(1.0, 0.0);

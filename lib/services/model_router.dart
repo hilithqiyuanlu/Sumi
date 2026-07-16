@@ -98,6 +98,15 @@ abstract interface class StructuredGenerationCapability {
     required int timeConstraint,
     required int scheduledHours,
   });
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  });
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  });
   Future<GoalAssessment?> assessGoal({
     required String goal,
     required String level,
@@ -266,6 +275,23 @@ class _CloudStructuredCapability implements StructuredGenerationCapability {
     timeConstraint: timeConstraint,
     scheduledHours: scheduledHours,
   );
+
+  @override
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  }) => _delegate.analyzeTodayLoad(
+    date: date,
+    todos: todos,
+    futureDays: futureDays,
+  );
+
+  @override
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  }) => _delegate.screenTodayLoad(date: date, todos: todos);
 
   @override
   Future<GoalAssessment?> assessGoal({
@@ -527,6 +553,25 @@ class _MeasuredStructuredCapability implements StructuredGenerationCapability {
       scheduledHours: scheduledHours,
     ),
   );
+
+  @override
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  }) => _track(
+    () => _delegate.analyzeTodayLoad(
+      date: date,
+      todos: todos,
+      futureDays: futureDays,
+    ),
+  );
+
+  @override
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  }) => _track(() => _delegate.screenTodayLoad(date: date, todos: todos));
 
   @override
   Future<GoalAssessment?> assessGoal({

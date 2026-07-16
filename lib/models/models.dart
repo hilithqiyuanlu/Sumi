@@ -32,6 +32,7 @@ class AppSettings {
   final String deepseekApiKey;
   final String tavilyApiKey;
   final bool thinkingEnabled;
+  final bool localTextGenerationEnabled;
   final bool showAllMonthCards; // 开发者开关：披露全部月卡
   final String userName; // 用户昵称
   final List<String> enabledTools;
@@ -40,6 +41,7 @@ class AppSettings {
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
     this.thinkingEnabled = true,
+    this.localTextGenerationEnabled = true,
     this.showAllMonthCards = false,
     this.userName = '',
     this.enabledTools = const [
@@ -57,6 +59,7 @@ class AppSettings {
     String? deepseekApiKey,
     String? tavilyApiKey,
     bool? thinkingEnabled,
+    bool? localTextGenerationEnabled,
     bool? showAllMonthCards,
     String? userName,
     List<String>? enabledTools,
@@ -65,6 +68,8 @@ class AppSettings {
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
       thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
+      localTextGenerationEnabled:
+          localTextGenerationEnabled ?? this.localTextGenerationEnabled,
       showAllMonthCards: showAllMonthCards ?? this.showAllMonthCards,
       userName: userName ?? this.userName,
       enabledTools: enabledTools ?? this.enabledTools,
@@ -75,6 +80,7 @@ class AppSettings {
     'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
     'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
     'thinkingEnabled': thinkingEnabled,
+    'localTextGenerationEnabled': localTextGenerationEnabled,
     'showAllMonthCards': showAllMonthCards,
     'userName': userName,
     'enabledTools': enabledTools,
@@ -84,6 +90,8 @@ class AppSettings {
     deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
     tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
     thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
+    localTextGenerationEnabled:
+        (json['localTextGenerationEnabled'] as bool?) ?? true,
     showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
     userName: (json['userName'] as String?) ?? '',
     enabledTools:
@@ -730,10 +738,9 @@ class TodoItem {
       done: (json['done'] as bool?) ?? false,
       pinned: (json['pinned'] as bool?) ?? false,
       sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
-      completedAt:
-          json['completedAt'] == null
-              ? null
-              : DateTime.tryParse(json['completedAt'] as String),
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.tryParse(json['completedAt'] as String),
       reminderTime: json['reminderTime'] as String?,
       createdAt:
           DateTime.tryParse((json['createdAt'] as String?) ?? '') ??

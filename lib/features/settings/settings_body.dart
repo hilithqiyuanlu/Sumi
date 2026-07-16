@@ -7,7 +7,7 @@ import '../../utils/haptics.dart';
 import 'signal_log_page.dart';
 import 'model_router_metrics_page.dart';
 import 'local_retrieval_page.dart';
-import 'local_text_model_page.dart';
+import 'app_update_page.dart';
 
 class SettingsBody extends StatefulWidget {
   const SettingsBody({super.key});
@@ -29,7 +29,7 @@ class _SettingsBodyState extends State<SettingsBody> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(s16, s16, s16, s8),
       children: [
-        _sectionHeader('API 密钥'),
+        _sectionHeader('API 接口'),
         const SizedBox(height: s12),
         _buildCard(
           child: Column(
@@ -55,17 +55,15 @@ class _SettingsBodyState extends State<SettingsBody> {
             ],
           ),
         ),
-        const SizedBox(height: s24),
-        _sectionHeader('本地智能'),
         const SizedBox(height: s12),
         _buildCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text(
-              '本地生成',
+              '本地智能',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
-            subtitle: const Text('用设备模型处理短任务', style: TextStyle(fontSize: 12)),
+            subtitle: const Text('检索与短任务生成', style: TextStyle(fontSize: 12)),
             trailing: const Icon(
               Icons.chevron_right,
               size: iconSection,
@@ -73,34 +71,8 @@ class _SettingsBodyState extends State<SettingsBody> {
             ),
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const LocalTextModelPage()),
+              MaterialPageRoute(builder: (_) => const LocalIntelligencePage()),
             ),
-          ),
-        ),
-        const SizedBox(height: s12),
-        _buildCard(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              '本地检索',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            subtitle: const Text(
-              '在设备上查找你的学习记录',
-              style: TextStyle(fontSize: 12),
-            ),
-            trailing: const Icon(
-              Icons.chevron_right,
-              size: iconSection,
-              color: textTertiary,
-            ),
-            onTap: () {
-              H.light();
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LocalRetrievalPage()),
-              );
-            },
           ),
         ),
         const SizedBox(height: s24),
@@ -124,6 +96,34 @@ class _SettingsBodyState extends State<SettingsBody> {
                 store.setThinkingEnabled(v);
               },
             ),
+          ),
+        ),
+        const SizedBox(height: s24),
+        _sectionHeader('关于与更新'),
+        const SizedBox(height: s12),
+        _buildCard(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              '应用更新',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            subtitle: const Text(
+              '检查新版本并查看更新说明',
+              style: TextStyle(fontSize: 12),
+            ),
+            trailing: const Icon(
+              Icons.system_update_alt_outlined,
+              size: iconSection,
+              color: textTertiary,
+            ),
+            onTap: () {
+              H.light();
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppUpdatePage()),
+              );
+            },
           ),
         ),
         const SizedBox(height: s24),
@@ -162,7 +162,7 @@ class _SettingsBodyState extends State<SettingsBody> {
                   ),
                 ),
                 subtitle: const Text(
-                  '查看近 7 天的本地调用汇总，不包含对话内容',
+                  '查看近 7 天的调用汇总，不包含用户内容',
                   style: TextStyle(fontSize: 12, color: textSecondary),
                 ),
                 trailing: const Icon(

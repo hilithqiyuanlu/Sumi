@@ -126,14 +126,87 @@ class WeeklyTodoResult {
     return WeeklyTodoResult(
       todosByDate: {
         for (final raw in days.whereType<Map<String, Object?>>())
-          (raw['date'] as String? ?? ''):
-              (raw['todos'] as List<Object?>? ?? const [])
-                  .whereType<Map<String, Object?>>()
-                  .map(TodoSeed.fromJson)
-                  .toList(growable: false),
+          (raw['date'] as String? ??
+              ''): (raw['todos'] as List<Object?>? ?? const [])
+              .whereType<Map<String, Object?>>()
+              .map(TodoSeed.fromJson)
+              .toList(growable: false),
       },
     );
   }
+}
+
+/// 对当天待办的语义判断。模型只提出候选，移动日期仍由本地算法决定。
+class TodayLoadAnalysis {
+  final double risk;
+  final List<String> reasons;
+  final String suggestion;
+  final List<String> movableTodoIds;
+  final Map<String, double> futureDayPressure;
+
+  const TodayLoadAnalysis({
+    required this.risk,
+    required this.reasons,
+    required this.suggestion,
+    required this.movableTodoIds,
+    this.futureDayPressure = const {},
+  });
+
+  bool get needsRebalance => risk >= .7;
+
+  TodayLoadAnalysis withFutureDayPressure(Map<String, double> pressure) =>
+      TodayLoadAnalysis(
+        risk: risk,
+        reasons: reasons,
+        suggestion: suggestion,
+        movableTodoIds: movableTodoIds,
+        futureDayPressure: pressure,
+      );
+
+  factory TodayLoadAnalysis.fromJson(Map<String, Object?> json) =>
+      TodayLoadAnalysis(
+        risk: (json['risk'] as num?)?.toDouble() ?? 0,
+        reasons:
+            (json['reasons'] as List<Object?>?)?.whereType<String>().toList(
+              growable: false,
+            ) ??
+            const [],
+        suggestion: (json['suggestion'] as String?) ?? '',
+        movableTodoIds:
+            (json['movableTodoIds'] as List<Object?>?)
+                ?.whereType<String>()
+                .toList(growable: false) ??
+            const [],
+        futureDayPressure: {
+          for (final raw
+              in (json['futureDayPressure'] as List<Object?>? ?? const [])
+                  .whereType<Map<String, Object?>>())
+            if (raw['date'] is String && raw['pressure'] is num)
+              raw['date'] as String: (raw['pressure'] as num).toDouble(),
+        },
+      );
+}
+
+/// The first-stage, today-only load check. It deliberately contains neither
+/// rescheduling candidates nor future-day data, so callers cannot accidentally
+/// start the expensive rebalancing flow before the user asks for it.
+class TodayLoadScreening {
+  final double risk;
+  final List<String> reasons;
+
+  const TodayLoadScreening({required this.risk, required this.reasons});
+
+  bool get needsAttention => risk >= .7;
+
+  factory TodayLoadScreening.fromJson(Map<String, Object?> json) =>
+      TodayLoadScreening(
+        risk: (json['risk'] as num?)?.toDouble() ?? 0,
+        reasons:
+            (json['reasons'] as List<Object?>?)?.whereType<String>().toList(
+              growable: false,
+            ) ??
+            const [],
+      );
 }
 
 class _MemoryExtractionPrompt {
@@ -324,6 +397,19 @@ class AiTransport {
       '- todos 中每项 date 必须等于所在日期\n'
       '- 不得生成未请求的日期\n'
       '- 输出 JSON：{"days":[{"date":"YYYY-MM-DD","todos":[{"title":"...","body":"可选","date":"YYYY-MM-DD"}]}]}';
+
+  static const _todayLoadSystemPrompt =
+      '你是 Sumi，负责判断今天的学习安排是否真正过载。\n'
+      '请根据待办本身的语义、任务类型、是否可中断、提醒和置顶信息评估，不得仅按任务数量判断。\n'
+      '只有明显影响今天完成质量或休息时，risk 才可达到 0.7。movableTodoIds 只能选择明确适合推迟的事项，不能选择置顶、提醒或固定时间事项。\n'
+      'futureDayPressure 必须逐日评估输入未来日期上的任务语义压力：0=可轻松承接，1=不应再加入任务；不要求某天完全没有任务。\n'
+      '输出 JSON：{"risk":0.0,"reasons":["原因"],"suggestion":"简短建议","movableTodoIds":["todo-id"],"futureDayPressure":[{"date":"YYYY-MM-DD","pressure":0.0}]}';
+
+  static const _todayLoadScreeningSystemPrompt =
+      '你是 Sumi，负责初步判断今天的学习安排是否真正较满。\n'
+      '只根据当天待办及其项目上下文判断任务语义、任务类型、切换成本、置顶和提醒；不得只按任务数量判断。\n'
+      'risk 只有在安排明显会影响今天完成质量或休息时才可达到 0.7。不要提出移动方案、不要推测未来日期。\n'
+      '输出 JSON：{"risk":0.0,"reasons":["4-80字的简短原因"]}';
 
   static const _assessmentSystemPrompt =
       '你是 Sumi，一个专业的自学规划评估师。基于搜索结果对用户的学习目标进行多维度评估，给出 A/B/C/D 综合评定。\n'
@@ -1125,6 +1211,54 @@ ${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: Prom
       timeoutSeconds: 45,
     );
     return result == null ? null : WeeklyTodoResult.fromJson(result);
+  }
+
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  }) async {
+    if (todos.isEmpty) return null;
+    final ids = todos.map((todo) => todo['id'] as String).toSet();
+    final result = await _callValidatedJsonApi(
+      systemPrompt: _todayLoadSystemPrompt,
+      userPrompt: PromptContext.dataBlock(
+        kind: 'today_todos',
+        source: 'local_user_data',
+        data: {'date': date, 'todos': todos, 'futureDays': futureDays},
+      ),
+      model: _modelFlash,
+      validator: (value) => AiContracts.todayLoad(
+        value,
+        validTodoIds: ids,
+        futureDates: futureDays.map((day) => day['date'] as String).toSet(),
+      ),
+      thinking: false,
+      maxTokens: 800,
+      timeoutSeconds: 25,
+    );
+    return result == null ? null : TodayLoadAnalysis.fromJson(result);
+  }
+
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  }) async {
+    if (todos.isEmpty) return null;
+    final result = await _callValidatedJsonApi(
+      systemPrompt: _todayLoadScreeningSystemPrompt,
+      userPrompt: PromptContext.dataBlock(
+        kind: 'today_todos',
+        source: 'local_user_data',
+        data: {'date': date, 'todos': todos},
+      ),
+      model: _modelFlash,
+      validator: AiContracts.todayLoadScreening,
+      thinking: false,
+      maxTokens: 300,
+      timeoutSeconds: 20,
+    );
+    return result == null ? null : TodayLoadScreening.fromJson(result);
   }
 
   // ---------------------------------------------------------------------------

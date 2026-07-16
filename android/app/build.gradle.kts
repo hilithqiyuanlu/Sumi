@@ -50,10 +50,16 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            val isReleaseTask = gradle.startParameter.taskNames.any {
+                it.contains("release", ignoreCase = true)
+            }
+            if (!keystorePropertiesFile.exists() && isReleaseTask) {
+                throw GradleException(
+                    "Release 构建需要 android/key.properties；禁止回退到 Debug 签名，以保证应用可以连续更新。"
+                )
+            }
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }

@@ -108,10 +108,10 @@ class SystemReminderService implements ReminderScheduler {
       if (!await _requestNotificationPermission()) return;
       await _notifications.show(
         id: 713021,
-        title: '本周安排较满',
+        title: '安排较满',
         body: moveCount > 0
             ? 'Sumi 已准备 $moveCount 项可调整的排期方案。'
-            : 'Sumi 发现本周任务较集中，打开 App 查看建议。',
+            : 'Sumi 发现今天的安排较满，打开 App 查看建议。',
         notificationDetails: _details,
         payload: 'schedule_rebalance',
       );

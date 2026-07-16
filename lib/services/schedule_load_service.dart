@@ -1,9 +1,14 @@
-import 'dart:convert';
-
 import '../models/models.dart';
+import 'ai_service.dart';
 import '../utils/utils.dart';
 
 enum ScheduleProposalStatus { pending, accepted, dismissed }
+
+/// The system card first asks whether the user wants help, then shows a
+/// preview, and finally remains as a non-actionable completion record.
+enum ScheduleProposalStage { attention, preview, completed }
+
+const _scheduleProposalUnset = Object();
 
 class ScheduleMove {
   final String todoId;
@@ -36,220 +41,222 @@ class ScheduleMove {
 class ScheduleRebalanceProposal {
   final String id;
   final DateTime createdAt;
+  final DateTime updatedAt;
   final String fingerprint;
   final double overloadScore;
   final List<String> reasons;
   final List<ScheduleMove> moves;
   final List<String> unscheduledTodoIds;
   final ScheduleProposalStatus status;
+  final ScheduleProposalStage stage;
+  final String? displayAnchorMessageId;
+  final DateTime? completedAt;
+  final int? completedMoveCount;
   final bool notificationSent;
+  final String? conversationId;
+  final String? lastNotificationDate;
+  final double? lastNotificationRisk;
+  final int notificationsOnLastDate;
 
   const ScheduleRebalanceProposal({
     required this.id,
     required this.createdAt,
+    DateTime? updatedAt,
     required this.fingerprint,
     required this.overloadScore,
     required this.reasons,
     required this.moves,
     required this.unscheduledTodoIds,
     this.status = ScheduleProposalStatus.pending,
+    this.stage = ScheduleProposalStage.preview,
+    this.displayAnchorMessageId,
+    this.completedAt,
+    this.completedMoveCount,
     this.notificationSent = false,
-  });
+    this.conversationId,
+    this.lastNotificationDate,
+    this.lastNotificationRisk,
+    this.notificationsOnLastDate = 0,
+  }) : updatedAt = updatedAt ?? createdAt;
 
   ScheduleRebalanceProposal copyWith({
     ScheduleProposalStatus? status,
+    ScheduleProposalStage? stage,
+    DateTime? updatedAt,
+    Object? displayAnchorMessageId = _scheduleProposalUnset,
+    Object? completedAt = _scheduleProposalUnset,
+    int? completedMoveCount,
     bool? notificationSent,
-  }) =>
-      ScheduleRebalanceProposal(
-        id: id,
-        createdAt: createdAt,
-        fingerprint: fingerprint,
-        overloadScore: overloadScore,
-        reasons: reasons,
-        moves: moves,
-        unscheduledTodoIds: unscheduledTodoIds,
-        status: status ?? this.status,
-        notificationSent: notificationSent ?? this.notificationSent,
-      );
+    String? conversationId,
+    String? lastNotificationDate,
+    double? lastNotificationRisk,
+    int? notificationsOnLastDate,
+  }) => ScheduleRebalanceProposal(
+    id: id,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    fingerprint: fingerprint,
+    overloadScore: overloadScore,
+    reasons: reasons,
+    moves: moves,
+    unscheduledTodoIds: unscheduledTodoIds,
+    status: status ?? this.status,
+    stage: stage ?? this.stage,
+    displayAnchorMessageId:
+        identical(displayAnchorMessageId, _scheduleProposalUnset)
+        ? this.displayAnchorMessageId
+        : displayAnchorMessageId as String?,
+    completedAt: identical(completedAt, _scheduleProposalUnset)
+        ? this.completedAt
+        : completedAt as DateTime?,
+    completedMoveCount: completedMoveCount ?? this.completedMoveCount,
+    notificationSent: notificationSent ?? this.notificationSent,
+    conversationId: conversationId ?? this.conversationId,
+    lastNotificationDate: lastNotificationDate ?? this.lastNotificationDate,
+    lastNotificationRisk: lastNotificationRisk ?? this.lastNotificationRisk,
+    notificationsOnLastDate:
+        notificationsOnLastDate ?? this.notificationsOnLastDate,
+  );
+
+  /// Converts an accepted preview into a durable, non-actionable chat record.
+  ScheduleRebalanceProposal complete({
+    required int movedCount,
+    DateTime? completedAt,
+    Object? displayAnchorMessageId = _scheduleProposalUnset,
+  }) => copyWith(
+    status: ScheduleProposalStatus.accepted,
+    stage: ScheduleProposalStage.completed,
+    completedAt: completedAt ?? DateTime.now(),
+    completedMoveCount: movedCount,
+    displayAnchorMessageId: displayAnchorMessageId,
+  );
 
   Map<String, Object?> toJson() => {
     'id': id,
     'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
     'fingerprint': fingerprint,
     'overloadScore': overloadScore,
     'reasons': reasons,
     'moves': moves.map((move) => move.toJson()).toList(),
     'unscheduledTodoIds': unscheduledTodoIds,
     'status': status.name,
+    'stage': stage.name,
+    if (displayAnchorMessageId != null)
+      'displayAnchorMessageId': displayAnchorMessageId,
+    if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
+    if (completedMoveCount != null) 'completedMoveCount': completedMoveCount,
     'notificationSent': notificationSent,
+    if (conversationId != null) 'conversationId': conversationId,
+    if (lastNotificationDate != null)
+      'lastNotificationDate': lastNotificationDate,
+    if (lastNotificationRisk != null)
+      'lastNotificationRisk': lastNotificationRisk,
+    'notificationsOnLastDate': notificationsOnLastDate,
   };
 
-  factory ScheduleRebalanceProposal.fromJson(Map<String, Object?> json) =>
-      ScheduleRebalanceProposal(
-        id: (json['id'] as String?) ?? '',
-        createdAt:
-            DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
-            DateTime.now(),
-        fingerprint: (json['fingerprint'] as String?) ?? '',
-        overloadScore: (json['overloadScore'] as num?)?.toDouble() ?? 0,
-        reasons:
-            (json['reasons'] as List<Object?>?)?.whereType<String>().toList(
-              growable: false,
-            ) ??
-            const [],
-        moves:
-            (json['moves'] as List<Object?>?)
-                ?.whereType<Map>()
-                .map((item) => ScheduleMove.fromJson(item.cast<String, Object?>()))
-                .toList(growable: false) ??
-            const [],
-        unscheduledTodoIds:
-            (json['unscheduledTodoIds'] as List<Object?>?)
-                ?.whereType<String>()
-                .toList(growable: false) ??
-            const [],
-        status: ScheduleProposalStatus.values.firstWhere(
-          (value) => value.name == json['status'],
-          orElse: () => ScheduleProposalStatus.dismissed,
-        ),
-        notificationSent: json['notificationSent'] == true,
-      );
+  factory ScheduleRebalanceProposal.fromJson(
+    Map<String, Object?> json,
+  ) => ScheduleRebalanceProposal(
+    id: (json['id'] as String?) ?? '',
+    createdAt:
+        DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
+        DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+        DateTime.now(),
+    fingerprint: (json['fingerprint'] as String?) ?? '',
+    overloadScore: (json['overloadScore'] as num?)?.toDouble() ?? 0,
+    reasons:
+        (json['reasons'] as List<Object?>?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const [],
+    moves:
+        (json['moves'] as List<Object?>?)
+            ?.whereType<Map>()
+            .map((item) => ScheduleMove.fromJson(item.cast<String, Object?>()))
+            .toList(growable: false) ??
+        const [],
+    unscheduledTodoIds:
+        (json['unscheduledTodoIds'] as List<Object?>?)
+            ?.whereType<String>()
+            .toList(growable: false) ??
+        const [],
+    status: ScheduleProposalStatus.values.firstWhere(
+      (value) => value.name == json['status'],
+      orElse: () => ScheduleProposalStatus.dismissed,
+    ),
+    // Proposals saved before stages existed already contain a full move
+    // list, so preserve their former preview presentation.
+    stage: ScheduleProposalStage.values.firstWhere(
+      (value) => value.name == json['stage'],
+      orElse: () => ScheduleProposalStage.preview,
+    ),
+    displayAnchorMessageId: json['displayAnchorMessageId'] as String?,
+    completedAt: DateTime.tryParse((json['completedAt'] as String?) ?? ''),
+    completedMoveCount: (json['completedMoveCount'] as num?)?.toInt(),
+    notificationSent: json['notificationSent'] == true,
+    conversationId: json['conversationId'] as String?,
+    lastNotificationDate: json['lastNotificationDate'] as String?,
+    lastNotificationRisk: (json['lastNotificationRisk'] as num?)?.toDouble(),
+    notificationsOnLastDate: (json['notificationsOnLastDate'] as int?) ?? 0,
+  );
 }
 
-class ScheduleLoadAssessment {
-  final double score;
-  final String fingerprint;
-  final List<String> reasons;
-  final Map<String, double> dayLoads;
-  final double dailyCapacity;
-
-  const ScheduleLoadAssessment({
-    required this.score,
-    required this.fingerprint,
-    required this.reasons,
-    required this.dayLoads,
-    required this.dailyCapacity,
-  });
-
-  bool get overloaded => score > 0;
-}
-
-/// Evaluates and rebalances only future, movable work. It never mutates Todos.
+/// Produces a local preview after AI has judged today's task semantics.
 class ScheduleLoadAssessor {
-  static const _windowDays = 7;
-  static const _searchDays = 21;
-
-  ScheduleLoadAssessment assess({
-    required List<Project> projects,
+  /// 触发条件来自 AI 对“今天事项语义”的判断；本地只负责预览移动目标。
+  ScheduleRebalanceProposal? proposeForToday({
+    required TodayLoadAnalysis analysis,
     required List<TodoItem> todos,
     required DateTime today,
+    required String fingerprint,
+    String? conversationId,
   }) {
-    final days = _days(today, _windowDays);
-    final loads = {for (final day in days) dateKey(day): 0.0};
-    for (final todo in todos) {
-      if (todo.done || todo.date == null || !loads.containsKey(todo.date)) {
-        continue;
-      }
-      loads[todo.date!] = loads[todo.date!]! + _weight(todo);
-    }
-    final weeklyHours = projects.fold<int>(
-      0,
-      (sum, project) =>
-          sum + (project.timeConstraint > 0 ? project.timeConstraint : 7),
-    );
-    final weeklyCapacity = (weeklyHours / 2).clamp(2, 70).toDouble();
-    final dailyCapacity = (weeklyCapacity / _windowDays).clamp(1.5, 10.0);
-    final total = loads.values.fold<double>(0, (sum, value) => sum + value);
-    final reasons = <String>[];
-    var score = 0.0;
-    if (total > weeklyCapacity * 1.2) {
-      score += total - weeklyCapacity * 1.2;
-      reasons.add('未来 7 天事项较多，超过当前项目投入可承受范围');
-    }
-    final highDays = loads.entries
-        .where((entry) => entry.value > dailyCapacity * 1.5)
-        .toList();
-    if (highDays.isNotEmpty) {
-      score += highDays.fold<double>(
-        0,
-        (sum, entry) => sum + entry.value - dailyCapacity * 1.5,
-      );
-      reasons.add('${highDays.length} 天任务集中，可能影响完成质量');
-    }
-    for (var index = 0; index < days.length - 1; index++) {
-      final first = loads[dateKey(days[index])]!;
-      final second = loads[dateKey(days[index + 1])]!;
-      if (first > dailyCapacity * 1.25 && second > dailyCapacity * 1.25) {
-        score += .5;
-        if (!reasons.contains('连续高负荷日较多，恢复空间不足')) {
-          reasons.add('连续高负荷日较多，恢复空间不足');
-        }
-      }
-    }
-    final fingerprint = jsonEncode({
-      'start': dateKey(today),
-      'loads': loads.map(
-        (key, value) => MapEntry(key, value.toStringAsFixed(1)),
-      ),
-      'projects': projects
-          .map((project) => '${project.id}:${project.timeConstraint}')
-          .toList(),
-    });
-    return ScheduleLoadAssessment(
-      score: score,
-      fingerprint: fingerprint,
-      reasons: reasons,
-      dayLoads: loads,
-      dailyCapacity: dailyCapacity,
-    );
-  }
+    if (!analysis.needsRebalance) return null;
+    final todayKey = dateKey(today);
+    final movableIds = analysis.movableTodoIds.toSet();
+    final candidates = todos
+        .where(
+          (todo) =>
+              movableIds.contains(todo.id) &&
+              todo.date == todayKey &&
+              !todo.done &&
+              !todo.pinned &&
+              todo.reminderTime == null,
+        )
+        .toList(growable: false);
+    if (candidates.isEmpty) return null;
 
-  ScheduleRebalanceProposal? propose({
-    required ScheduleLoadAssessment assessment,
-    required List<TodoItem> todos,
-    required DateTime today,
-  }) {
-    if (!assessment.overloaded) return null;
-    final loads = Map<String, double>.of(assessment.dayLoads);
-    final days = _days(today, _searchDays);
-    for (final day in days.skip(_windowDays)) {
-      loads.putIfAbsent(dateKey(day), () => _loadForDate(todos, day));
-    }
-    final candidates =
-        todos
-            .where(
-              (todo) =>
-                  !todo.done &&
-                  !todo.pinned &&
-                  todo.reminderTime == null &&
-                  todo.date != null &&
-                  !DateTime.parse(todo.date!).isBefore(dateOnly(today)),
-            )
-            .toList(growable: false)
-          ..sort((a, b) => b.sortOrder.compareTo(a.sortOrder));
+    final days = analysis.futureDayPressure.keys.map(DateTime.parse).toList()
+      ..sort();
+    if (days.isEmpty) return null;
+    final loads = {
+      for (final day in days) dateKey(day): _loadForDate(todos, day),
+    };
     final moves = <ScheduleMove>[];
     final unscheduled = <String>[];
     for (final todo in candidates) {
-      final from = todo.date!;
-      final fromLoad = loads[from] ?? 0;
-      if (fromLoad <= assessment.dailyCapacity * 1.15) continue;
-      final target = days
-          .skipWhile((day) => dateKey(day).compareTo(from) <= 0)
-          .where((day) => (loads[dateKey(day)] ?? 0) < assessment.dailyCapacity)
-          .cast<DateTime?>()
-          .firstWhere((day) => day != null, orElse: () => null);
+      final target = _findBestFutureDate(
+        days,
+        loads,
+        todo,
+        todos,
+        analysis.futureDayPressure,
+      );
       if (target == null) {
         unscheduled.add(todo.id);
         continue;
       }
       final targetKey = dateKey(target);
-      final weight = _weight(todo);
-      loads[from] = fromLoad - weight;
-      loads[targetKey] = (loads[targetKey] ?? 0) + weight;
+      loads[todayKey] = (loads[todayKey] ?? 0) - _weight(todo);
+      loads[targetKey] = (loads[targetKey] ?? 0) + _weight(todo);
       moves.add(
         ScheduleMove(
           todoId: todo.id,
-          fromDate: from,
+          fromDate: todayKey,
           toDate: targetKey,
           title: todo.title,
         ),
@@ -259,18 +266,66 @@ class ScheduleLoadAssessor {
     return ScheduleRebalanceProposal(
       id: newSumiId('rebalance'),
       createdAt: DateTime.now(),
-      fingerprint: assessment.fingerprint,
-      overloadScore: assessment.score,
-      reasons: assessment.reasons,
+      fingerprint: fingerprint,
+      overloadScore: analysis.risk,
+      reasons: analysis.reasons,
       moves: moves,
       unscheduledTodoIds: unscheduled,
+      conversationId: conversationId,
     );
   }
 
-  static List<DateTime> _days(DateTime start, int count) => [
-    for (var index = 0; index < count; index++)
-      dateOnly(start.add(Duration(days: index))),
-  ];
+  /// Prefer the nearest low-pressure day. Project continuity breaks ties.
+  static DateTime? _findBestFutureDate(
+    List<DateTime> days,
+    Map<String, double> loads,
+    TodoItem todo,
+    List<TodoItem> todos,
+    Map<String, double> semanticPressure,
+  ) {
+    final candidates = List<DateTime>.of(days)
+      ..sort((a, b) {
+        final aKey = dateKey(a);
+        final bKey = dateKey(b);
+        final aLoad = loads[aKey] ?? 0;
+        final bLoad = loads[bKey] ?? 0;
+        final aProject = _projectSwitchCost(aKey, todo.projectId, todos);
+        final bProject = _projectSwitchCost(bKey, todo.projectId, todos);
+        final aPressure = semanticPressure[aKey] ?? 1;
+        final bPressure = semanticPressure[bKey] ?? 1;
+        final aScore =
+            aPressure * 3 +
+            aLoad * .15 +
+            aProject * .35 +
+            a.difference(days.first).inDays * .04;
+        final bScore =
+            bPressure * 3 +
+            bLoad * .15 +
+            bProject * .35 +
+            b.difference(days.first).inDays * .04;
+        return aScore.compareTo(bScore);
+      });
+    for (final candidate in candidates) {
+      if ((semanticPressure[dateKey(candidate)] ?? 1) <= .58) return candidate;
+    }
+    return null;
+  }
+
+  static double _projectSwitchCost(
+    String date,
+    String? projectId,
+    List<TodoItem> todos,
+  ) {
+    final dayTodos = todos.where((todo) => !todo.done && todo.date == date);
+    final hasSameProject =
+        projectId != null &&
+        dayTodos.any((todo) => todo.projectId == projectId);
+    final projectCount = dayTodos
+        .map((todo) => todo.projectId ?? 'user')
+        .toSet()
+        .length;
+    return (hasSameProject ? -.5 : .25) + projectCount * .15;
+  }
 
   static double _weight(TodoItem todo) {
     var value = todo.source == TodoSource.system ? 1.0 : 1.1;

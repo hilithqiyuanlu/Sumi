@@ -13,7 +13,7 @@ mixin SumiStoreProjects {
   StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
   MemoryService? get memoryServiceForStore;
-  void afterProjectMutation();
+  void afterProjectMutation({bool affectsTodayLoad = false});
 
   /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
   Future<void> updateProject(
@@ -125,6 +125,10 @@ mixin SumiStoreProjects {
     final svc = structuredAi;
     final todayDate = DateTime.now();
     final beforeCount = todoItems.length;
+    final todayKey = dateKey(todayDate);
+    final beforeTodayCount = todoItems
+        .where((todo) => todo.date == todayKey)
+        .length;
 
     for (final project in List<Project>.of(projectList)) {
       // 跳过没有 goal 的项目（不触发 AI 规划）
@@ -183,7 +187,14 @@ mixin SumiStoreProjects {
       await _fillRollingWindowForProject(svc, project, todayDate, currentCard);
     }
 
-    if (todoItems.length != beforeCount) afterProjectMutation();
+    if (todoItems.length != beforeCount) {
+      final afterTodayCount = todoItems
+          .where((todo) => todo.date == todayKey)
+          .length;
+      afterProjectMutation(
+        affectsTodayLoad: beforeTodayCount != afterTodayCount,
+      );
+    }
   }
 
   Future<void> _fillRollingWindowForProject(
@@ -206,8 +217,8 @@ mixin SumiStoreProjects {
       if (targetMonthIndex < 0 || targetMonthIndex >= project.cycleMonths) {
         continue;
       }
-      final targetCard = targetMonthIndex >= 0 &&
-              targetMonthIndex < project.cycleMonths
+      final targetCard =
+          targetMonthIndex >= 0 && targetMonthIndex < project.cycleMonths
           ? DailyPlanningPolicy.cardForMonth(
               cards: monthCardList,
               projectId: project.id,
@@ -238,9 +249,7 @@ mixin SumiStoreProjects {
         monthPlanTitle: card.title,
         monthPlanSummary: card.summary ?? '',
         dates: dates,
-        timeConstraint: project.timeConstraint > 0
-            ? project.timeConstraint
-            : 7,
+        timeConstraint: project.timeConstraint > 0 ? project.timeConstraint : 7,
         scheduledHours: scheduledHours,
       );
       if (result == null) {

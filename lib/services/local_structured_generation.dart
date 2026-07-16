@@ -10,34 +10,61 @@ import 'model_router.dart';
 class LocalFirstStructuredGeneration implements StructuredGenerationCapability {
   final StructuredGenerationCapability cloud;
   final LocalTextGenerationRuntime local;
-  LocalFirstStructuredGeneration({required this.cloud, required this.local});
+  final ModelRouterMetricsSink? metrics;
+  final DateTime Function() _clock;
+
+  LocalFirstStructuredGeneration({
+    required this.cloud,
+    required this.local,
+    this.metrics,
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
 
   @override
   String? get lastError => local.lastError ?? cloud.lastError;
 
   @override
   Future<SplitResult?> splitTodo(String text) async {
-    final value = await _json(
-      '将用户输入拆为 1-10 个可执行事项。每项 2-16 个汉字。只输出 JSON：{"split":true,"items":["事项"]}。',
-      text,
-      300,
+    final requiresMultipleItems = _requiresMultipleItems(text);
+    return _useLocalOrCloud(
+      localAction: () async {
+        final value = await _json(
+          '将用户输入拆为 1-10 个独立可执行事项。每项 2-16 个汉字。\n'
+          '先识别输入中每个动作、对象和交付物，再逐项输出；不得合并、遗漏或改写掉原有动作。\n'
+          '出现“先…再…、然后、接着、并且、以及、分别、同时”、序号、换行步骤或分号时，通常必须拆成至少两项。\n'
+          '只有确实只有一个不可再分动作时才返回 split=false，且 items 只能有一项。\n'
+          '只输出 JSON：{"split":true,"items":["事项"]}。',
+          text,
+          300,
+        );
+        final checked = value == null ? null : AiContracts.split(value);
+        if (checked?.isValid != true) return null;
+        final parsed = SplitResult.fromJson(checked!.value!);
+        if (requiresMultipleItems &&
+            (!parsed.split || parsed.items.length < 2)) {
+          return null;
+        }
+        return parsed;
+      },
+      cloudAction: () => cloud.splitTodo(text),
     );
-    final checked = value == null ? null : AiContracts.split(value);
-    return checked?.isValid == true
-        ? SplitResult.fromJson(checked!.value!)
-        : cloud.splitTodo(text);
   }
 
   @override
   Future<String?> polishTodo(String text) async {
-    final value = await _json(
-      '将输入凝练为 2-16 个汉字的 Todo 标题。只输出 JSON：{"title":"标题"}。',
-      text,
-      80,
+    return _useLocalOrCloud(
+      localAction: () async {
+        final value = await _json(
+          '将输入凝练为 2-16 个汉字的 Todo 标题。只输出 JSON：{"title":"标题"}。',
+          text,
+          80,
+        );
+        final title = value?['title'] as String?;
+        final checked = title == null ? null : AiContracts.polishedText(title);
+        return checked?.isValid == true ? checked!.value : null;
+      },
+      cloudAction: () => cloud.polishTodo(text),
     );
-    final title = value?['title'] as String?;
-    final checked = title == null ? null : AiContracts.polishedText(title);
-    return checked?.isValid == true ? checked!.value : cloud.polishTodo(text);
   }
 
   @override
@@ -48,22 +75,27 @@ class LocalFirstStructuredGeneration implements StructuredGenerationCapability {
     required int timeConstraint,
     required int scheduledHours,
   }) async {
-    final value = await _json(
-      '根据月计划生成今天 0-3 项事项。每项 title 为 2-16 字，date 必须等于 $date。只输出 JSON：{"todos":[{"title":"事项","date":"$date"}]}。',
-      '月计划：$monthPlanTitle\n$monthPlanSummary\n每周可投入：$timeConstraint\n本周已安排：$scheduledHours',
-      360,
-    );
-    final checked = value == null
-        ? null
-        : AiContracts.dailyTodos(value, date: date);
-    return checked?.isValid == true
-        ? DailyTodoResult.fromJson(checked!.value!)
-        : cloud.generateDailyTodos(
-            monthPlanTitle: monthPlanTitle,
-            monthPlanSummary: monthPlanSummary,
-            date: date,
-            timeConstraint: timeConstraint,
-            scheduledHours: scheduledHours,
+    return _useLocalOrCloud(
+      localAction: () async {
+        final value = await _json(
+          '根据月计划生成今天 0-3 项事项。每项 title 为 2-16 字，date 必须等于 $date。只输出 JSON：{"todos":[{"title":"事项","date":"$date"}]}。',
+          '月计划：$monthPlanTitle\n$monthPlanSummary\n每周可投入：$timeConstraint\n本周已安排：$scheduledHours',
+          360,
+        );
+        final checked = value == null
+            ? null
+            : AiContracts.dailyTodos(value, date: date);
+        return checked?.isValid == true
+            ? DailyTodoResult.fromJson(checked!.value!)
+            : null;
+      },
+      cloudAction: () => cloud.generateDailyTodos(
+        monthPlanTitle: monthPlanTitle,
+        monthPlanSummary: monthPlanSummary,
+        date: date,
+        timeConstraint: timeConstraint,
+        scheduledHours: scheduledHours,
+      ),
     );
   }
 
@@ -81,6 +113,20 @@ class LocalFirstStructuredGeneration implements StructuredGenerationCapability {
     timeConstraint: timeConstraint,
     scheduledHours: scheduledHours,
   );
+
+  @override
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  }) =>
+      cloud.analyzeTodayLoad(date: date, todos: todos, futureDays: futureDays);
+
+  @override
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  }) => cloud.screenTodayLoad(date: date, todos: todos);
 
   @override
   Future<PlanResult?> generatePlan({
@@ -137,5 +183,65 @@ class LocalFirstStructuredGeneration implements StructuredGenerationCapability {
     } catch (_) {
       return null;
     }
+  }
+
+  bool _requiresMultipleItems(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) return false;
+    final numberedSteps = RegExp(
+      r'^\s*(\d+[.、]|[-*•])\s+',
+      multiLine: true,
+    ).allMatches(normalized).length;
+    if (numberedSteps >= 2) return true;
+    return RegExp(r'先.+再|然后|接着|并且|以及|分别|同时|；|;').hasMatch(normalized);
+  }
+
+  Future<T?> _useLocalOrCloud<T>({
+    required Future<T?> Function() localAction,
+    required Future<T?> Function() cloudAction,
+  }) async {
+    if (!local.isLoaded) return cloudAction();
+    final watch = Stopwatch()..start();
+    try {
+      final result = await localAction();
+      _record(
+        outcome: result == null
+            ? ModelRouteOutcome.degraded
+            : ModelRouteOutcome.success,
+        elapsed: watch.elapsed,
+        errorCategory: result == null
+            ? ModelRouterErrorClassifier.fromMessage(
+                local.lastError ?? 'validation',
+              )
+            : ModelRouterErrorCategory.none,
+      );
+      return result ?? await cloudAction();
+    } catch (error) {
+      _record(
+        outcome: ModelRouteOutcome.degraded,
+        elapsed: watch.elapsed,
+        errorCategory: ModelRouterErrorClassifier.fromException(error),
+      );
+      return cloudAction();
+    } finally {
+      watch.stop();
+    }
+  }
+
+  void _record({
+    required ModelRouteOutcome outcome,
+    required Duration elapsed,
+    required ModelRouterErrorCategory errorCategory,
+  }) {
+    metrics?.record(
+      ModelRouterMetric(
+        occurredAt: _clock(),
+        capability: ModelCapability.structured,
+        provider: 'local-qwen3.5-0.8b-q4-k-m',
+        outcome: outcome,
+        elapsed: elapsed,
+        errorCategory: errorCategory,
+      ),
+    );
   }
 }

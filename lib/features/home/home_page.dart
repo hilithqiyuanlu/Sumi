@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import '../../models/models.dart';
+import '../../services/ai_service.dart';
 import '../../services/memory_service.dart';
 import '../../services/schedule_load_service.dart';
+import '../../services/today_suggestion_mapper.dart';
 
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
@@ -36,19 +38,21 @@ class _ScheduleRebalanceCard extends StatelessWidget {
   final ScheduleRebalanceProposal proposal;
   final Future<void> Function() onAccept;
   final Future<void> Function() onDismiss;
+  final Future<void> Function() onRequestAdvice;
 
   const _ScheduleRebalanceCard({
     required this.proposal,
     required this.onAccept,
     required this.onDismiss,
+    required this.onRequestAdvice,
   });
 
   @override
   Widget build(BuildContext context) {
-    final moveCount = proposal.moves.length;
     final reason = proposal.reasons.isEmpty
-        ? '本周任务较集中'
+        ? '今天的任务安排可能影响完成质量'
         : proposal.reasons.first;
+    final moveCount = proposal.moves.length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(s16, s12, s16, s4),
       child: Container(
@@ -66,7 +70,7 @@ class _ScheduleRebalanceCard extends StatelessWidget {
                 Icon(Icons.calendar_month_outlined, color: primary500),
                 SizedBox(width: s8),
                 Text(
-                  '本周安排较满',
+                  '安排较满',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
               ],
@@ -74,13 +78,25 @@ class _ScheduleRebalanceCard extends StatelessWidget {
             const SizedBox(height: s8),
             Text(reason, style: const TextStyle(fontSize: 13, color: ink)),
             const SizedBox(height: s4),
-            Text(
-              moveCount > 0
-                  ? '已准备将 $moveCount 项未完成事项移到后续较空的日期。'
-                  : '暂时没有适合自动移动的事项，你可以手动调整日期。',
-              style: const TextStyle(fontSize: 13, color: textTertiary),
-            ),
-            if (moveCount > 0) ...[
+            if (proposal.stage == ScheduleProposalStage.attention)
+              const Text(
+                '要我为你看看怎么调整吗？',
+                style: TextStyle(fontSize: 13, color: textTertiary),
+              )
+            else if (proposal.stage == ScheduleProposalStage.completed)
+              Text(
+                '已调整 ${proposal.completedMoveCount ?? 0} 项事项。',
+                style: const TextStyle(fontSize: 13, color: textTertiary),
+              )
+            else
+              Text(
+                moveCount > 0
+                    ? '已准备将 $moveCount 项未完成事项移到后续较合适的日期。'
+                    : '后续暂时没有相对可承受的日期，先保留原日期。',
+                style: const TextStyle(fontSize: 13, color: textTertiary),
+              ),
+            if (proposal.stage == ScheduleProposalStage.preview &&
+                moveCount > 0) ...[
               const SizedBox(height: s10),
               Text(
                 proposal.moves
@@ -97,10 +113,18 @@ class _ScheduleRebalanceCard extends StatelessWidget {
             const SizedBox(height: s10),
             Row(
               children: [
-                if (moveCount > 0)
+                if (proposal.stage == ScheduleProposalStage.attention)
+                  FilledButton(
+                    onPressed: onRequestAdvice,
+                    child: const Text('获取建议'),
+                  ),
+                if (proposal.stage == ScheduleProposalStage.preview &&
+                    moveCount > 0)
                   FilledButton(onPressed: onAccept, child: const Text('确认调整')),
-                if (moveCount > 0) const SizedBox(width: s8),
-                TextButton(onPressed: onDismiss, child: const Text('暂不处理')),
+                if (proposal.stage != ScheduleProposalStage.completed)
+                  const SizedBox(width: s8),
+                if (proposal.stage != ScheduleProposalStage.completed)
+                  TextButton(onPressed: onDismiss, child: const Text('忽略本次')),
               ],
             ),
           ],
@@ -129,6 +153,10 @@ class _HomePageState extends State<HomePage>
   int _lastDataVersion = 0;
   late final SumiStore _store;
   late ChatViewState _lastChatView;
+  bool _isTodoGenerating = false;
+  int _todoGenerationId = 0;
+  String? _inputDraft;
+  int _inputDraftRevision = 0;
 
   // 对话模式轻提示
   static const _chatGreetings = [
@@ -199,24 +227,7 @@ class _HomePageState extends State<HomePage>
   // 07 轮：App 生命周期监听
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      final store = SumiScope.read(context);
-      final now = DateTime.now();
-
-      // 节流：2 分钟内不重复
-      if (store.lastSuggestionTime != null &&
-          now.difference(store.lastSuggestionTime!).inMinutes < 2) {
-        return;
-      }
-      // 强制刷新：后台 > 30 分钟
-      if (store.lastForegroundTime != null &&
-          now.difference(store.lastForegroundTime!).inMinutes > 30) {
-        store.setSuggestionsDirty(true);
-      }
-      store.lastForegroundTime = now;
-
-      _generateSuggestions();
-    }
+    if (state == AppLifecycleState.resumed) _generateSuggestions();
   }
 
   void _refreshChatGreeting() {
@@ -231,25 +242,47 @@ class _HomePageState extends State<HomePage>
     setState(() => _inputMode = mode);
   }
 
-  /// 可校正理解：建议全部由本地规则立即生成，不产生首页模型调用。
+  /// 常规建议慢刷新；当天建议复用负荷分析并随它实时变化。
   Future<void> _generateSuggestions() async {
     final store = SumiScope.read(context);
 
     final cached = store.cachedSuggestions;
     if (!store.suggestionsDirty && cached.isNotEmpty) {
-      if (mounted) setState(() => _suggestions = cached);
+      if (mounted) {
+        setState(
+          () => _suggestions = TodaySuggestionMapper.compose(
+            regular: cached,
+            today: store.todayLoadSuggestions,
+          ),
+        );
+      }
       return;
     }
     try {
       final memory = store.memoryService;
-      if (memory == null) return;
       final stats = await store.legacyRealtimeStats();
-      final generated = await memory.createSuggestions(realtimeStats: stats);
-      if (generated.isNotEmpty && mounted) {
+      final regularCount = store.todayLoadSuggestions.isEmpty ? 5 : 3;
+      final generated = memory == null
+          ? TodaySuggestionMapper.fallbackRegular(count: regularCount)
+          : await memory.createSuggestions(
+              realtimeStats: stats,
+              limit: regularCount,
+            );
+      final combined = TodaySuggestionMapper.compose(
+        regular: generated,
+        today: store.todayLoadSuggestions,
+      );
+      if (combined.isNotEmpty && mounted) {
+        // Cache only the slow-changing half. Today's two prompts are always
+        // recomposed from the newest semantic assessment.
         store.cachedSuggestions = generated;
         store.lastSuggestionTime = DateTime.now();
         store.setSuggestionsDirty(false);
-        setState(() => _suggestions = generated);
+        setState(() => _suggestions = combined);
+      } else if (mounted) {
+        store.cachedSuggestions = const [];
+        store.setSuggestionsDirty(false);
+        setState(() => _suggestions = const []);
       }
     } catch (_) {
       if (mounted && cached.isNotEmpty) setState(() => _suggestions = cached);
@@ -316,8 +349,13 @@ class _HomePageState extends State<HomePage>
       SumiScope.read(context).selectDate(result.date);
 
   void _handleSuggestionSelect(MemorySuggestion suggestion) {
-    final result = _handleChatSend(suggestion.text);
-    if (result == ChatSendResult.accepted) {
+    if (_isInputBusy) return;
+    setState(() {
+      _inputMode = InputMode.chat;
+      _inputDraft = suggestion.text;
+      _inputDraftRevision++;
+    });
+    if (suggestion.source != 'today_load') {
       final store = SumiScope.read(context);
       store.memoryService
           ?.recordSelected(suggestion)
@@ -330,10 +368,12 @@ class _HomePageState extends State<HomePage>
     bool disableTopic,
   ) async {
     final store = SumiScope.read(context);
-    await store.memoryService?.recordFeedback(
-      suggestion,
-      disableTopic: disableTopic,
-    );
+    if (suggestion.source != 'today_load') {
+      await store.memoryService?.recordFeedback(
+        suggestion,
+        disableTopic: disableTopic,
+      );
+    }
     store.scheduleLocalIndex();
     if (!mounted) return;
     setState(
@@ -363,17 +403,46 @@ class _HomePageState extends State<HomePage>
     return result;
   }
 
+  bool get _isInputBusy =>
+      _isTodoGenerating || _store.chatView.value.isStreaming;
+
+  bool _isTodoGenerationActive(int id) =>
+      mounted && _isTodoGenerating && _todoGenerationId == id;
+
+  void _stopInputGeneration() {
+    if (_isTodoGenerating) {
+      _todoGenerationId++;
+      setState(() => _isTodoGenerating = false);
+      return;
+    }
+    _store.stopGenerating();
+  }
+
   Future<void> _handleAddTodo(String title) async {
     final store = SumiScope.read(context);
-    if (title.length > SumiStore.todoTitleMaxLength) {
-      final result = await store.splitAndAddTodo(title);
-      if (!mounted || result == null || !result.split) return;
-      await showSplitConfirmSheet(context, store, result.items);
-      return;
-    } else {
+    if (title.length <= SumiStore.todoTitleMaxLength) {
       final todo = await store.addUserTodo(title);
       if (todo == null || !mounted) return;
+      return;
     }
+
+    if (_isTodoGenerating) return;
+    final operationId = ++_todoGenerationId;
+    setState(() => _isTodoGenerating = true);
+    SplitResult? result;
+    try {
+      result = await store.splitAndAddTodo(
+        title,
+        isCancelled: () => !_isTodoGenerationActive(operationId),
+      );
+    } finally {
+      if (mounted && _todoGenerationId == operationId) {
+        setState(() => _isTodoGenerating = false);
+      }
+    }
+    final completed = _todoGenerationId == operationId;
+    if (!mounted || !completed || result == null || !result.split) return;
+    await showSplitConfirmSheet(context, store, result.items);
   }
 
   // ---------------------------------------------------------------------------
@@ -511,7 +580,10 @@ class _HomePageState extends State<HomePage>
                     child: Stack(
                       children: [
                         if (chat.messages.isEmpty &&
-                            store.pendingScheduleProposal == null)
+                            !store.scheduleCards.any(
+                              (card) =>
+                                  card.conversationId == chat.conversationId,
+                            ))
                           _buildEmptyState(store, userName)
                         else
                           _buildMessageList(chat, store),
@@ -557,7 +629,7 @@ class _HomePageState extends State<HomePage>
                             suggestions: _suggestions,
                             onSelect: _handleSuggestionSelect,
                             onFeedback: _handleSuggestionFeedback,
-                            enabled: !chat.isStreaming,
+                            enabled: !_isTodoGenerating && !chat.isStreaming,
                           ),
                           ChatInput(
                             mode: _inputMode,
@@ -565,10 +637,12 @@ class _HomePageState extends State<HomePage>
                             onSend: _handleChatSend,
                             onAddTodo: _handleAddTodo,
                             onModeChanged: _switchMode,
-                            enabled: true,
-                            isStreaming: chat.isStreaming,
-                            onStopGenerating: store.stopGenerating,
+                            enabled: !_isTodoGenerating && !chat.isStreaming,
+                            isStreaming: _isTodoGenerating || chat.isStreaming,
+                            onStopGenerating: _stopInputGeneration,
                             voiceService: store.voiceService,
+                            draftText: _inputDraft,
+                            draftRevision: _inputDraftRevision,
                           ),
                         ],
                       ),
@@ -699,6 +773,73 @@ class _HomePageState extends State<HomePage>
       }
     }
 
+    final cards = store.scheduleCards
+        .where(
+          (card) =>
+              card.conversationId == chat.conversationId &&
+              card.displayAnchorMessageId != streamingAssistantId,
+        )
+        .toList(growable: false);
+    final placedCardIds = <String>{};
+    final listItems = <Widget>[];
+    void addCard(ScheduleRebalanceProposal card) {
+      if (!placedCardIds.add(card.id)) return;
+      listItems.add(
+        _ScheduleRebalanceCard(
+          proposal: card,
+          onAccept: store.acceptScheduleProposal,
+          onDismiss: store.dismissScheduleProposal,
+          onRequestAdvice: store.requestScheduleAdvice,
+        ),
+      );
+    }
+
+    for (final message in filtered) {
+      for (final card in cards) {
+        if (card.displayAnchorMessageId == null &&
+            !card.updatedAt.isAfter(message.createdAt)) {
+          addCard(card);
+        }
+      }
+      final originalIndex = messages.indexOf(message);
+      listItems.add(
+        ChatBubble(
+          content: message.content,
+          isUser: message.role == 'user',
+          isStreaming: message.id == streamingAssistantId,
+          timestamp: message.role == 'user' ? message.createdAt : null,
+          activityLabel: message.id == streamingAssistantId
+              ? chat.activityLabel
+              : null,
+          toolCallsJson: message.toolCallsJson,
+          timerController: store.timerController,
+          onStartTimer: store.startStudyTimer,
+          onPauseTimer: store.pauseStudyTimer,
+          onFinishTimer: store.finishStudyTimer,
+          onCancelTimer: store.cancelStudyTimer,
+          projectGenerationController: store.projectGenerationController,
+          onDelete: message.role == 'user'
+              ? () => store.deleteMessagePair(originalIndex)
+              : null,
+          onEdit: message.role == 'user' && message.id == latestUserMessageId
+              ? (content) => store.editAndResendMessage(
+                  originalIndex,
+                  content,
+                  currentGreeting: _chatGreeting,
+                )
+              : null,
+        ),
+      );
+      for (final card in cards) {
+        if (card.displayAnchorMessageId == message.id) addCard(card);
+      }
+    }
+    for (final card in cards) {
+      addCard(card);
+    }
+    if (chat.failure != null) {
+      listItems.add(_buildChatFailure(chat.failure!, store));
+    }
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
       switchInCurve: Curves.easeOut,
@@ -706,56 +847,11 @@ class _HomePageState extends State<HomePage>
       transitionBuilder: (child, animation) {
         return FadeTransition(opacity: animation, child: child);
       },
-      child: ListView.builder(
+      child: ListView(
         key: ValueKey(chat.conversationId),
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: s16),
-        itemCount:
-            filtered.length +
-            (chat.failure == null ? 0 : 1) +
-            (store.pendingScheduleProposal == null ? 0 : 1),
-        itemBuilder: (context, index) {
-          final proposal = store.pendingScheduleProposal;
-          if (proposal != null && index == 0) {
-            return _ScheduleRebalanceCard(
-              proposal: proposal,
-              onAccept: store.acceptScheduleProposal,
-              onDismiss: store.dismissScheduleProposal,
-            );
-          }
-          final messageIndex = index - (proposal == null ? 0 : 1);
-          if (messageIndex == filtered.length) {
-            return _buildChatFailure(chat.failure!, store);
-          }
-          final message = filtered[messageIndex];
-          final originalIndex = messages.indexOf(message);
-          return ChatBubble(
-            content: message.content,
-            isUser: message.role == 'user',
-            isStreaming: message.id == streamingAssistantId,
-            timestamp: message.role == 'user' ? message.createdAt : null,
-            activityLabel: message.id == streamingAssistantId
-                ? chat.activityLabel
-                : null,
-            toolCallsJson: message.toolCallsJson,
-            timerController: store.timerController,
-            onStartTimer: store.startStudyTimer,
-            onPauseTimer: store.pauseStudyTimer,
-            onFinishTimer: store.finishStudyTimer,
-            onCancelTimer: store.cancelStudyTimer,
-            projectGenerationController: store.projectGenerationController,
-            onDelete: message.role == 'user'
-                ? () => store.deleteMessagePair(originalIndex)
-                : null,
-            onEdit: message.role == 'user' && message.id == latestUserMessageId
-                ? (content) => store.editAndResendMessage(
-                    originalIndex,
-                    content,
-                    currentGreeting: _chatGreeting,
-                  )
-                : null,
-          );
-        },
+        children: listItems,
       ),
     );
   }

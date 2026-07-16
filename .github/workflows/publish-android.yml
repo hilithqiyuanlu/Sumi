@@ -1,0 +1,72 @@
+name: Publish Android update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: master
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sumi-release.jks"
+          cat > android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/sumi-release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+      - name: Build ARM64 APK
+        run: |
+          flutter pub get
+          flutter build apk --release --split-per-abi
+      - name: Publish release and update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          VERSION_NAME=${VERSION_LINE%%+*}
+          BUILD_NUMBER=${VERSION_LINE##*+}
+          test "$VERSION_NAME" != "$VERSION_LINE"
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          SIZE=$(wc -c < "$APK" | tr -d ' ')
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          TAG="v$VERSION_NAME"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/app-arm64-v8a-release.apk"
+          gh release create "$TAG" "$APK#app-arm64-v8a-release.apk" --title "$TAG" --generate-notes
+          cat > release/update.json <<EOF
+          {
+            "version": "$VERSION_NAME",
+            "buildNumber": $BUILD_NUMBER,
+            "notes": "查看 GitHub Release 获取本次更新说明。",
+            "apk": {
+              "url": "$URL",
+              "sizeBytes": $SIZE,
+              "sha256": "$SHA"
+            }
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add release/update.json
+          git commit -m "chore: publish $TAG"
+          git push origin HEAD:main

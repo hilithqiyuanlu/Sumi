@@ -65,4 +65,25 @@ void main() {
     await tester.tap(find.byIcon(Icons.stop));
     expect(stopped, isTrue);
   });
+
+  testWidgets('生成中禁用输入，并可由建议填入草稿', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatInput(
+            mode: InputMode.chat,
+            isStreaming: true,
+            draftText: '稍后发送的内容',
+            draftRevision: 1,
+            onSend: (_) => ChatSendResult.busy,
+          ),
+        ),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.enabled, isFalse);
+    expect(field.controller?.text, '稍后发送的内容');
+    expect(find.byIcon(Icons.stop), findsOneWidget);
+  });
 }

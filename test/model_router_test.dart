@@ -7,6 +7,8 @@ import 'package:http/testing.dart';
 import 'package:sumi/models/models.dart';
 import 'package:sumi/services/ai_runtime.dart';
 import 'package:sumi/services/ai_service.dart';
+import 'package:sumi/services/local_structured_generation.dart';
+import 'package:sumi/services/local_text_generation_runtime.dart';
 import 'package:sumi/services/model_router.dart';
 import 'package:sumi/services/model_router_metrics.dart';
 import 'package:sumi/services/memory_extraction.dart';
@@ -140,6 +142,19 @@ class _Structured implements StructuredGenerationCapability {
   }) async => null;
 
   @override
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  }) async => null;
+
+  @override
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  }) async => null;
+
+  @override
   Future<GoalAssessment?> assessGoal({
     required String goal,
     required String level,
@@ -161,6 +176,27 @@ class _Search implements WebSearchCapability {
   Future<List<Map<String, String>>> search(String value) async {
     query = value;
     return result;
+  }
+}
+
+class _LocalRuntime extends LocalTextGenerationRuntime {
+  final String? output;
+  _LocalRuntime(this.output);
+
+  @override
+  bool get isLoaded => true;
+
+  @override
+  String? get lastError => output == null ? 'local validation failed' : null;
+
+  @override
+  Future<String> completeJson({
+    required String system,
+    required String user,
+    required int maxTokens,
+  }) async {
+    if (output == null) throw StateError('local validation failed');
+    return output!;
   }
 }
 
@@ -210,6 +246,68 @@ void main() {
 
     expect(result?.items, ['阅读文档']);
     expect(requests, 2);
+  });
+
+  test('本地 Qwen 记录成功或回退的匿名路由指标', () async {
+    DateTime clock() => DateTime(2026, 7, 16, 10);
+    final successMetrics = _Metrics();
+    final success = LocalFirstStructuredGeneration(
+      cloud: _Structured(),
+      local: _LocalRuntime('{"split":false,"items":["阅读文档"]}'),
+      metrics: successMetrics,
+      clock: clock,
+    );
+
+    expect((await success.splitTodo('阅读一篇技术文档'))?.items, ['阅读文档']);
+    expect(successMetrics.values, hasLength(1));
+    expect(successMetrics.values.single.capability, ModelCapability.structured);
+    expect(successMetrics.values.single.provider, 'local-qwen3.5-0.8b-q4-k-m');
+    expect(successMetrics.values.single.outcome, ModelRouteOutcome.success);
+
+    final fallbackMetrics = _Metrics();
+    final fallback = LocalFirstStructuredGeneration(
+      cloud: _Structured(
+        splitResult: const SplitResult(split: false, items: ['云端结果']),
+      ),
+      local: _LocalRuntime('{}'),
+      metrics: fallbackMetrics,
+      clock: clock,
+    );
+
+    expect((await fallback.splitTodo('输入'))?.items, ['云端结果']);
+    expect(fallbackMetrics.values.single.outcome, ModelRouteOutcome.degraded);
+    expect(
+      fallbackMetrics.values.single.errorCategory,
+      ModelRouterErrorCategory.validation,
+    );
+
+    final multiStepMetrics = _Metrics();
+    final multiStep = LocalFirstStructuredGeneration(
+      cloud: _Structured(
+        splitResult: const SplitResult(
+          split: true,
+          items: ['整理课程资料', '完成第一节练习'],
+        ),
+      ),
+      local: _LocalRuntime('{"split":false,"items":["学习课程"]}'),
+      metrics: multiStepMetrics,
+      clock: clock,
+    );
+
+    expect((await multiStep.splitTodo('先整理课程资料，再完成第一节练习'))?.items, [
+      '整理课程资料',
+      '完成第一节练习',
+    ]);
+    expect(multiStepMetrics.values.single.outcome, ModelRouteOutcome.degraded);
+  });
+
+  test('本地生成路由开关会随设置持久化', () {
+    const settings = AppSettings(localTextGenerationEnabled: false);
+
+    final restored = AppSettings.fromJson(settings.toJson());
+
+    expect(restored.localTextGenerationEnabled, isFalse);
+    expect(AppSettings.fromJson(const {}).localTextGenerationEnabled, isTrue);
   });
 
   test('非法工具参数不会执行工具，聊天仍能继续生成', () async {

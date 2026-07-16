@@ -81,6 +81,21 @@ class StructuredAiService {
     scheduledHours: scheduledHours,
   );
 
+  Future<TodayLoadAnalysis?> analyzeTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+    required List<Map<String, Object?>> futureDays,
+  }) => _client.analyzeTodayLoad(
+    date: date,
+    todos: todos,
+    futureDays: futureDays,
+  );
+
+  Future<TodayLoadScreening?> screenTodayLoad({
+    required String date,
+    required List<Map<String, Object?>> todos,
+  }) => _client.screenTodayLoad(date: date, todos: todos);
+
   Future<GoalAssessment?> assessGoal({
     required String goal,
     required String level,

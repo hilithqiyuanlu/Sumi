@@ -176,6 +176,93 @@ class AiContracts {
     return AiContractValidation.valid({'days': days});
   }
 
+  static AiContractValidation<Map<String, Object?>> todayLoad(
+    Map<String, Object?> value, {
+    required Set<String> validTodoIds,
+    required Set<String> futureDates,
+  }) {
+    final risk = _finiteDouble(value['risk']);
+    final reasons = _stringList(value['reasons'], 'reasons', <String>[]);
+    final suggestion = _text(value['suggestion']);
+    final rawIds = value['movableTodoIds'];
+    final rawPressure = value['futureDayPressure'];
+    final errors = <String>[];
+    if (risk == null || risk < 0 || risk > 1) {
+      errors.add('risk 必须是 0-1 的有限数值');
+    }
+    if (reasons.isEmpty ||
+        reasons.length > 3 ||
+        reasons.any((item) => !_lengthBetween(item, 4, 80))) {
+      errors.add('reasons 必须是 1-3 条 4-80 字原因');
+    }
+    if (!_lengthBetween(suggestion, 4, 80)) {
+      errors.add('suggestion 必须是 4-80 字');
+    }
+    if (rawIds is! List<Object?> || rawIds.any((id) => id is! String)) {
+      errors.add('movableTodoIds 必须是字符串数组');
+    }
+    final ids = rawIds is List<Object?>
+        ? rawIds.whereType<String>().toList(growable: false)
+        : const <String>[];
+    if (ids.toSet().length != ids.length ||
+        ids.any((id) => !validTodoIds.contains(id))) {
+      errors.add('movableTodoIds 包含无效事项');
+    }
+    if (rawPressure is! List<Object?>) {
+      errors.add('futureDayPressure 必须是数组');
+    }
+    final pressures = <Map<String, Object?>>[];
+    final pressureDates = <String>{};
+    if (rawPressure is List<Object?>) {
+      for (final raw in rawPressure) {
+        if (raw is! Map<String, Object?>) {
+          errors.add('futureDayPressure 每项必须是对象');
+          continue;
+        }
+        final date = _text(raw['date']);
+        final pressure = _finiteDouble(raw['pressure']);
+        if (!futureDates.contains(date) ||
+            !pressureDates.add(date) ||
+            pressure == null ||
+            pressure < 0 ||
+            pressure > 1) {
+          errors.add('futureDayPressure 必须完整覆盖输入日期且压力在 0-1');
+          continue;
+        }
+        pressures.add({'date': date, 'pressure': pressure});
+      }
+    }
+    if (pressureDates.length != futureDates.length) {
+      errors.add('futureDayPressure 必须完整覆盖输入日期');
+    }
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({
+      'risk': risk,
+      'reasons': reasons,
+      'suggestion': suggestion,
+      'movableTodoIds': ids,
+      'futureDayPressure': pressures,
+    });
+  }
+
+  static AiContractValidation<Map<String, Object?>> todayLoadScreening(
+    Map<String, Object?> value,
+  ) {
+    final errors = <String>[];
+    final risk = _finiteDouble(value['risk']);
+    final reasons = _stringList(value['reasons'], 'reasons', errors);
+    if (risk == null || risk < 0 || risk > 1) {
+      errors.add('risk 必须是 0-1 的有限数值');
+    }
+    if (reasons.isEmpty ||
+        reasons.length > 3 ||
+        reasons.any((item) => !_lengthBetween(item, 4, 80))) {
+      errors.add('reasons 必须是 1-3 条 4-80 字原因');
+    }
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({'risk': risk, 'reasons': reasons});
+  }
+
   static AiContractValidation<Map<String, Object?>> assessment(
     Map<String, Object?> value,
   ) {

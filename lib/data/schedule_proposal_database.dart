@@ -55,29 +55,143 @@ class ScheduleProposalDatabase {
     return rows.isNotEmpty;
   }
 
-  Future<void> save(ScheduleRebalanceProposal proposal) async {
+  /// Every persisted write receives a fresh presentation timestamp. The JSON
+  /// payload is intentionally the source of truth so this remains compatible
+  /// with the existing table on installed devices.
+  Future<ScheduleRebalanceProposal> save(
+    ScheduleRebalanceProposal proposal,
+  ) async {
     await _ensureTable();
+    final persisted = proposal.copyWith(updatedAt: DateTime.now());
     await (await _db).insert('schedule_rebalance_proposals', {
-      'id': proposal.id,
-      'body_json': jsonEncode(proposal.toJson()),
-      'fingerprint': proposal.fingerprint,
-      'status': proposal.status.name,
-      'created_at': proposal.createdAt.toIso8601String(),
+      'id': persisted.id,
+      'body_json': jsonEncode(persisted.toJson()),
+      'fingerprint': persisted.fingerprint,
+      'status': persisted.status.name,
+      'created_at': persisted.createdAt.toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return persisted;
   }
 
-  Future<void> updateStatus(String id, ScheduleProposalStatus status) async {
+  Future<ScheduleRebalanceProposal?> updateStatus(
+    String id,
+    ScheduleProposalStatus status,
+  ) async {
     final proposal = await _byId(id);
-    if (proposal == null) return;
-    await save(proposal.copyWith(status: status));
+    if (proposal == null) return null;
+    final updated = status == ScheduleProposalStatus.accepted
+        ? proposal.complete(movedCount: proposal.moves.length)
+        : proposal.copyWith(status: status);
+    return save(updated);
   }
 
-  Future<ScheduleRebalanceProposal?> markNotificationSent(String id) async {
+  /// Updates only the stage used to place the system card in the chat stream.
+  /// [clearDisplayAnchor] allows a delayed card to become immediately visible.
+  Future<ScheduleRebalanceProposal?> updatePresentation(
+    String id, {
+    ScheduleProposalStage? stage,
+    String? displayAnchorMessageId,
+    bool clearDisplayAnchor = false,
+  }) async {
     final proposal = await _byId(id);
-    if (proposal == null || proposal.notificationSent) return proposal;
-    final updated = proposal.copyWith(notificationSent: true);
+    if (proposal == null) return null;
+    var updated = proposal.copyWith(stage: stage);
+    if (clearDisplayAnchor || displayAnchorMessageId != null) {
+      updated = updated.copyWith(
+        displayAnchorMessageId: clearDisplayAnchor
+            ? null
+            : displayAnchorMessageId,
+      );
+    }
+    return save(updated);
+  }
+
+  /// Persists the actual number of moved items instead of assuming every
+  /// preview item stayed eligible until the user confirmed it.
+  Future<ScheduleRebalanceProposal?> complete(
+    String id, {
+    required int movedCount,
+    String? displayAnchorMessageId,
+  }) async {
+    final proposal = await _byId(id);
+    if (proposal == null) return null;
+    var updated = proposal.complete(movedCount: movedCount);
+    if (displayAnchorMessageId != null) {
+      updated = updated.copyWith(
+        displayAnchorMessageId: displayAnchorMessageId,
+      );
+    }
+    return save(updated);
+  }
+
+  /// Completed cards are history, pending cards are actionable, and dismissed
+  /// cards deliberately disappear from their date conversation.
+  Future<List<ScheduleRebalanceProposal>> visibleForConversation(
+    String conversationId,
+  ) async {
+    await _ensureTable();
+    final rows = await (await _db).query(
+      'schedule_rebalance_proposals',
+      columns: ['body_json'],
+      orderBy: 'created_at ASC',
+    );
+    return rows
+        .map(_fromRow)
+        .where(
+          (proposal) =>
+              proposal.conversationId == conversationId &&
+              proposal.status != ScheduleProposalStatus.dismissed,
+        )
+        .toList(growable: false);
+  }
+
+  Future<ScheduleRebalanceProposal?> markNotificationSent(
+    String id, {
+    required String date,
+    required double risk,
+  }) async {
+    final proposal = await _byId(id);
+    if (proposal == null) return null;
+    final sameDay = proposal.lastNotificationDate == date;
+    final updated = proposal.copyWith(
+      notificationSent: true,
+      lastNotificationDate: date,
+      lastNotificationRisk: risk,
+      notificationsOnLastDate: sameDay
+          ? proposal.notificationsOnLastDate + 1
+          : 1,
+    );
     await save(updated);
     return updated;
+  }
+
+  /// At most one daily notification, with one extra allowance for a material
+  /// risk increase. This scans durable proposals so replacing a card cannot
+  /// bypass the limit.
+  Future<bool> canNotify({required String date, required double risk}) async {
+    await _ensureTable();
+    final rows = await (await _db).query(
+      'schedule_rebalance_proposals',
+      columns: ['body_json'],
+    );
+    final notified = rows
+        .map(_fromRow)
+        .where((proposal) => proposal.lastNotificationDate == date)
+        .toList(growable: false);
+    if (notified.isEmpty) return true;
+    final count = notified.fold<int>(
+      0,
+      (sum, proposal) => sum + proposal.notificationsOnLastDate,
+    );
+    final highestRisk = notified.fold<double>(
+      0,
+      (max, proposal) =>
+          proposal.lastNotificationRisk != null &&
+              proposal.lastNotificationRisk! > max
+          ? proposal.lastNotificationRisk!
+          : max,
+    );
+    return count < 2 && risk >= highestRisk + .15;
   }
 
   Future<ScheduleRebalanceProposal?> _byId(String id) async {

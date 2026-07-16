@@ -22,7 +22,7 @@ class ModelRouterMetricsPage extends StatelessWidget {
             unselectedLabelColor: textSecondary,
             tabs: [
               Tab(text: '云端'),
-              Tab(text: '本地检索'),
+              Tab(text: '本地智能'),
             ],
           ),
         ),
@@ -30,19 +30,15 @@ class ModelRouterMetricsPage extends StatelessWidget {
           children: [
             _MetricsPanel(
               metrics: metrics
-                  .where(
-                    (metric) => metric.capability != ModelCapability.embedding,
-                  )
+                  .where((metric) => !metric.provider.startsWith('local-'))
                   .toList(growable: false),
               emptyLabel: '近 7 天暂无云端调用记录',
             ),
             _MetricsPanel(
               metrics: metrics
-                  .where(
-                    (metric) => metric.capability == ModelCapability.embedding,
-                  )
+                  .where((metric) => metric.provider.startsWith('local-'))
                   .toList(growable: false),
-              emptyLabel: '近 7 天暂无本地检索记录',
+              emptyLabel: '近 7 天暂无本地智能调用记录',
             ),
           ],
         ),

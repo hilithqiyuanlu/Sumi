@@ -23,6 +23,8 @@ class ChatInput extends StatefulWidget {
   final VoidCallback? onStopGenerating;
   final VoiceInputService? voiceService;
   final bool isFutureDate;
+  final String? draftText;
+  final int draftRevision;
 
   const ChatInput({
     super.key,
@@ -35,6 +37,8 @@ class ChatInput extends StatefulWidget {
     this.onStopGenerating,
     this.voiceService,
     this.isFutureDate = false,
+    this.draftText,
+    this.draftRevision = 0,
   });
 
   @override
@@ -68,6 +72,7 @@ class _ChatInputState extends State<ChatInput> {
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
+    _applyDraft(widget.draftText);
 
     // 监听实时部分识别
     _voice?.onPartialResult = (text) {
@@ -89,6 +94,29 @@ class _ChatInputState extends State<ChatInput> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant ChatInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final draft = widget.draftText;
+    if (draft == null || widget.draftRevision == oldWidget.draftRevision) {
+      return;
+    }
+    _applyDraft(draft);
+  }
+
+  void _applyDraft(String? draft) {
+    if (draft == null) return;
+    _controller.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.enabled && !widget.isStreaming) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
   void _onTextChanged() {
     final hasText = _controller.text.trim().isNotEmpty;
     if (hasText != _hasText) {
@@ -105,7 +133,7 @@ class _ChatInputState extends State<ChatInput> {
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty || !widget.enabled) return;
+    if (text.isEmpty || !widget.enabled || widget.isStreaming) return;
     H.click();
 
     if (widget.mode == InputMode.todo) {
@@ -299,8 +327,8 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   Widget build(BuildContext context) {
-    final showSendButton = widget.isStreaming ||
-        (_hasText && widget.enabled && !_isRecording);
+    final showSendButton =
+        widget.isStreaming || (_hasText && widget.enabled && !_isRecording);
     final hasVoice = _voice != null;
     final isCancelHint = _voiceHint == _VoiceHint.cancel;
 
@@ -348,152 +376,152 @@ class _ChatInputState extends State<ChatInput> {
           ),
           child: TextFieldTapRegion(
             child: Container(
-            constraints: const BoxConstraints(maxHeight: 200),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.82),
-              borderRadius: BorderRadius.circular(radiusPill),
-              border: Border.all(
-                color: _isRecording
-                    ? mintDeep.withValues(alpha: 0.6)
-                    : Colors.white.withValues(alpha: 0.5),
-                width: 0.5,
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(radiusPill),
+                border: Border.all(
+                  color: _isRecording
+                      ? mintDeep.withValues(alpha: 0.6)
+                      : Colors.white.withValues(alpha: 0.5),
+                  width: 0.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 20,
+                    offset: const Offset(0, 2),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 1,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 20,
-                  offset: const Offset(0, 2),
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 1,
-                  offset: const Offset(0, 0),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(radiusPill),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // 模式切换（双态颜色 + 按压缩放）
-                    Padding(
-                      padding: const EdgeInsets.only(left: 14),
-                      child: GestureDetector(
-                        onTap: widget.enabled && !widget.isStreaming
-                            ? _toggleMode
-                            : null,
-                        child: AnimatedScale(
-                          scale: _modePressed ? 0.88 : 1.0,
-                          duration: const Duration(milliseconds: 100),
-                          curve: Curves.easeOutCubic,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 280),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(radiusPill),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // 模式切换（双态颜色 + 按压缩放）
+                      Padding(
+                        padding: const EdgeInsets.only(left: 14),
+                        child: GestureDetector(
+                          onTap: widget.enabled && !widget.isStreaming
+                              ? _toggleMode
+                              : null,
+                          child: AnimatedScale(
+                            scale: _modePressed ? 0.88 : 1.0,
+                            duration: const Duration(milliseconds: 100),
                             curve: Curves.easeOutCubic,
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: widget.mode == InputMode.todo
-                                  ? primary500
-                                  : primary50,
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.swap_horiz_rounded,
-                              size: 24,
-                              color: widget.mode == InputMode.todo
-                                  ? Colors.white
-                                  : primary500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // TextField + 语音长按
-                    Expanded(
-                      child: Listener(
-                        onPointerDown: hasVoice ? _onPointerDown : null,
-                        onPointerMove: hasVoice ? _onPointerMove : null,
-                        onPointerUp: hasVoice ? _onPointerUp : null,
-                        child: AbsorbPointer(
-                          absorbing: _isRecording,
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focusNode,
-                            enabled: widget.enabled && !widget.isStreaming,
-                            maxLines: 4,
-                            minLines: 1,
-                            textInputAction: TextInputAction.newline,
-                            onTapOutside: (_) => _focusNode.unfocus(),
-                            style: const TextStyle(fontSize: 16),
-                            decoration: InputDecoration(
-                              hintText: _placeholderText,
-                              hintStyle: const TextStyle(
-                                fontSize: 16,
-                                color: textTertiary,
-                                fontWeight: FontWeight.w400,
-                              ),
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: s10,
-                                vertical: 28,
-                              ),
-                            ),
-                            onSubmitted: (_) => _send(),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // 内嵌发送按钮
-                    AnimatedOpacity(
-                      opacity: showSendButton ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 150),
-                      child: AnimatedScale(
-                        scale: showSendButton ? 1.0 : 0.6,
-                        duration: const Duration(milliseconds: 150),
-                        alignment: Alignment.center,
-                        child: Material(
-                          color: Colors.transparent,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            onTap: widget.isStreaming
-                                ? widget.onStopGenerating
-                                : showSendButton
-                                ? _send
-                                : null,
-                            customBorder: const CircleBorder(),
-                            overlayColor: WidgetStatePropertyAll(
-                              Colors.white.withValues(alpha: 0.3),
-                            ),
-                            child: Container(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 280),
+                              curve: Curves.easeOutCubic,
                               width: 44,
                               height: 44,
-                              margin: const EdgeInsets.only(right: 14),
-                              decoration: const BoxDecoration(
-                                color: mintDeep,
+                              decoration: BoxDecoration(
+                                color: widget.mode == InputMode.todo
+                                    ? primary500
+                                    : primary50,
                                 shape: BoxShape.circle,
                               ),
+                              alignment: Alignment.center,
                               child: Icon(
-                                widget.isStreaming ? Icons.stop : Icons.send,
-                                size: widget.isStreaming ? 20 : 22,
-                                color: Colors.white,
+                                Icons.swap_horiz_rounded,
+                                size: 24,
+                                color: widget.mode == InputMode.todo
+                                    ? Colors.white
+                                    : primary500,
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      // TextField + 语音长按
+                      Expanded(
+                        child: Listener(
+                          onPointerDown: hasVoice ? _onPointerDown : null,
+                          onPointerMove: hasVoice ? _onPointerMove : null,
+                          onPointerUp: hasVoice ? _onPointerUp : null,
+                          child: AbsorbPointer(
+                            absorbing: _isRecording,
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              enabled: widget.enabled && !widget.isStreaming,
+                              maxLines: 4,
+                              minLines: 1,
+                              textInputAction: TextInputAction.newline,
+                              onTapOutside: (_) => _focusNode.unfocus(),
+                              style: const TextStyle(fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: _placeholderText,
+                                hintStyle: const TextStyle(
+                                  fontSize: 16,
+                                  color: textTertiary,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: s10,
+                                  vertical: 28,
+                                ),
+                              ),
+                              onSubmitted: (_) => _send(),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 内嵌发送按钮
+                      AnimatedOpacity(
+                        opacity: showSendButton ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 150),
+                        child: AnimatedScale(
+                          scale: showSendButton ? 1.0 : 0.6,
+                          duration: const Duration(milliseconds: 150),
+                          alignment: Alignment.center,
+                          child: Material(
+                            color: Colors.transparent,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              onTap: widget.isStreaming
+                                  ? widget.onStopGenerating
+                                  : showSendButton
+                                  ? _send
+                                  : null,
+                              customBorder: const CircleBorder(),
+                              overlayColor: WidgetStatePropertyAll(
+                                Colors.white.withValues(alpha: 0.3),
+                              ),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                margin: const EdgeInsets.only(right: 14),
+                                decoration: const BoxDecoration(
+                                  color: mintDeep,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  widget.isStreaming ? Icons.stop : Icons.send,
+                                  size: widget.isStreaming ? 20 : 22,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           ),
         ),
       ],

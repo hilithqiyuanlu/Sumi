@@ -22,6 +22,7 @@ mixin SumiStoreChat {
   LocalRetrievalService get localRetrieval;
   String? get currentProjectId;
   void scheduleLocalIndex();
+  Future<void> refreshScheduleCardsForConversation(String? conversationId);
 
   // --- 状态 ---
   String? _currentConversationId;
@@ -48,6 +49,10 @@ mixin SumiStoreChat {
   String? _activeToolDefaultDate;
 
   String? get currentConversationId => _currentConversationId;
+  String? get streamingAssistantMessageId =>
+      _isStreaming && _streamConversationId == _currentConversationId
+      ? _streamAssistantMessageId
+      : null;
   List<ChatMessage> get currentMessages => List.unmodifiable(_currentMessages);
   bool get isStreaming => _isStreaming;
   bool get isLoadingConversation => _isLoadingConversation;
@@ -220,6 +225,7 @@ mixin SumiStoreChat {
     }
 
     _isLoadingConversation = false;
+    await refreshScheduleCardsForConversation(_currentConversationId);
     _publishChatState();
   }
 
@@ -636,7 +642,8 @@ mixin SumiStoreChat {
     final toolCallsList = <Map<String, Object?>>[];
     String? agentError;
 
-    final iterator = StreamIterator(svc.sendAgentLoop(
+    final iterator = StreamIterator(
+      svc.sendAgentLoop(
         messages: messages,
         thinkingEnabled: thinkingEnabled,
         validProjectIds: projectList.map((project) => project.id).toSet(),
@@ -665,7 +672,8 @@ mixin SumiStoreChat {
           final result = await exec.execute(call);
           return result;
         },
-      ));
+      ),
+    );
     _activeAgentIterator = iterator;
     try {
       while (!_stopRequested && await iterator.moveNext()) {
