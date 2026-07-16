@@ -1,13 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
 import '../../models/models.dart';
-import '../../services/ai_service.dart';
-import '../../services/memory_service.dart';
 import '../../services/schedule_load_service.dart';
-import '../../services/today_suggestion_mapper.dart';
 
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
@@ -19,13 +17,14 @@ import '../calendar/month_view_sheet.dart';
 import '../chat/chat_bubble.dart';
 import '../chat/chat_input.dart';
 import '../todos/todo_chip_carousel.dart';
-import '../todos/split_confirm_sheet.dart';
+import '../todos/todo_edit_sheet.dart';
 import 'settings_panel.dart';
 import '../memory/memory_center_page.dart';
 import '../projects/project_generation_page.dart';
 import '../tools/tools_page.dart';
 import 'side_drawer.dart';
 import 'suggestion_strip.dart';
+import 'daily_reflection_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -145,20 +144,19 @@ class _HomePageState extends State<HomePage>
     stiffness: 250,
     damping: 22,
   );
-  InputMode _inputMode = InputMode.todo;
-  List<MemorySuggestion> _suggestions = [];
+  List<SuggestionQuestion> _suggestions = const [];
+  SuggestionQuestion? _draftedSuggestion;
   final _scrollController = ScrollController();
   bool _showScrollToBottom = false;
   DateTime? _lastSelectedDate;
   int _lastDataVersion = 0;
+  bool _lastSuggestionsDirty = true;
   late final SumiStore _store;
   late ChatViewState _lastChatView;
-  bool _isTodoGenerating = false;
-  int _todoGenerationId = 0;
   String? _inputDraft;
   int _inputDraftRevision = 0;
 
-  // 对话模式轻提示
+  // 对话轻提示
   static const _chatGreetings = [
     '最近在忙什么有趣的事？',
     '有什么好奇想问的吗？',
@@ -180,6 +178,7 @@ class _HomePageState extends State<HomePage>
     _refreshChatGreeting();
     _store = SumiScope.read(context);
     _lastSelectedDate = _store.selectedDate;
+    _lastSuggestionsDirty = _store.suggestionsDirty;
     _lastChatView = _store.chatView.value;
     _store.chatView.addListener(_onChatViewChanged);
     _store.projectGenerationController.addListener(_onProjectGenerationChanged);
@@ -227,7 +226,7 @@ class _HomePageState extends State<HomePage>
   // 07 轮：App 生命周期监听
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _generateSuggestions();
+    if (state == AppLifecycleState.resumed) _showCachedSuggestions();
   }
 
   void _refreshChatGreeting() {
@@ -235,58 +234,29 @@ class _HomePageState extends State<HomePage>
         _chatGreetings[DateTime.now().millisecond % _chatGreetings.length];
   }
 
-  void _switchMode(InputMode mode) {
-    if (mode == InputMode.chat && _inputMode != InputMode.chat) {
-      _refreshChatGreeting();
-    }
-    setState(() => _inputMode = mode);
-  }
-
-  /// 常规建议慢刷新；当天建议复用负荷分析并随它实时变化。
   Future<void> _generateSuggestions() async {
     final store = SumiScope.read(context);
-
-    final cached = store.cachedSuggestions;
-    if (!store.suggestionsDirty && cached.isNotEmpty) {
-      if (mounted) {
-        setState(
-          () => _suggestions = TodaySuggestionMapper.compose(
-            regular: cached,
-            today: store.todayLoadSuggestions,
-          ),
-        );
-      }
+    if (!store.appSettings.suggestionQuestionsEnabled) {
+      if (mounted) setState(() => _suggestions = const []);
       return;
     }
-    try {
-      final memory = store.memoryService;
-      final stats = await store.legacyRealtimeStats();
-      final regularCount = store.todayLoadSuggestions.isEmpty ? 5 : 3;
-      final generated = memory == null
-          ? TodaySuggestionMapper.fallbackRegular(count: regularCount)
-          : await memory.createSuggestions(
-              realtimeStats: stats,
-              limit: regularCount,
-            );
-      final combined = TodaySuggestionMapper.compose(
-        regular: generated,
-        today: store.todayLoadSuggestions,
-      );
-      if (combined.isNotEmpty && mounted) {
-        // Cache only the slow-changing half. Today's two prompts are always
-        // recomposed from the newest semantic assessment.
-        store.cachedSuggestions = generated;
-        store.lastSuggestionTime = DateTime.now();
-        store.setSuggestionsDirty(false);
-        setState(() => _suggestions = combined);
-      } else if (mounted) {
-        store.cachedSuggestions = const [];
-        store.setSuggestionsDirty(false);
-        setState(() => _suggestions = const []);
-      }
-    } catch (_) {
-      if (mounted && cached.isNotEmpty) setState(() => _suggestions = cached);
+    if (!store.suggestionsDirty && store.hasUsableSuggestionQuestionCache) {
+      _showCachedSuggestions();
+      return;
     }
+    final generated = await store.refreshSuggestionQuestions();
+    if (!mounted) return;
+    setState(() => _suggestions = generated ?? const []);
+  }
+
+  void _showCachedSuggestions() {
+    final store = SumiScope.read(context);
+    if (!store.appSettings.suggestionQuestionsEnabled ||
+        !store.hasUsableSuggestionQuestionCache) {
+      if (mounted) setState(() => _suggestions = const []);
+      return;
+    }
+    if (mounted) setState(() => _suggestions = store.cachedSuggestionQuestions);
   }
 
   void _onScroll() {
@@ -348,46 +318,38 @@ class _HomePageState extends State<HomePage>
   Future<void> _openSearchResult(ChatSearchResult result) =>
       SumiScope.read(context).selectDate(result.date);
 
-  void _handleSuggestionSelect(MemorySuggestion suggestion) {
+  void _handleSuggestionSelect(SuggestionQuestion suggestion) {
     if (_isInputBusy) return;
     setState(() {
-      _inputMode = InputMode.chat;
       _inputDraft = suggestion.text;
       _inputDraftRevision++;
+      _draftedSuggestion = suggestion;
     });
-    if (suggestion.source != 'today_load') {
-      final store = SumiScope.read(context);
-      store.memoryService
-          ?.recordSelected(suggestion)
-          .then((_) => store.scheduleLocalIndex());
-    }
   }
 
   Future<void> _handleSuggestionFeedback(
-    MemorySuggestion suggestion,
+    SuggestionQuestion suggestion,
     bool disableTopic,
   ) async {
     final store = SumiScope.read(context);
-    if (suggestion.source != 'today_load') {
-      await store.memoryService?.recordFeedback(
-        suggestion,
-        disableTopic: disableTopic,
-      );
-    }
-    store.scheduleLocalIndex();
-    if (!mounted) return;
-    setState(
-      () => _suggestions.removeWhere(
-        (item) => item.eventId == suggestion.eventId,
-      ),
+    final generated = await store.rejectSuggestionQuestion(
+      suggestion,
+      disableIntent: disableTopic,
     );
-    store.setSuggestionsDirty(true);
-    _generateSuggestions();
+    if (!mounted) return;
+    setState(() => _suggestions = generated ?? const []);
   }
 
   ChatSendResult _handleChatSend(String content) {
     final store = SumiScope.read(context);
-    final result = store.sendMessage(content, currentGreeting: _chatGreeting);
+    final result = store.sendUnifiedMessage(
+      content,
+      currentGreeting: _chatGreeting,
+    );
+    if (result == ChatSendResult.accepted && _draftedSuggestion != null) {
+      store.recordSuggestionQuestionSent(_draftedSuggestion!);
+      _draftedSuggestion = null;
+    }
     if (result == ChatSendResult.missingApiKey) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -403,46 +365,10 @@ class _HomePageState extends State<HomePage>
     return result;
   }
 
-  bool get _isInputBusy =>
-      _isTodoGenerating || _store.chatView.value.isStreaming;
-
-  bool _isTodoGenerationActive(int id) =>
-      mounted && _isTodoGenerating && _todoGenerationId == id;
+  bool get _isInputBusy => _store.chatView.value.isStreaming;
 
   void _stopInputGeneration() {
-    if (_isTodoGenerating) {
-      _todoGenerationId++;
-      setState(() => _isTodoGenerating = false);
-      return;
-    }
     _store.stopGenerating();
-  }
-
-  Future<void> _handleAddTodo(String title) async {
-    final store = SumiScope.read(context);
-    if (title.length <= SumiStore.todoTitleMaxLength) {
-      final todo = await store.addUserTodo(title);
-      if (todo == null || !mounted) return;
-      return;
-    }
-
-    if (_isTodoGenerating) return;
-    final operationId = ++_todoGenerationId;
-    setState(() => _isTodoGenerating = true);
-    SplitResult? result;
-    try {
-      result = await store.splitAndAddTodo(
-        title,
-        isCancelled: () => !_isTodoGenerationActive(operationId),
-      );
-    } finally {
-      if (mounted && _todoGenerationId == operationId) {
-        setState(() => _isTodoGenerating = false);
-      }
-    }
-    final completed = _todoGenerationId == operationId;
-    if (!mounted || !completed || result == null || !result.split) return;
-    await showSplitConfirmSheet(context, store, result.items);
   }
 
   // ---------------------------------------------------------------------------
@@ -497,10 +423,10 @@ class _HomePageState extends State<HomePage>
     SumiScope.watchProjects(context);
     SumiScope.watchSettings(context);
     SumiScope.watchSelection(context);
+    SumiScope.watchDailyReflections(context);
     final userName = store.appSettings.userName;
     final selectedDate = store.selectedDate;
     final isPast = dateOnly(selectedDate).isBefore(dateOnly(DateTime.now()));
-    final isFuture = dateOnly(selectedDate).isAfter(dateOnly(DateTime.now()));
 
     // 检测日期切换 → 重载建议
     if (_lastSelectedDate != null &&
@@ -516,6 +442,12 @@ class _HomePageState extends State<HomePage>
     // 检测数据变更 → 刷新建议
     if (store.dataVersion != _lastDataVersion) {
       _lastDataVersion = store.dataVersion;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _generateSuggestions();
+      });
+    }
+    if (store.suggestionsDirty != _lastSuggestionsDirty) {
+      _lastSuggestionsDirty = store.suggestionsDirty;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _generateSuggestions();
       });
@@ -610,46 +542,49 @@ class _HomePageState extends State<HomePage>
                   ),
                 ),
               ),
-              AnimatedOpacity(
-                opacity: isPast ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 320),
-                curve: isPast ? Curves.easeIn : Curves.easeOut,
-                child: ClipRect(
-                  child: AnimatedAlign(
-                    alignment: Alignment.topCenter,
-                    heightFactor: isPast ? 0.0 : 1.0,
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    child: ValueListenableBuilder<ChatViewState>(
-                      valueListenable: store.chatView,
-                      builder: (context, chat, _) => Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SuggestionStrip(
-                            suggestions: _suggestions,
-                            onSelect: _handleSuggestionSelect,
-                            onFeedback: _handleSuggestionFeedback,
-                            enabled: !_isTodoGenerating && !chat.isStreaming,
-                          ),
-                          ChatInput(
-                            mode: _inputMode,
-                            isFutureDate: isFuture,
-                            onSend: _handleChatSend,
-                            onAddTodo: _handleAddTodo,
-                            onModeChanged: _switchMode,
-                            enabled: !_isTodoGenerating && !chat.isStreaming,
-                            isStreaming: _isTodoGenerating || chat.isStreaming,
-                            onStopGenerating: _stopInputGeneration,
-                            voiceService: store.voiceService,
-                            draftText: _inputDraft,
-                            draftRevision: _inputDraftRevision,
-                          ),
-                        ],
+              if (isPast)
+                DailyReflectionSlot(
+                  store: store,
+                  date: selectedDate,
+                  revision: store.dailyReflectionController.revision,
+                )
+              else
+                AnimatedOpacity(
+                  opacity: 1.0,
+                  duration: const Duration(milliseconds: 320),
+                  curve: isPast ? Curves.easeIn : Curves.easeOut,
+                  child: ClipRect(
+                    child: AnimatedAlign(
+                      alignment: Alignment.topCenter,
+                      heightFactor: 1.0,
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      child: ValueListenableBuilder<ChatViewState>(
+                        valueListenable: store.chatView,
+                        builder: (context, chat, _) => Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SuggestionStrip(
+                              suggestions: _suggestions,
+                              onSelect: _handleSuggestionSelect,
+                              onFeedback: _handleSuggestionFeedback,
+                              enabled: !chat.isStreaming,
+                            ),
+                            ChatInput(
+                              onSend: _handleChatSend,
+                              enabled: !chat.isStreaming,
+                              isStreaming: chat.isStreaming,
+                              onStopGenerating: _stopInputGeneration,
+                              voiceService: store.voiceService,
+                              draftText: _inputDraft,
+                              draftRevision: _inputDraftRevision,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
           // 滚动到底部按钮（位于月视图遮罩之下）
@@ -716,10 +651,6 @@ class _HomePageState extends State<HomePage>
       title = '这一天没有对话';
     } else if (isFuture) {
       title = '前方的区域还没有开放，过段时间再来探索吧';
-    } else if (_inputMode == InputMode.todo) {
-      title = userName.isEmpty
-          ? '嗨，今天要和 Sumi 一起做点什么？'
-          : '嗨 $userName，今天要和 Sumi 一起做点什么？';
     } else {
       title = _chatGreeting;
     }
@@ -753,15 +684,8 @@ class _HomePageState extends State<HomePage>
     final filtered = messages
         .where((message) => message.role != 'tool')
         .toList(growable: false);
-    String? streamingAssistantId;
-    if (chat.isStreaming) {
-      for (final message in chat.messages.reversed) {
-        if (message.role == 'assistant') {
-          streamingAssistantId = message.id;
-          break;
-        }
-      }
-    }
+    final streamingAssistantId = store.streamingAssistantMessageId;
+    final milestoneSourceIds = chat.milestoneSourceMessageIds;
 
     String? latestUserMessageId;
     if (!chat.isStreaming) {
@@ -812,11 +736,32 @@ class _HomePageState extends State<HomePage>
               ? chat.activityLabel
               : null,
           toolCallsJson: message.toolCallsJson,
+          todoResultJson: message.todoResultJson,
+          showMilestoneSaved: milestoneSourceIds.contains(message.id),
+          onOpenTodo: message.todoResultJson == null
+              ? null
+              : () {
+                  try {
+                    final data = jsonDecode(
+                      message.todoResultJson!,
+                    ) as Map<String, Object?>;
+                    final id = data['todoId'] as String?;
+                    TodoItem? todo;
+                    if (id != null) {
+                      for (final item in store.todoItems) {
+                        if (item.id == id) {
+                          todo = item;
+                          break;
+                        }
+                      }
+                    }
+                    if (todo != null) showTodoEditSheet(context, store, todo);
+                  } catch (_) {}
+                },
           timerController: store.timerController,
           onStartTimer: store.startStudyTimer,
           onPauseTimer: store.pauseStudyTimer,
           onFinishTimer: store.finishStudyTimer,
-          onCancelTimer: store.cancelStudyTimer,
           projectGenerationController: store.projectGenerationController,
           onDelete: message.role == 'user'
               ? () => store.deleteMessagePair(originalIndex)

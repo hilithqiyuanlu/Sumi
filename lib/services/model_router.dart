@@ -8,6 +8,8 @@ import 'memory_extraction.dart';
 enum ModelCapability {
   chat,
   structured,
+  suggestionQuestions,
+  dailyReflection,
   memoryExtraction,
   webSearch,
   embedding,
@@ -60,10 +62,21 @@ abstract interface class ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
+  });
+}
+
+abstract interface class SuggestionQuestionCapability {
+  String? get lastError;
+
+  Future<List<SuggestionQuestion>?> recommend({
+    required Map<String, Object?> context,
+    required List<SuggestionQuestion> existing,
+    required Set<String> validTodoIds,
+    required Set<String> validProjectIds,
+    required Set<String> forbiddenIntents,
   });
 }
 
@@ -73,6 +86,11 @@ abstract interface class StructuredGenerationCapability {
 
   Future<SplitResult?> splitTodo(String text);
   Future<String?> polishTodo(String text);
+  Future<InputClassification?> classifyInput(String text, {String? draft});
+  Future<MilestoneRecognition?> recognizeMilestone({
+    required String message,
+    required List<TodoItem> candidates,
+  });
   Future<PlanResult?> generatePlan({
     required String goal,
     required String level,
@@ -90,6 +108,11 @@ abstract interface class StructuredGenerationCapability {
     required String date,
     required int timeConstraint,
     required int scheduledHours,
+  });
+  Future<DailyReflectionResult?> generateDailyReflection({
+    required String date,
+    required List<Map<String, Object?>> messages,
+    required List<Map<String, Object?>> signals,
   });
   Future<WeeklyTodoResult?> generateWeeklyTodos({
     required String monthPlanTitle,
@@ -127,6 +150,7 @@ abstract interface class ModelProvider {
   String get id;
   ChatCapability get chat;
   StructuredGenerationCapability get structured;
+  SuggestionQuestionCapability get suggestionQuestions;
   MemoryExtractionCapability get memoryExtraction;
   WebSearchCapability get search;
 }
@@ -141,6 +165,8 @@ class CloudModelProvider implements ModelProvider {
   @override
   final StructuredGenerationCapability structured;
   @override
+  final SuggestionQuestionCapability suggestionQuestions;
+  @override
   final MemoryExtractionCapability memoryExtraction;
   @override
   final WebSearchCapability search;
@@ -149,6 +175,7 @@ class CloudModelProvider implements ModelProvider {
     required this.id,
     required this.chat,
     required this.structured,
+    required this.suggestionQuestions,
     required this.memoryExtraction,
     required this.search,
   });
@@ -161,6 +188,9 @@ class CloudModelProvider implements ModelProvider {
       id: id,
       chat: _CloudChatCapability(runtime.chat),
       structured: _CloudStructuredCapability(runtime.structured),
+      suggestionQuestions: _CloudSuggestionQuestionCapability(
+        runtime.suggestionQuestions,
+      ),
       memoryExtraction: _CloudMemoryExtractionCapability(
         runtime.memoryExtraction,
       ),
@@ -180,6 +210,30 @@ class _CloudMemoryExtractionCapability implements MemoryExtractionCapability {
   }) => _delegate.extractMemory(message: message, candidates: candidates);
 }
 
+class _CloudSuggestionQuestionCapability
+    implements SuggestionQuestionCapability {
+  final SuggestionQuestionAiService _delegate;
+  const _CloudSuggestionQuestionCapability(this._delegate);
+
+  @override
+  String? get lastError => _delegate.lastError;
+
+  @override
+  Future<List<SuggestionQuestion>?> recommend({
+    required Map<String, Object?> context,
+    required List<SuggestionQuestion> existing,
+    required Set<String> validTodoIds,
+    required Set<String> validProjectIds,
+    required Set<String> forbiddenIntents,
+  }) => _delegate.recommend(
+    context: context,
+    existing: existing,
+    validTodoIds: validTodoIds,
+    validProjectIds: validProjectIds,
+    forbiddenIntents: forbiddenIntents,
+  );
+}
+
 class _CloudChatCapability implements ChatCapability {
   final ChatAgentService _delegate;
   const _CloudChatCapability(this._delegate);
@@ -189,7 +243,6 @@ class _CloudChatCapability implements ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
@@ -198,7 +251,6 @@ class _CloudChatCapability implements ChatCapability {
       messages: messages,
       executeTool: executeTool,
       onToolCall: onToolCall,
-      thinkingEnabled: thinkingEnabled,
       maxTurns: maxTurns,
       validProjectIds: validProjectIds,
       enabledTools: enabledTools,
@@ -218,6 +270,27 @@ class _CloudStructuredCapability implements StructuredGenerationCapability {
 
   @override
   Future<String?> polishTodo(String text) => _delegate.polishTodo(text);
+
+  @override
+  Future<InputClassification?> classifyInput(String text, {String? draft}) =>
+      _delegate.classifyInput(text, draft: draft);
+
+  @override
+  Future<MilestoneRecognition?> recognizeMilestone({
+    required String message,
+    required List<TodoItem> candidates,
+  }) => _delegate.recognizeMilestone(message: message, candidates: candidates);
+
+  @override
+  Future<DailyReflectionResult?> generateDailyReflection({
+    required String date,
+    required List<Map<String, Object?>> messages,
+    required List<Map<String, Object?>> signals,
+  }) => _delegate.generateDailyReflection(
+    date: date,
+    messages: messages,
+    signals: signals,
+  );
 
   @override
   Future<PlanResult?> generatePlan({
@@ -339,6 +412,12 @@ class ModelRouter {
   );
   late final StructuredGenerationCapability structured =
       _MeasuredStructuredCapability(_cloud.structured, _cloud.id, _record);
+  late final SuggestionQuestionCapability suggestionQuestions =
+      _MeasuredSuggestionQuestionCapability(
+        _cloud.suggestionQuestions,
+        _cloud.id,
+        _record,
+      );
   late final MemoryExtractionCapability memoryExtraction =
       _MeasuredMemoryExtractionCapability(
         _cloud.memoryExtraction,
@@ -433,7 +512,6 @@ class _MeasuredChatCapability implements ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
@@ -445,7 +523,6 @@ class _MeasuredChatCapability implements ChatCapability {
         messages: messages,
         executeTool: executeTool,
         onToolCall: onToolCall,
-        thinkingEnabled: thinkingEnabled,
         maxTurns: maxTurns,
         validProjectIds: validProjectIds,
         enabledTools: enabledTools,
@@ -494,6 +571,33 @@ class _MeasuredStructuredCapability implements StructuredGenerationCapability {
   @override
   Future<String?> polishTodo(String text) =>
       _track(() => _delegate.polishTodo(text));
+
+  @override
+  Future<InputClassification?> classifyInput(String text, {String? draft}) =>
+      _track(() => _delegate.classifyInput(text, draft: draft));
+
+  @override
+  Future<MilestoneRecognition?> recognizeMilestone({
+    required String message,
+    required List<TodoItem> candidates,
+  }) => _track(
+    () =>
+        _delegate.recognizeMilestone(message: message, candidates: candidates),
+  );
+
+  @override
+  Future<DailyReflectionResult?> generateDailyReflection({
+    required String date,
+    required List<Map<String, Object?>> messages,
+    required List<Map<String, Object?>> signals,
+  }) => _track(
+    () => _delegate.generateDailyReflection(
+      date: date,
+      messages: messages,
+      signals: signals,
+    ),
+    capability: ModelCapability.dailyReflection,
+  );
 
   @override
   Future<PlanResult?> generatePlan({
@@ -590,13 +694,16 @@ class _MeasuredStructuredCapability implements StructuredGenerationCapability {
     ),
   );
 
-  Future<T> _track<T>(Future<T> Function() action) async {
+  Future<T> _track<T>(
+    Future<T> Function() action, {
+    ModelCapability capability = ModelCapability.structured,
+  }) async {
     final watch = Stopwatch()..start();
     try {
       final result = await action();
       final failed = result == null;
       _record(
-        capability: ModelCapability.structured,
+        capability: capability,
         provider: _provider,
         outcome: failed ? ModelRouteOutcome.failure : ModelRouteOutcome.success,
         elapsed: watch.elapsed,
@@ -607,7 +714,66 @@ class _MeasuredStructuredCapability implements StructuredGenerationCapability {
       return result;
     } catch (exception) {
       _record(
-        capability: ModelCapability.structured,
+        capability: capability,
+        provider: _provider,
+        outcome: ModelRouteOutcome.failure,
+        elapsed: watch.elapsed,
+        errorCategory: ModelRouterErrorClassifier.fromException(exception),
+      );
+      rethrow;
+    } finally {
+      watch.stop();
+    }
+  }
+}
+
+class _MeasuredSuggestionQuestionCapability
+    implements SuggestionQuestionCapability {
+  final SuggestionQuestionCapability _delegate;
+  final String _provider;
+  final _MetricRecorder _record;
+
+  const _MeasuredSuggestionQuestionCapability(
+    this._delegate,
+    this._provider,
+    this._record,
+  );
+
+  @override
+  String? get lastError => _delegate.lastError;
+
+  @override
+  Future<List<SuggestionQuestion>?> recommend({
+    required Map<String, Object?> context,
+    required List<SuggestionQuestion> existing,
+    required Set<String> validTodoIds,
+    required Set<String> validProjectIds,
+    required Set<String> forbiddenIntents,
+  }) async {
+    final watch = Stopwatch()..start();
+    try {
+      final result = await _delegate.recommend(
+        context: context,
+        existing: existing,
+        validTodoIds: validTodoIds,
+        validProjectIds: validProjectIds,
+        forbiddenIntents: forbiddenIntents,
+      );
+      _record(
+        capability: ModelCapability.suggestionQuestions,
+        provider: _provider,
+        outcome: result == null
+            ? ModelRouteOutcome.failure
+            : ModelRouteOutcome.success,
+        elapsed: watch.elapsed,
+        errorCategory: result == null
+            ? ModelRouterErrorClassifier.fromMessage(lastError ?? '')
+            : ModelRouterErrorCategory.none,
+      );
+      return result;
+    } catch (exception) {
+      _record(
+        capability: ModelCapability.suggestionQuestions,
         provider: _provider,
         outcome: ModelRouteOutcome.failure,
         elapsed: watch.elapsed,

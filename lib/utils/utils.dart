@@ -1,8 +1,5 @@
 // 日期与 ID 工具函数。
 
-/// 底部输入模式。
-enum InputMode { chat, todo }
-
 const _toolNameMap = {
   'search_web': '搜索',
   'read_memory': '读取记忆',

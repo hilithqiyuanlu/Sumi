@@ -8,7 +8,7 @@ import '../data/local_database.dart';
 import '../utils/utils.dart';
 import 'memory_extraction.dart';
 
-enum MemoryType { explicit, current, implicit, imported }
+enum MemoryType { explicit, current, implicit, milestone, imported }
 
 enum MemoryStatus { active, inactive, disabled, superseded }
 
@@ -59,6 +59,21 @@ class MemoryEvidence {
     this.referenceId,
     required this.summary,
     required this.occurredAt,
+  });
+}
+
+/// Content-free aggregate used by the developer diagnostics screen.
+class MemoryExtractionDiagnostics {
+  final int applied;
+  final int ignored;
+  final int failed;
+  final Map<String, int> failuresByCategory;
+
+  const MemoryExtractionDiagnostics({
+    required this.applied,
+    required this.ignored,
+    required this.failed,
+    required this.failuresByCategory,
   });
 }
 
@@ -127,11 +142,12 @@ class MemoryService {
     );
     await db.execute('''CREATE TABLE IF NOT EXISTS memory_extraction_runs (
       message_id TEXT PRIMARY KEY, status TEXT NOT NULL,
-      decision_json TEXT, processed_at TEXT NOT NULL)''');
+      decision_json TEXT, error_category TEXT, processed_at TEXT NOT NULL)''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_memory_extraction_runs_processed ON memory_extraction_runs(processed_at)',
     );
     await _ensureRecommendationColumn(db);
+    await _ensureExtractionFailureColumn(db);
   }
 
   Future<void> _ensureRecommendationColumn(Database db) async {
@@ -150,6 +166,17 @@ class MemoryService {
     if (!columns.any((row) => row['name'] == 'memory_id')) {
       await db.execute(
         'ALTER TABLE recommendation_events ADD COLUMN memory_id TEXT',
+      );
+    }
+  }
+
+  Future<void> _ensureExtractionFailureColumn(Database db) async {
+    final columns = await db.rawQuery(
+      'PRAGMA table_info(memory_extraction_runs)',
+    );
+    if (!columns.any((row) => row['name'] == 'error_category')) {
+      await db.execute(
+        'ALTER TABLE memory_extraction_runs ADD COLUMN error_category TEXT',
       );
     }
   }
@@ -210,6 +237,20 @@ class MemoryService {
         .toList(growable: false);
   }
 
+  /// 是否已有一条用户原话作为记忆证据。日结补漏据此跳过白天已成功
+  /// 采集的内容，避免同一句话被重复沉淀。
+  Future<bool> hasUserMessageEvidence(String messageId) async {
+    await ensureTables();
+    final rows = await (await _db).query(
+      'memory_evidence',
+      columns: const ['id'],
+      where: 'kind = ? AND reference_id = ?',
+      whereArgs: ['user_message', messageId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   /// Claims a persisted message for exactly one background extraction run.
   Future<bool> claimExtraction(String messageId) async {
     await ensureTables();
@@ -229,6 +270,7 @@ class MemoryService {
     String messageId, {
     required String status,
     MemoryExtractionDecision? decision,
+    String? errorCategory,
   }) async {
     await ensureTables();
     await (await _db).update(
@@ -238,10 +280,49 @@ class MemoryService {
         'decision_json': decision == null
             ? null
             : jsonEncode(decision.toJson()),
+        'error_category': errorCategory,
         'processed_at': _now().toIso8601String(),
       },
       where: 'message_id = ?',
       whereArgs: [messageId],
+    );
+  }
+
+  Future<MemoryExtractionDiagnostics> extractionDiagnostics({
+    int days = 7,
+  }) async {
+    await ensureTables();
+    final start = _now().subtract(Duration(days: days - 1)).toIso8601String();
+    final rows = await (await _db).rawQuery(
+      '''SELECT status, error_category, COUNT(*) AS total
+         FROM memory_extraction_runs
+         WHERE processed_at >= ?
+         GROUP BY status, error_category''',
+      [start],
+    );
+    var applied = 0;
+    var ignored = 0;
+    var failed = 0;
+    final failures = <String, int>{};
+    for (final row in rows) {
+      final status = row['status'] as String? ?? '';
+      final total = (row['total'] as num?)?.toInt() ?? 0;
+      switch (status) {
+        case 'applied':
+          applied += total;
+        case 'ignored':
+          ignored += total;
+        case 'failed':
+          failed += total;
+          final category = row['error_category'] as String? ?? 'unknown';
+          failures[category] = (failures[category] ?? 0) + total;
+      }
+    }
+    return MemoryExtractionDiagnostics(
+      applied: applied,
+      ignored: ignored,
+      failed: failed,
+      failuresByCategory: Map.unmodifiable(failures),
     );
   }
 
@@ -272,18 +353,33 @@ class MemoryService {
         quote.isEmpty ||
         quote.length > 500 ||
         !userMessage.contains(quote)) {
-      await finishExtraction(messageId, status: 'failed', decision: decision);
+      await finishExtraction(
+        messageId,
+        status: 'failed',
+        decision: decision,
+        errorCategory: 'validation',
+      );
       return false;
     }
     final replaceId = decision.replacesId?.trim();
     if ((decision.action == MemoryExtractionAction.replace &&
             (replaceId == null || !candidateReplaceIds.contains(replaceId))) ||
         (decision.action == MemoryExtractionAction.save && replaceId != null)) {
-      await finishExtraction(messageId, status: 'failed', decision: decision);
+      await finishExtraction(
+        messageId,
+        status: 'failed',
+        decision: decision,
+        errorCategory: 'replacement',
+      );
       return false;
     }
     if (isCurrent && (currentProjectId == null || currentProjectId.isEmpty)) {
-      await finishExtraction(messageId, status: 'failed', decision: decision);
+      await finishExtraction(
+        messageId,
+        status: 'failed',
+        decision: decision,
+        errorCategory: 'scope',
+      );
       return false;
     }
 
@@ -400,7 +496,65 @@ class MemoryService {
       });
       return true;
     } catch (_) {
-      await finishExtraction(messageId, status: 'failed', decision: decision);
+      await finishExtraction(
+        messageId,
+        status: 'failed',
+        decision: decision,
+        errorCategory: 'storage',
+      );
+      return false;
+    }
+  }
+
+  /// 日结补漏只能新增一条有原话证据的明确记忆。它不依赖逐消息提取的
+  /// pending run，也绝不替换已有记忆，避免日结改变已经确认过的事实。
+  Future<bool> applyDailyBackfillDecision({
+    required String messageId,
+    required String userMessage,
+    required MemoryExtractionDecision decision,
+  }) async {
+    await ensureTables();
+    if (decision.action != MemoryExtractionAction.save ||
+        decision.type != MemoryType.explicit) {
+      return false;
+    }
+    final category = decision.category?.trim() ?? '';
+    final content = decision.content?.trim() ?? '';
+    final quote = decision.quotedText?.trim() ?? '';
+    if (!const {'preference', 'goal', 'constraint'}.contains(category) ||
+        content.length < 2 ||
+        content.length > 200 ||
+        quote.isEmpty ||
+        quote.length > 500 ||
+        !userMessage.contains(quote)) {
+      return false;
+    }
+    final db = await _db;
+    final duplicate = await db.query(
+      'memory_items',
+      where: 'type = ? AND status = ? AND category = ? AND content = ?',
+      whereArgs: [
+        MemoryType.explicit.name,
+        MemoryStatus.active.name,
+        category,
+        content,
+      ],
+      limit: 1,
+    );
+    if (duplicate.isNotEmpty) return false;
+    try {
+      await _add(
+        type: MemoryType.explicit,
+        category: category,
+        content: content,
+        confidence: 1,
+        source: MemorySource.userMessage,
+        evidenceKind: 'user_message',
+        evidenceReferenceId: messageId,
+        evidenceSummary: quote,
+      );
+      return true;
+    } catch (_) {
       return false;
     }
   }
@@ -443,6 +597,41 @@ class MemoryService {
       evidenceKind: 'manual',
       evidenceSummary: '用户在记忆中心添加',
     );
+  }
+
+  Future<MemoryItem> addMilestone({
+    required String projectId,
+    required String content,
+    required String messageId,
+    required String quote,
+    required String todoId,
+    required String todoTitle,
+  }) async {
+    final item = await _add(
+      type: MemoryType.milestone,
+      category: 'milestone',
+      content: content,
+      projectId: projectId,
+      confidence: 1,
+      source: MemorySource.project,
+      evidenceKind: 'user_message',
+      evidenceReferenceId: messageId,
+      evidenceSummary: quote,
+    );
+    await (await _db).insert(
+      'memory_evidence',
+      _evidenceToRow(
+        MemoryEvidence(
+          id: newSumiId('evidence'),
+          memoryId: item.id,
+          kind: 'completed_todo',
+          referenceId: todoId,
+          summary: todoTitle,
+          occurredAt: _now(),
+        ),
+      ),
+    );
+    return item;
   }
 
   Future<MemoryItem> _add({
@@ -599,6 +788,7 @@ class MemoryService {
             MemoryType.current => 3.5,
             MemoryType.explicit => 3.0,
             MemoryType.implicit => .5,
+            MemoryType.milestone => 1.5,
             MemoryType.imported => 0.0,
           };
           final categoryPriority = item.category == 'constraint' ? 1.5 : 0.0;
@@ -951,7 +1141,7 @@ class MemoryService {
       String block(String title, Iterable<MemoryItem> selected) =>
           '## $title\\n${selected.map((item) => '- ${item.content}').join('\\n')}\\n';
       final text =
-          '# Sumi 对你的记忆\\n\\n${block('正在关注', items.where((item) => item.type == MemoryType.current && item.status == MemoryStatus.active))}\\n${block('明确记忆', items.where((item) => item.type == MemoryType.explicit && item.status == MemoryStatus.active))}\\n${block('系统从反馈中学到的', items.where((item) => item.type == MemoryType.implicit && item.status == MemoryStatus.active))}';
+          '# Sumi 对你的记忆\\n\\n${block('正在关注', items.where((item) => item.type == MemoryType.current && item.status == MemoryStatus.active))}\\n${block('明确记忆', items.where((item) => item.type == MemoryType.explicit && item.status == MemoryStatus.active))}\\n${block('里程碑', items.where((item) => item.type == MemoryType.milestone && item.status == MemoryStatus.active))}\\n${block('系统从反馈中学到的', items.where((item) => item.type == MemoryType.implicit && item.status == MemoryStatus.active))}';
       await file.writeAsString(text);
     } catch (_) {
       // Export is compatibility-only; SQLite remains the source of truth.

@@ -50,6 +50,8 @@ class _Provider implements ModelProvider {
   @override
   final StructuredGenerationCapability structured;
   @override
+  final SuggestionQuestionCapability suggestionQuestions;
+  @override
   final MemoryExtractionCapability memoryExtraction;
   @override
   final WebSearchCapability search;
@@ -58,9 +60,27 @@ class _Provider implements ModelProvider {
     required this.id,
     required this.chat,
     required this.structured,
+    required this.suggestionQuestions,
     required this.memoryExtraction,
     required this.search,
   });
+}
+
+class _SuggestionQuestions implements SuggestionQuestionCapability {
+  final List<SuggestionQuestion>? result;
+  _SuggestionQuestions({this.result});
+
+  @override
+  String? get lastError => null;
+
+  @override
+  Future<List<SuggestionQuestion>?> recommend({
+    required Map<String, Object?> context,
+    required List<SuggestionQuestion> existing,
+    required Set<String> validTodoIds,
+    required Set<String> validProjectIds,
+    required Set<String> forbiddenIntents,
+  }) async => result;
 }
 
 class _MemoryExtraction implements MemoryExtractionCapability {
@@ -82,7 +102,6 @@ class _Chat implements ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
@@ -111,6 +130,18 @@ class _Structured implements StructuredGenerationCapability {
   Future<String?> polishTodo(String text) async => text;
 
   @override
+  Future<InputClassification?> classifyInput(
+    String text, {
+    String? draft,
+  }) async => null;
+
+  @override
+  Future<MilestoneRecognition?> recognizeMilestone({
+    required String message,
+    required List<TodoItem> candidates,
+  }) async => null;
+
+  @override
   Future<PlanResult?> generatePlan({
     required String goal,
     required String level,
@@ -130,6 +161,13 @@ class _Structured implements StructuredGenerationCapability {
     required String date,
     required int timeConstraint,
     required int scheduledHours,
+  }) async => null;
+
+  @override
+  Future<DailyReflectionResult?> generateDailyReflection({
+    required String date,
+    required List<Map<String, Object?>> messages,
+    required List<Map<String, Object?>> signals,
   }) async => null;
 
   @override
@@ -211,6 +249,7 @@ void main() {
         id: 'cloud-primary',
         chat: _Chat(() => Stream.value(StreamDone())),
         structured: structured,
+        suggestionQuestions: _SuggestionQuestions(),
         memoryExtraction: _MemoryExtraction(),
         search: _Search(isConfigured: false),
       ),
@@ -246,6 +285,43 @@ void main() {
 
     expect(result?.items, ['阅读文档']);
     expect(requests, 2);
+  });
+
+  test('建议提问通过独立能力路由并只记录匿名指标', () async {
+    final metrics = _Metrics();
+    final router = ModelRouter(
+      cloudProvider: _Provider(
+        id: 'cloud',
+        chat: _Chat(() => Stream.value(StreamDone())),
+        structured: _Structured(),
+        suggestionQuestions: _SuggestionQuestions(
+          result: const [
+            SuggestionQuestion(
+              id: 'q0',
+              slot: 0,
+              text: '帮我分析今天的学习重点',
+              intent: '优先级',
+              isToday: true,
+            ),
+          ],
+        ),
+        memoryExtraction: _MemoryExtraction(),
+        search: _Search(isConfigured: false),
+      ),
+      metrics: metrics,
+    );
+
+    final result = await router.suggestionQuestions.recommend(
+      context: const {'todayTodos': <Object?>[]},
+      existing: const [],
+      validTodoIds: const {},
+      validProjectIds: const {},
+      forbiddenIntents: const {},
+    );
+
+    expect(result?.single.text, '帮我分析今天的学习重点');
+    expect(metrics.values.single.capability, ModelCapability.suggestionQuestions);
+    expect(metrics.values.single.provider, 'cloud');
   });
 
   test('本地 Qwen 记录成功或回退的匿名路由指标', () async {
@@ -403,6 +479,7 @@ void main() {
         id: 'cloud',
         chat: _Chat(() => Stream.value(StreamDone())),
         structured: _Structured(),
+        suggestionQuestions: _SuggestionQuestions(),
         memoryExtraction: _MemoryExtraction(),
         search: configured,
       ),
@@ -414,6 +491,7 @@ void main() {
         id: 'cloud',
         chat: _Chat(() => Stream.value(StreamDone())),
         structured: _Structured(),
+        suggestionQuestions: _SuggestionQuestions(),
         memoryExtraction: _MemoryExtraction(),
         search: unavailable,
       ),

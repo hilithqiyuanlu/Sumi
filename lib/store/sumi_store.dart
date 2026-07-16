@@ -39,6 +39,7 @@ import '../services/project_generation_controller.dart';
 import '../services/secure_settings_store.dart';
 import '../services/signal_service.dart';
 import '../services/study_timer_service.dart';
+import '../services/system_reminder_service.dart';
 import '../services/timer_controller.dart';
 import '../services/snapshot_write_queue.dart';
 import '../services/schedule_load_service.dart';
@@ -46,7 +47,9 @@ import '../services/today_suggestion_mapper.dart';
 import '../services/tool_executor.dart';
 import '../services/user_model_service.dart';
 import '../services/memory_service.dart';
+import '../services/milestone_service.dart';
 import '../services/memory_extraction.dart';
+import '../services/daily_reflection.dart';
 import '../services/voice_input_service.dart';
 import '../utils/utils.dart';
 part 'domain_controllers.dart';
@@ -83,6 +86,7 @@ class AppStore
   late final AppUpdateService _appUpdates;
   late final TimerController timerController;
   late final StudyTimerService _studyTimers;
+  late final MilestoneService _milestones;
   late final ScheduleProposalDatabase _scheduleProposals;
   final ScheduleLoadAssessor _scheduleLoadAssessor = ScheduleLoadAssessor();
   ScheduleRebalanceProposal? _pendingScheduleProposal;
@@ -91,6 +95,7 @@ class AppStore
   bool _rollingPlanningRunning = false;
   Timer? _todayLoadWindowTimer;
   Timer? _regularSuggestionTimer;
+  bool _suggestionGenerationRunning = false;
   bool _appInForeground = true;
   List<MemorySuggestion> _todayLoadSuggestions = const [];
   String? _activeTodayLoadFingerprint;
@@ -99,6 +104,9 @@ class AppStore
   TodayLoadFlowState _todayLoadFlowState = TodayLoadFlowState.idle;
   final ProjectGenerationController projectGenerationController =
       ProjectGenerationController();
+  final MilestoneController milestoneController = MilestoneController();
+  final DailyReflectionController dailyReflectionController =
+      DailyReflectionController();
   ChatDatabase? _chatDatabase;
   ToolExecutor? _toolExecutor;
   VoiceInputService? _voiceService;
@@ -107,6 +115,7 @@ class AppStore
   @override
   late final ModelRouterMetricsStore modelRouterMetrics;
   bool _closed = false;
+  final Set<String> _pendingReminderStopIds = <String>{};
 
   // 07 轮新增
   SignalDatabase? _signalDb;
@@ -114,6 +123,8 @@ class AppStore
   MemoryService? _memoryService;
   MemoryExtractionService? _memoryExtractionService;
   SignalService? _signalService;
+  late final DailyReflectionDatabase _dailyReflectionDatabase;
+  late final DailyReflectionService _dailyReflections;
 
   /// 信号数据库（供 mixin 使用）。
   @override
@@ -125,8 +136,19 @@ class AppStore
   @override
   MemoryService? get memoryServiceForStore => _memoryService;
   @override
+  MilestoneService get milestones => _milestones;
+  @override
   MemoryExtractionService? get memoryExtractionService =>
       _memoryExtractionService;
+
+  Future<DailyReflection?> dailyReflectionFor(DateTime date) =>
+      _dailyReflections.reflectionFor(date);
+
+  Future<void> retryDailyReflection(DateTime date) =>
+      _dailyReflections.retry(dateKey(dateOnly(date)));
+
+  @override
+  Future<void> clearDailyReflections() => _dailyReflectionDatabase.clearAll();
 
   /// 首页建议可使用本地计数选模板，但这些统计不进入 Agent 记忆上下文。
   Future<Map<String, String>> legacyRealtimeStats() async =>
@@ -136,8 +158,168 @@ class AppStore
   @override
   SignalService? get signalService => _signalService;
 
-  // 07 轮：建议缓存状态
-  List<MemorySuggestion> cachedSuggestions = [];
+  @override
+  Future<void> processMilestoneMessage({
+    required String messageId,
+    required String message,
+  }) async {
+    try {
+      final candidates = todoItems
+          .where((todo) => todo.projectId != null)
+          .toList(growable: false);
+      final decision = await structuredAi?.recognizeMilestone(
+        message: message,
+        candidates: candidates,
+      );
+      if (decision == null ||
+          decision.confidence < .85 ||
+          decision.todoId == null ||
+          decision.quotedText == null ||
+          decision.quotedText!.trim().isEmpty) {
+        return;
+      }
+      final todo = candidates.cast<TodoItem?>().firstWhere(
+        (item) => item?.id == decision.todoId,
+        orElse: () => null,
+      );
+      if (todo == null) return;
+      if (todo.done) {
+        await _createMilestone(
+          todo: todo,
+          messageId: messageId,
+          quote: decision.quotedText!,
+          occurredAt: _now(),
+        );
+      } else {
+        await _milestones.savePending(
+          messageId: messageId,
+          todoId: todo.id,
+          quote: decision.quotedText!,
+          occurredAt: _now(),
+        );
+      }
+    } catch (_) {
+      // 里程碑为后台增强，不影响消息与待办主流程。
+    }
+  }
+
+  @override
+  Future<void> onProjectTodoCompleted(TodoItem todo) async {
+    if (todo.projectId == null) return;
+    final pending = await _milestones.pendingStatements();
+    for (final statement in pending.where((item) => item.todoId == todo.id)) {
+      await _createMilestone(
+        todo: todo,
+        messageId: statement.messageId,
+        quote: statement.quote,
+        occurredAt: statement.occurredAt,
+      );
+    }
+  }
+
+  @override
+  Future<void> onProjectTodoDeleted(TodoItem todo) async {
+    if (todo.projectId == null) return;
+    await _removeMilestones(await _milestones.deleteForTodo(todo.id));
+  }
+
+  @override
+  Future<void> onProjectDeleted(String projectId) async {
+    await _removeMilestones(await _milestones.deleteForProject(projectId));
+  }
+
+  Future<void> _removeMilestones(List<Milestone> removed) async {
+    if (removed.isEmpty) return;
+    final memory = _memoryService;
+    if (memory != null) {
+      for (final item in removed) {
+        if (item.memoryId != null) await memory.delete(item.memoryId!);
+      }
+      await memory.exportUserModel();
+    }
+    removeMilestoneSources(removed.map((item) => item.sourceMessageId));
+    milestoneController.markChanged();
+    settingsController.markChanged();
+    _scheduleLocalIndex();
+  }
+
+  Future<void> _createMilestone({
+    required TodoItem todo,
+    required String messageId,
+    required String quote,
+    required DateTime occurredAt,
+  }) async {
+    final project = projectList.cast<Project?>().firstWhere(
+      (item) => item?.id == todo.projectId,
+      orElse: () => null,
+    );
+    if (project == null) return;
+    final rawMonth =
+        (occurredAt.year - project.createdAt.year) * 12 +
+        occurredAt.month -
+        project.createdAt.month;
+    final monthIndex = rawMonth.clamp(0, project.cycleMonths - 1).toInt();
+    final milestone = await _milestones.create(
+      todo: todo,
+      sourceMessageId: messageId,
+      quote: quote,
+      occurredAt: occurredAt,
+      monthIndex: monthIndex,
+    );
+    if (milestone == null) return;
+    final memory = _memoryService;
+    if (memory != null) {
+      final item = await memory.addMilestone(
+        projectId: project.id,
+        content: '${project.name}：${todo.title}。$quote',
+        messageId: messageId,
+        quote: quote,
+        todoId: todo.id,
+        todoTitle: todo.title,
+      );
+      await _milestones.attachMemory(milestone.id, item.id);
+      await memory.exportUserModel();
+    }
+    recordMilestoneSource(messageId);
+    milestoneController.markChanged();
+    settingsController.markChanged();
+    _scheduleLocalIndex();
+  }
+
+  // 首页“建议问 Sumi”缓存。旧 MemorySuggestion 仍只服务于记忆历史。
+  @override
+  List<SuggestionQuestion> cachedSuggestionQuestions = const [];
+  @override
+  String? suggestionQuestionsFingerprint;
+  @override
+  DateTime? suggestionQuestionsGeneratedAt;
+  final Set<String> _rejectedSuggestionIntents = <String>{};
+  final Set<String> _disabledSuggestionIntents = <String>{};
+  final Set<String> _acceptedSuggestionIntents = <String>{};
+  @override
+  Set<String> get rejectedSuggestionIntents =>
+      Set.unmodifiable(_rejectedSuggestionIntents);
+  @override
+  Set<String> get disabledSuggestionIntents =>
+      Set.unmodifiable(_disabledSuggestionIntents);
+  @override
+  Set<String> get acceptedSuggestionIntents =>
+      Set.unmodifiable(_acceptedSuggestionIntents);
+
+  @override
+  void restoreSuggestionQuestionFeedback(Map<String, Object?>? value) {
+    Set<String> read(String key) =>
+        (value?[key] as List<Object?>?)?.whereType<String>().toSet() ?? {};
+    _rejectedSuggestionIntents
+      ..clear()
+      ..addAll(read('notSuitableIntents'));
+    _disabledSuggestionIntents
+      ..clear()
+      ..addAll(read('disabledIntents'));
+    _acceptedSuggestionIntents
+      ..clear()
+      ..addAll(read('sentIntents'));
+  }
   bool _suggestionsDirty = true;
   bool get suggestionsDirty => _suggestionsDirty;
   DateTime? lastForegroundTime;
@@ -171,6 +353,8 @@ class AppStore
 
   @override
   ChatCapability? get chatAgent => _modelRouter?.chat;
+  SuggestionQuestionCapability? get suggestionQuestionAi =>
+      _modelRouter?.suggestionQuestions;
 
   void recordAiDegraded(ModelCapability capability) {
     _modelRouter?.recordDegraded(capability: capability);
@@ -211,11 +395,11 @@ class AppStore
   bool isToolEnabled(String name) => enabledTools.contains(name);
 
   void updateEnabledTools(Iterable<String> names) {
-    final values = names
-        .where(ChatToolRegistry.allNames.contains)
-        .toSet()
-        .toList(growable: false);
-    appSettings = appSettings.copyWith(enabledTools: values);
+    final values = names.where(ChatToolRegistry.allNames.contains).toSet()
+      ..add('write_todo');
+    appSettings = appSettings.copyWith(
+      enabledTools: values.toList(growable: false),
+    );
     afterSettingsMutation();
   }
 
@@ -225,18 +409,30 @@ class AppStore
   Future<void> pauseStudyTimer(String id) => _studyTimers.pause(id);
   Future<void> finishStudyTimer(String id) => _studyTimers.finish(id);
   Future<void> cancelStudyTimer(String id) => _studyTimers.cancel(id);
+  Future<void> deleteStudyTimer(String id) => _studyTimers.delete(id);
+  ValueListenable<StudyTimer?> get activeStudyTimerReminder =>
+      _studyTimers.activeReminder;
   @override
   Future<void> clearStudyTimers() => _studyTimers.clearAll();
+  @override
+  Future<void> clearMilestones() => _milestones.clearAll();
+
+  Future<void> deleteMilestoneMemory(String memoryId) async {
+    final removed = await _milestones.deleteByMemoryId(memoryId);
+    await _memoryService?.delete(memoryId);
+    await _memoryService?.exportUserModel();
+    removeMilestoneSources(removed.map((item) => item.sourceMessageId));
+    milestoneController.markChanged();
+    settingsController.markChanged();
+    _scheduleLocalIndex();
+  }
+
   ScheduleRebalanceProposal? get pendingScheduleProposal =>
       _pendingScheduleProposal;
   List<ScheduleRebalanceProposal> get scheduleCards =>
       List.unmodifiable(_scheduleCards);
   List<MemorySuggestion> get todayLoadSuggestions => _todayLoadSuggestions;
   TodayLoadFlowState get todayLoadFlowState => _todayLoadFlowState;
-
-  /// Thinking 模式开关。
-  @override
-  bool get thinkingEnabled => appSettings.thinkingEnabled;
 
   final TodoController todoController = TodoController();
   final ProjectController projectController = ProjectController();
@@ -301,9 +497,11 @@ class AppStore
     await _localRetrievalCoordinator.close();
     await _localTextCoordinator.close();
     _appUpdates.close();
-    _studyTimers.dispose();
+    await _studyTimers.dispose();
     timerController.dispose();
     projectGenerationController.dispose();
+    milestoneController.dispose();
+    dailyReflectionController.dispose();
     _aiRuntime?.close();
     todoController.dispose();
     projectController.dispose();
@@ -337,11 +535,16 @@ class AppStore
     // 初始化对话数据库
     store._chatDatabase = ChatDatabase(db);
     store.timerController = TimerController();
+    final reminders = SystemReminderService(
+      onStopAction: store._handleReminderStopAction,
+    );
     store._studyTimers = StudyTimerService(
       database: StudyTimerDatabase(db),
       controller: store.timerController,
+      reminders: reminders,
       now: store._now,
     );
+    await reminders.initialize();
     store._scheduleProposals = ScheduleProposalDatabase(db);
 
     // 07 轮：初始化信号数据库和用户模型服务
@@ -350,6 +553,23 @@ class AppStore
         userModelServiceOverride ?? UserModelService(store._signalDb!);
     store._memoryService = MemoryService(db, now: store._now);
     await store._memoryService!.ensureTables();
+    store._dailyReflectionDatabase = DailyReflectionDatabase(db);
+    store._dailyReflections = DailyReflectionService(
+      database: store._dailyReflectionDatabase,
+      chat: store._chatDatabase!,
+      signals: store._signalDb!,
+      structuredAi: () => store.structuredAi,
+      memory: store._memoryService!,
+      memoryAi: () => store._modelRouter?.memoryExtraction,
+      onChanged: store.dailyReflectionController.markChanged,
+      onMemoryChanged: () {
+        store._scheduleLocalIndex();
+        store.settingsController.markChanged();
+      },
+      now: store._now,
+    );
+    store._milestones = MilestoneService(db, now: store._now);
+    await store._milestones.ensureTables();
     store._signalService = SignalService(
       store._signalDb!,
       projectForId: (projectId) {
@@ -410,6 +630,10 @@ class AppStore
     // 从快照恢复数据
     await store.loadFromDb();
     await store._studyTimers.restore();
+    for (final id in store._pendingReminderStopIds) {
+      await store.finishStudyTimer(id);
+    }
+    store._pendingReminderStopIds.clear();
     store._pendingScheduleProposal = await store._scheduleProposals
         .latestPending();
 
@@ -422,6 +646,7 @@ class AppStore
     store._initAiService(override: aiServiceOverride);
     unawaited(store._localRetrievalCoordinator.restore());
     unawaited(store._localTextCoordinator.restore());
+    unawaited(store._dailyReflections.runBacklog());
 
     // 加载今天的会话
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
@@ -431,6 +656,14 @@ class AppStore
     unawaited(store._runStartupTodayLoadScreening());
 
     return store;
+  }
+
+  Future<void> _handleReminderStopAction(String timerId) async {
+    if (timerController.byId(timerId) == null) {
+      _pendingReminderStopIds.add(timerId);
+      return;
+    }
+    await finishStudyTimer(timerId);
   }
 
   Future<void> prepareAppUpdate() => _appUpdates.prepare();
@@ -457,7 +690,11 @@ class AppStore
       _memoryExtractionService = MemoryExtractionService(
         memory: _memoryService!,
         capability: _modelRouter!.memoryExtraction,
-        onMemoryChanged: _scheduleLocalIndex,
+        onMemoryChanged: () {
+          _scheduleLocalIndex();
+          _scheduleRegularSuggestionRefresh();
+          settingsController.markChanged();
+        },
         currentProjectId: () => currentProjectId,
       );
       _toolExecutor = ToolExecutor(
@@ -498,6 +735,10 @@ class AppStore
 
     if (previousRuntime != null && !identical(previousRuntime, _aiRuntime)) {
       previousRuntime.close();
+    }
+
+    if (_modelRouter != null) {
+      unawaited(_dailyReflections.runBacklog());
     }
 
     // 语音输入服务（不依赖 API key）
@@ -585,12 +826,6 @@ class AppStore
     afterSettingsMutation();
   }
 
-  /// 切换 thinking 模式。
-  void setThinkingEnabled(bool v) {
-    appSettings = appSettings.copyWith(thinkingEnabled: v);
-    afterSettingsMutation();
-  }
-
   void setLocalTextGenerationEnabled(bool value) {
     appSettings = appSettings.copyWith(localTextGenerationEnabled: value);
     afterSettingsMutation();
@@ -600,6 +835,35 @@ class AppStore
   void setShowAllMonthCards(bool v) {
     appSettings = appSettings.copyWith(showAllMonthCards: v);
     afterSettingsMutation();
+  }
+
+  void setSuggestionQuestionsEnabled(bool value) {
+    appSettings = appSettings.copyWith(suggestionQuestionsEnabled: value);
+    if (!value) {
+      _regularSuggestionTimer?.cancel();
+      _regularSuggestionTimer = null;
+      cachedSuggestionQuestions = const [];
+      suggestionQuestionsFingerprint = null;
+      suggestionQuestionsGeneratedAt = null;
+      _suggestionsDirty = false;
+    } else {
+      _suggestionsDirty = true;
+    }
+    afterSettingsMutation();
+    todoController.markChanged();
+  }
+
+  Future<void> setScheduleLoadAnalysisEnabled(bool value) async {
+    appSettings = appSettings.copyWith(scheduleLoadAnalysisEnabled: value);
+    if (!value) {
+      _todayLoadWindowTimer?.cancel();
+      _todayLoadWindowTimer = null;
+      _todayLoadSuggestions = const [];
+      await dismissScheduleProposal();
+      _todayLoadFlowState = TodayLoadFlowState.idle;
+    }
+    afterSettingsMutation();
+    todoController.markChanged();
   }
 
   /// 更新用户昵称。
@@ -617,6 +881,7 @@ class AppStore
     afterSelectionMutation();
     // 切换到该日期的会话
     await _getOrCreateConversationForDate(dateKey(selectedDate));
+    unawaited(_dailyReflections.ensureForDate(selectedDate));
   }
 
   /// 月历可浏览范围：当前系统月前后各 30 个月。
@@ -689,8 +954,10 @@ class AppStore
     _persist();
     todoController.markChanged();
     _scheduleLocalIndex();
-    _scheduleRegularSuggestionRefresh();
-    if (affectsTodayLoad) _armTodayLoadScreening();
+    if (affectsTodayLoad) {
+      _scheduleRegularSuggestionRefresh();
+      _armTodayLoadScreening();
+    }
   }
 
   @override
@@ -732,7 +999,189 @@ class AppStore
     }
   }
 
+  Future<List<SuggestionQuestion>?> refreshSuggestionQuestions({
+    int? replaceSlot,
+  }) async {
+    if (!appSettings.suggestionQuestionsEnabled ||
+        _suggestionGenerationRunning) {
+      return null;
+    }
+    final ai = suggestionQuestionAi;
+    if (ai == null) return null;
+    _suggestionGenerationRunning = true;
+    try {
+      final context = await _suggestionQuestionContext();
+      final fingerprint = jsonEncode(_suggestionFingerprintSync());
+      final current = cachedSuggestionQuestions;
+      final generated = await ai.recommend(
+        context: context,
+        existing: current,
+        validTodoIds: todoItems.map((item) => item.id).toSet(),
+        validProjectIds: projectList.map((item) => item.id).toSet(),
+        forbiddenIntents: _disabledSuggestionIntents,
+      );
+      if (generated == null || !appSettings.suggestionQuestionsEnabled) {
+        return null;
+      }
+      final next = _mergeSuggestionQuestions(
+        current: current,
+        generated: generated,
+        replaceSlot: replaceSlot,
+      );
+      cachedSuggestionQuestions = next;
+      suggestionQuestionsFingerprint = fingerprint;
+      suggestionQuestionsGeneratedAt = _now();
+      lastSuggestionTime = suggestionQuestionsGeneratedAt;
+      _suggestionsDirty = false;
+      _persist();
+      todoController.markChanged();
+      return next;
+    } finally {
+      _suggestionGenerationRunning = false;
+    }
+  }
+
+  bool get hasUsableSuggestionQuestionCache {
+    if (!appSettings.suggestionQuestionsEnabled ||
+        cachedSuggestionQuestions.length != 5 ||
+        suggestionQuestionsFingerprint == null ||
+        suggestionQuestionsGeneratedAt == null) {
+      return false;
+    }
+    return _sameSuggestionDay(suggestionQuestionsGeneratedAt!, _now());
+  }
+
+  Future<Map<String, Object?>> _suggestionQuestionContext() async {
+    final todayKey = dateKey(_now());
+    final memories = await _memoryService?.list(includeHistorical: false) ?? const <MemoryItem>[];
+    final signals = await _signalDb?.query(range: '7d', limit: 40) ?? const <UserSignal>[];
+    final currentProject = projectList.cast<Project?>().firstWhere(
+      (item) => item?.id == currentProjectId,
+      orElse: () => null,
+    );
+    return {
+      ..._suggestionFingerprintSync(),
+      'todayTodos': _todayLoadCandidates(todayKey),
+      'currentProject': currentProject == null
+          ? null
+          : {
+              'id': currentProject.id,
+              'name': currentProject.name,
+              'goal': currentProject.goal,
+              'level': currentProject.level,
+              'currentMonthIndex': currentProject.currentMonthIndex,
+            },
+      'activeMemories': memories
+          .where((item) => item.isUsable && item.type != MemoryType.implicit)
+          .take(8)
+          .map(
+            (item) => {
+              'id': item.id,
+              'type': item.type.name,
+              'category': item.category,
+              'content': item.content,
+              if (item.projectId != null) 'projectId': item.projectId,
+            },
+          )
+          .toList(growable: false),
+      'recentSignals': signals
+          .take(20)
+          .map(
+            (item) => {
+              'signal': item.signal.name,
+              'time': item.time.toIso8601String(),
+              if (item.projectId != null) 'projectId': item.projectId,
+            },
+          )
+          .toList(growable: false),
+      'suggestionFeedback': {
+        'sentIntents': _acceptedSuggestionIntents.toList(growable: false),
+        'notSuitableIntents': _rejectedSuggestionIntents.toList(growable: false),
+        'disabledIntents': _disabledSuggestionIntents.toList(growable: false),
+      },
+      if (appSettings.scheduleLoadAnalysisEnabled &&
+          _todayLoadSuggestions.isNotEmpty)
+        'todayLoadHints': _todayLoadSuggestions
+            .map((item) => item.text)
+            .toList(growable: false),
+    };
+  }
+
+  Map<String, Object?> _suggestionFingerprintSync() {
+    final todayKey = dateKey(_now());
+    return {
+      'date': todayKey,
+      'todos': _todayLoadCandidates(todayKey),
+      'projects': projectList
+          .map(
+            (item) => {
+              'id': item.id,
+              'goal': item.goal,
+              'month': item.currentMonthIndex,
+            },
+          )
+          .toList(growable: false),
+      'currentProjectId': currentProjectId,
+    };
+  }
+
+  static bool _sameSuggestionDay(DateTime left, DateTime right) =>
+      left.year == right.year && left.month == right.month && left.day == right.day;
+
+  Future<List<SuggestionQuestion>?> rejectSuggestionQuestion(
+    SuggestionQuestion question, {
+    required bool disableIntent,
+  }) {
+    _rejectedSuggestionIntents.add(question.intent);
+    if (disableIntent) _disabledSuggestionIntents.add(question.intent);
+    _persist();
+    return refreshSuggestionQuestions(replaceSlot: question.slot);
+  }
+
+  void recordSuggestionQuestionSent(SuggestionQuestion question) {
+    _acceptedSuggestionIntents.add(question.intent);
+    _persist();
+  }
+
+  List<SuggestionQuestion> _mergeSuggestionQuestions({
+    required List<SuggestionQuestion> current,
+    required List<SuggestionQuestion> generated,
+    required int? replaceSlot,
+  }) {
+    if (current.length != 5 || replaceSlot != null) {
+      if (replaceSlot == null) return generated;
+      final replacement = generated.firstWhere(
+        (item) => item.slot == replaceSlot,
+        orElse: () => generated.first,
+      );
+      return [
+        for (final item in current)
+          item.slot == replaceSlot ? replacement : item,
+      ];
+    }
+    final bySlot = {for (final item in generated) item.slot: item};
+    return [
+      for (final item in current)
+        (bySlot[item.slot]?.keepExisting == true && _isStillRelevant(item))
+            ? item
+            : bySlot[item.slot] ?? item,
+    ];
+  }
+
+  bool _isStillRelevant(SuggestionQuestion question) {
+    if (question.todoId != null &&
+        !todoItems.any((item) => item.id == question.todoId && !item.done)) {
+      return false;
+    }
+    if (question.projectId != null &&
+        !projectList.any((item) => item.id == question.projectId)) {
+      return false;
+    }
+    return true;
+  }
+
   void _armTodayLoadScreening() {
+    if (!appSettings.scheduleLoadAnalysisEnabled) return;
     if (!_appInForeground) return;
     if (_todayLoadFlowState == TodayLoadFlowState.screening ||
         _todayLoadFlowState == TodayLoadFlowState.analyzing) {
@@ -757,9 +1206,11 @@ class AppStore
   }
 
   void _scheduleRegularSuggestionRefresh() {
+    if (!appSettings.suggestionQuestionsEnabled) return;
     if (_regularSuggestionTimer != null) return;
     _regularSuggestionTimer = Timer(const Duration(minutes: 2), () {
       _regularSuggestionTimer = null;
+      suggestionQuestionsFingerprint = null;
       setSuggestionsDirty(true);
       todoController.markChanged();
     });
@@ -768,10 +1219,12 @@ class AppStore
   Future<void> _runStartupTodayLoadScreening() async {
     if (_startupTodayLoadChecked) return;
     _startupTodayLoadChecked = true;
+    if (!appSettings.scheduleLoadAnalysisEnabled) return;
     await _screenTodayLoad();
   }
 
   Future<void> _screenTodayLoad() async {
+    if (!appSettings.scheduleLoadAnalysisEnabled) return;
     if (_scheduleAssessmentRunning) return;
     final ai = structuredAi;
     if (ai == null) {
@@ -802,6 +1255,10 @@ class AppStore
         date: todayKey,
         todos: candidates,
       );
+      if (!appSettings.scheduleLoadAnalysisEnabled) {
+        _finishTodayLoadRound();
+        return;
+      }
       if (_todayLoadChangedDuringRequest ||
           _activeTodayLoadFingerprint != inputFingerprint) {
         _todayLoadChangedDuringRequest = false;
@@ -1146,6 +1603,7 @@ class AppStore
     projectController.markChanged();
     settingsController.markChanged();
     selection.markChanged();
+    dailyReflectionController.markChanged();
   }
 
   // ---------------------------------------------------------------------------
@@ -1173,6 +1631,7 @@ class AppStore
   }
 
   /// 设置建议脏标记。true = 下次回前台时刷新，false = 已是最新。
+  @override
   void setSuggestionsDirty(bool v) {
     _suggestionsDirty = v;
   }

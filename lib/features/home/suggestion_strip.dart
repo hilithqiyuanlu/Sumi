@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
-import '../../services/memory_service.dart';
+import '../../models/models.dart';
 
 class SuggestionStrip extends StatelessWidget {
-  final List<MemorySuggestion> suggestions;
-  final ValueChanged<MemorySuggestion> onSelect;
+  final List<SuggestionQuestion> suggestions;
+  final ValueChanged<SuggestionQuestion> onSelect;
   final Future<void> Function(
-    MemorySuggestion suggestion,
+    SuggestionQuestion suggestion,
     bool disableTopic,
   )
   onFeedback;
@@ -36,7 +36,7 @@ class SuggestionStrip extends StatelessWidget {
         return FadeTransition(opacity: animation, child: child);
       },
       child: Padding(
-        key: ValueKey(suggestions.map((s) => s.eventId).join(',')),
+        key: ValueKey(suggestions.map((s) => s.id).join(',')),
         padding: const EdgeInsets.only(left: s16, right: s16, top: s4),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -68,7 +68,7 @@ class SuggestionStrip extends StatelessWidget {
     );
   }
 
-  void _showFeedback(BuildContext context, MemorySuggestion suggestion) {
+  void _showFeedback(BuildContext context, SuggestionQuestion suggestion) {
     showModalBottomSheet<void>(
       context: context,
       builder: (context) => SafeArea(

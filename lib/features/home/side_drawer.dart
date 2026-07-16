@@ -122,10 +122,6 @@ class _SideDrawerState extends State<SideDrawer> {
         children: [
           Material(
             color: Colors.white,
-            borderRadius: const BorderRadius.only(
-              topRight: Radius.circular(radius20),
-              bottomRight: Radius.circular(radius20),
-            ),
             child: Column(
               children: [
                 _buildUserProfile(context),

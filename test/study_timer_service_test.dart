@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sumi/data/local_database.dart';
 import 'package:sumi/data/study_timer_database.dart';
 import 'package:sumi/models/models.dart';
 import 'package:sumi/services/study_timer_service.dart';
+import 'package:sumi/services/foreground_reminder_service.dart';
 import 'package:sumi/services/system_reminder_service.dart';
 import 'package:sumi/services/timer_controller.dart';
 
@@ -28,6 +30,30 @@ class _FakeReminderScheduler implements ReminderScheduler {
   Future<void> showNow(StudyTimer timer) async => shown.add(timer);
 }
 
+class _FakeForegroundReminder implements ForegroundReminder {
+  final ValueNotifier<StudyTimer?> _activeReminder = ValueNotifier(null);
+  final List<StudyTimer> started = [];
+  var stopped = 0;
+
+  @override
+  ValueListenable<StudyTimer?> get activeReminder => _activeReminder;
+
+  @override
+  Future<void> start(StudyTimer timer) async {
+    started.add(timer);
+    _activeReminder.value = timer;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopped++;
+    _activeReminder.value = null;
+  }
+
+  @override
+  Future<void> dispose() async => _activeReminder.dispose();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -46,6 +72,7 @@ void main() {
       database: StudyTimerDatabase(store),
       controller: controller,
       reminders: reminders,
+      foregroundReminders: _FakeForegroundReminder(),
       now: () => now,
     );
     addTearDown(service.dispose);
@@ -70,6 +97,7 @@ void main() {
     final afterRestart = StudyTimerService(
       database: StudyTimerDatabase(store),
       controller: restored,
+      foregroundReminders: _FakeForegroundReminder(),
       now: () => now,
     );
     addTearDown(afterRestart.dispose);
@@ -84,10 +112,12 @@ void main() {
     );
     addTearDown(database.close);
     await _createStudyTimersTable(database);
+    final foregroundReminders = _FakeForegroundReminder();
     final service = StudyTimerService(
       database: StudyTimerDatabase(SumiLocalDatabase(database: database)),
       controller: TimerController(),
       reminders: _FakeReminderScheduler(),
+      foregroundReminders: foregroundReminders,
       now: () => now,
     );
     addTearDown(service.dispose);
@@ -101,15 +131,19 @@ void main() {
     await service.start(timer.id);
     await service.handleLifecycle(false);
     now = now.add(const Duration(minutes: 2));
+    expect(foregroundReminders.started, isEmpty);
     await service.handleLifecycle(true);
     expect(
       service.controller.byId(timer.id)?.status,
       StudyTimerStatus.completed,
     );
+    expect(foregroundReminders.started.single.id, timer.id);
+    await service.finish(timer.id);
+    expect(foregroundReminders.stopped, 1);
   });
 
   test('明确要求立即开始会直接启动并安排系统提醒', () async {
-    final now = DateTime(2026, 7, 16, 9, 0);
+    var now = DateTime(2026, 7, 16, 9, 0);
     final database = await databaseFactoryFfi.openDatabase(
       inMemoryDatabasePath,
     );
@@ -120,6 +154,7 @@ void main() {
       database: StudyTimerDatabase(SumiLocalDatabase(database: database)),
       controller: TimerController(),
       reminders: reminders,
+      foregroundReminders: _FakeForegroundReminder(),
       now: () => now,
     );
     addTearDown(service.dispose);
@@ -150,6 +185,7 @@ void main() {
       database: StudyTimerDatabase(SumiLocalDatabase(database: database)),
       controller: TimerController(),
       reminders: reminders,
+      foregroundReminders: _FakeForegroundReminder(),
       now: () => now,
     );
     addTearDown(service.dispose);
@@ -169,6 +205,43 @@ void main() {
     expect(reminders.scheduled.single.kind, StudyTimerKind.alarm);
     await service.cancel(alarm.id);
     expect(reminders.cancelled, contains(alarm.id));
+  });
+
+  test('删除计时器会停止提醒并移除本地记录', () async {
+    var now = DateTime(2026, 7, 16, 9, 0);
+    final database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+    );
+    addTearDown(database.close);
+    await _createStudyTimersTable(database);
+    final foregroundReminders = _FakeForegroundReminder();
+    final service = StudyTimerService(
+      database: StudyTimerDatabase(SumiLocalDatabase(database: database)),
+      controller: TimerController(),
+      reminders: _FakeReminderScheduler(),
+      foregroundReminders: foregroundReminders,
+      now: () => now,
+    );
+    addTearDown(service.dispose);
+
+    final timer = await service.create(
+      id: 'timer-delete',
+      toolCallId: 'call-delete',
+      conversationId: 'conv-1',
+      title: '整理笔记',
+      minutes: 1,
+      startImmediately: true,
+    );
+    now = now.add(const Duration(minutes: 2));
+    await service.handleLifecycle(true);
+    await service.delete(timer.id);
+
+    expect(foregroundReminders.stopped, 1);
+    expect(service.controller.byId(timer.id), isNull);
+    expect(
+      await StudyTimerDatabase(SumiLocalDatabase(database: database)).loadAll(),
+      isEmpty,
+    );
   });
 }
 

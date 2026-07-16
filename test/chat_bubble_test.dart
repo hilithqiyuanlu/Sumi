@@ -25,4 +25,16 @@ void main() {
     expect(find.text('取消'), findsOneWidget);
     expect(find.text('删除'), findsOneWidget);
   });
+
+  testWidgets('仅传入流式状态时显示光标', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ChatBubble(content: '正在输出', isUser: false, isStreaming: true),
+        ),
+      ),
+    );
+
+    expect(find.byType(ChatBubble), findsOneWidget);
+  });
 }

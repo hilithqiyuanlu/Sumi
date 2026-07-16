@@ -98,9 +98,40 @@ class ChatDatabase {
             reasoningContent: r['reasoning_content'] as String?,
             toolCallsJson: r['tool_calls_json'] as String?,
             toolCallId: r['tool_call_id'] as String?,
+            todoResultJson: r['todo_result_json'] as String?,
           ),
         )
         .toList();
+  }
+
+  /// 只读取指定自然日的对话；不存在会话时不创建空会话。
+  Future<List<ChatMessage>> loadMessagesForDate(String date) async {
+    final conversation = await findConversationByDate(date);
+    if (conversation == null) return const [];
+    return loadMessages(conversation.id);
+  }
+
+  /// 有真实用户或助手内容的历史日期。不能只查 conversations，浏览过的
+  /// 空日期也会创建会话，不应因此生成日结。
+  Future<List<String>> pastConversationDates({
+    required String beforeDate,
+    int limit = 1000,
+  }) async {
+    final rows = await (await _db).rawQuery(
+      '''SELECT DISTINCT conversations.date_key
+         FROM conversations
+         INNER JOIN messages ON messages.conversation_id = conversations.id
+         WHERE conversations.date_key < ?
+           AND messages.role IN ('user', 'assistant')
+           AND TRIM(messages.content) != ''
+         ORDER BY conversations.date_key ASC
+         LIMIT ?''',
+      [beforeDate, limit],
+    );
+    return rows
+        .map((row) => row['date_key'] as String?)
+        .whereType<String>()
+        .toList(growable: false);
   }
 
   /// Loads persisted messages for rebuilding the local semantic index.
@@ -120,6 +151,7 @@ class ChatDatabase {
             reasoningContent: row['reasoning_content'] as String?,
             toolCallsJson: row['tool_calls_json'] as String?,
             toolCallId: row['tool_call_id'] as String?,
+            todoResultJson: row['todo_result_json'] as String?,
           ),
         )
         .toList(growable: false);
@@ -169,6 +201,7 @@ class ChatDatabase {
               reasoningContent: row['reasoning_content'] as String?,
               toolCallsJson: row['tool_calls_json'] as String?,
               toolCallId: row['tool_call_id'] as String?,
+              todoResultJson: row['todo_result_json'] as String?,
             ),
           ),
         )
@@ -267,7 +300,8 @@ class ChatDatabase {
           (row) => ChatSearchResult(
             messageId: row['message_id'] as String,
             conversationId: row['conversation_id'] as String,
-            date: DateTime.tryParse(row['date_key'] as String? ?? '') ??
+            date:
+                DateTime.tryParse(row['date_key'] as String? ?? '') ??
                 DateTime.now(),
             content: (row['content'] as String?) ?? '',
             createdAt:
@@ -301,6 +335,8 @@ class ChatDatabase {
       if (message.toolCallsJson != null)
         'tool_calls_json': message.toolCallsJson,
       if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
+      if (message.todoResultJson != null)
+        'todo_result_json': message.todoResultJson,
     });
   }
 

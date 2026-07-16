@@ -4,6 +4,7 @@ class ChatToolDefinition {
   final String description;
   final String group;
   final Map<String, Object?> schema;
+  final bool system;
 
   const ChatToolDefinition({
     required this.name,
@@ -11,6 +12,7 @@ class ChatToolDefinition {
     required this.description,
     required this.group,
     required this.schema,
+    this.system = false,
   });
 }
 
@@ -115,6 +117,7 @@ class ChatToolRegistry {
       label: '新建事项',
       description: '根据明确请求创建一条待办事项。',
       group: '创建与执行',
+      system: true,
       schema: {
         'type': 'function',
         'function': {

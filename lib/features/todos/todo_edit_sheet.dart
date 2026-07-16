@@ -237,6 +237,15 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                     active: todo.projectId != null,
                     onTap: _toggleProjects,
                   ),
+                  if (todo.reminderTime != null) ...[
+                    const SizedBox(width: s6),
+                    _ActionChip(
+                      icon: Icons.schedule_outlined,
+                      label: todo.reminderTime!,
+                      active: true,
+                      onTap: () {},
+                    ),
+                  ],
                   const Spacer(),
                   _TextButton(
                     label: '删除',

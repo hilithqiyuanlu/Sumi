@@ -15,6 +15,100 @@ class AiContractValidation<T> {
 class AiContracts {
   const AiContracts._();
 
+  static AiContractValidation<Map<String, Object?>> dailyReflection(
+    Map<String, Object?> value,
+  ) {
+    final shortSummary = _text(value['shortSummary']);
+    final reflection = _text(value['reflection']);
+    final errors = <String>[];
+    final highlights = _stringList(value['highlights'], 'highlights', errors);
+    if (!_lengthBetween(shortSummary, 20, 60)) {
+      errors.add('shortSummary 必须为 20-60 字');
+    }
+    if (!_lengthBetween(reflection, 40, 100)) {
+      errors.add('reflection 必须为 40-100 字');
+    }
+    if (highlights.length > 3) errors.add('highlights 最多 3 条');
+    for (final item in highlights) {
+      if (!_lengthBetween(item, 4, 24)) {
+        errors.add('每条 highlights 必须为 4-24 字');
+        break;
+      }
+    }
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({
+      'shortSummary': shortSummary,
+      'reflection': reflection,
+      'highlights': highlights,
+    });
+  }
+
+  static AiContractValidation<Map<String, Object?>> inputClassification(
+    Map<String, Object?> value,
+  ) {
+    final intent = _text(value['intent']);
+    final confidence = _finiteDouble(value['confidence']);
+    final title = _text(value['title']);
+    final date = _text(value['date']);
+    final reminderTime = _text(value['reminderTime']);
+    final missing = value['missingFields'];
+    final clarification = _text(value['clarification']);
+    final errors = <String>[];
+    if (!const {'chat', 'createTodo', 'clarifyTodo'}.contains(intent)) {
+      errors.add('intent 无效');
+    }
+    if (confidence == null || confidence < 0 || confidence > 1) {
+      errors.add('confidence 必须为 0-1');
+    }
+    if (title.isNotEmpty && title.length > 80) errors.add('title 不能超过 80 字');
+    if (date.isNotEmpty && !_validDate(date)) errors.add('date 必须是有效日期');
+    if (reminderTime.isNotEmpty &&
+        !RegExp(r'^([01][0-9]|2[0-3]):[0-5][0-9]$').hasMatch(reminderTime)) {
+      errors.add('reminderTime 必须为 HH:mm');
+    }
+    if (missing != null &&
+        (missing is! List<Object?> || missing.any((item) => item is! String))) {
+      errors.add('missingFields 必须是字符串数组');
+    }
+    if (clarification.length > 120) errors.add('clarification 不能超过 120 字');
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({
+      'intent': intent,
+      'confidence': confidence,
+      if (title.isNotEmpty) 'title': title,
+      if (date.isNotEmpty) 'date': date,
+      if (reminderTime.isNotEmpty) 'reminderTime': reminderTime,
+      'missingFields': missing ?? const <Object?>[],
+      if (clarification.isNotEmpty) 'clarification': clarification,
+    });
+  }
+
+  static AiContractValidation<Map<String, Object?>> milestoneRecognition(
+    Map<String, Object?> value, {
+    required Set<String> validTodoIds,
+    required String userMessage,
+  }) {
+    final confidence = _finiteDouble(value['confidence']);
+    final todoId = _text(value['todoId']);
+    final quote = _text(value['quotedText']);
+    final errors = <String>[];
+    if (confidence == null || confidence < 0 || confidence > 1) {
+      errors.add('confidence 必须为 0-1');
+    }
+    if (todoId.isNotEmpty && !validTodoIds.contains(todoId)) {
+      errors.add('todoId 不在候选中');
+    }
+    if (quote.length > 300 || (quote.isNotEmpty && !userMessage.contains(quote))) {
+      errors.add('quotedText 必须逐字来自用户消息');
+    }
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({
+      'confidence': confidence,
+      if (todoId.isNotEmpty) 'todoId': todoId,
+      if (quote.isNotEmpty) 'quotedText': quote,
+    });
+  }
+
   static AiContractValidation<Map<String, Object?>> split(
     Map<String, Object?> value,
   ) {
@@ -331,6 +425,69 @@ class AiContracts {
     }
     if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
     return AiContractValidation.valid({'suggestions': items});
+  }
+
+  static AiContractValidation<Map<String, Object?>> suggestionQuestions(
+    Map<String, Object?> value, {
+    required Set<String> validTodoIds,
+    required Set<String> validProjectIds,
+    Set<String> forbiddenIntents = const {},
+  }) {
+    final raw = value['questions'];
+    if (raw is! List<Object?> || raw.length != 5) {
+      return const AiContractValidation.invalid(['questions 必须恰好包含 5 条']);
+    }
+    final slots = <int>{};
+    final texts = <String>{};
+    final items = <Map<String, Object?>>[];
+    final errors = <String>[];
+    for (final entry in raw) {
+      if (entry is! Map<String, Object?>) {
+        errors.add('questions 每项必须是对象');
+        continue;
+      }
+      final slot = _integer(entry['slot']);
+      final text = _text(entry['text']);
+      final intent = _text(entry['intent']);
+      final isToday = entry['isToday'];
+      final keepExisting = entry['keepExisting'];
+      final todoId = _text(entry['todoId']);
+      final projectId = _text(entry['projectId']);
+      if (slot == null || slot < 0 || slot > 4 || !slots.add(slot)) {
+        errors.add('slot 必须唯一且在 0-4');
+      }
+      if (!_lengthBetween(text, 8, 40) ||
+          !RegExp(r'^(帮我|我想让你|请帮我)').hasMatch(text)) {
+        errors.add('text 必须是 8-40 字、可直接问 Sumi 的提问');
+      } else if (!texts.add(text)) {
+        errors.add('text 不能重复');
+      }
+      if (!_lengthBetween(intent, 2, 32)) {
+        errors.add('intent 必须为 2-32 字');
+      } else if (forbiddenIntents.contains(intent)) {
+        errors.add('intent 已被用户关闭');
+      }
+      if (isToday is! bool) errors.add('isToday 必须是布尔值');
+      if (keepExisting is! bool) errors.add('keepExisting 必须是布尔值');
+      if (todoId.isNotEmpty && !validTodoIds.contains(todoId)) {
+        errors.add('todoId 不在候选中');
+      }
+      if (projectId.isNotEmpty && !validProjectIds.contains(projectId)) {
+        errors.add('projectId 不在候选中');
+      }
+      items.add({
+        'slot': slot,
+        'text': text,
+        'intent': intent,
+        'isToday': isToday,
+        'keepExisting': keepExisting,
+        if (todoId.isNotEmpty) 'todoId': todoId,
+        if (projectId.isNotEmpty) 'projectId': projectId,
+      });
+    }
+    if (slots.length != 5) errors.add('slot 必须完整覆盖 0-4');
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({'questions': items});
   }
 
   static AiContractValidation<Map<String, Object?>> memoryExtraction(

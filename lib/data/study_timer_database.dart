@@ -30,6 +30,11 @@ class StudyTimerDatabase {
     await db.delete('study_timers');
   }
 
+  Future<void> delete(String id) async {
+    final db = await _db;
+    await db.delete('study_timers', where: 'id = ?', whereArgs: [id]);
+  }
+
   Map<String, Object?> _toRow(StudyTimer timer) => {
     'id': timer.id,
     'tool_call_id': timer.toolCallId,

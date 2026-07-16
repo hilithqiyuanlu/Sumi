@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/memory_service.dart';
+import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
@@ -15,11 +16,20 @@ class MemoryCenterPage extends StatefulWidget {
 class _MemoryCenterPageState extends State<MemoryCenterPage> {
   List<MemoryItem> _items = const [];
   bool _loading = true;
+  late final SumiStore _store;
 
   @override
   void initState() {
     super.initState();
+    _store = SumiScope.read(context);
+    _store.settingsController.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _store.settingsController.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -150,91 +160,94 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => SafeArea(
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.78,
+      builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.78,
+        ),
+        decoration: const BoxDecoration(
+          color: paper,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(radiusCardHeader),
           ),
-          decoration: const BoxDecoration(
-            color: paper,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(radiusCardHeader),
-            ),
-            boxShadow: shadow4,
+          boxShadow: shadow4,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            s20,
+            s10,
+            s20,
+            MediaQuery.paddingOf(context).bottom + s20,
           ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(s20, s10, s20, s20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: line,
-                      borderRadius: BorderRadius.circular(radiusPill),
-                    ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: line,
+                    borderRadius: BorderRadius.circular(radiusPill),
                   ),
                 ),
-                const SizedBox(height: s16),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        '记忆详情',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: ink,
-                        ),
+              ),
+              const SizedBox(height: s16),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '记忆详情',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: ink,
                       ),
                     ),
-                    IconButton(
-                      tooltip: '关闭',
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, size: iconMedium),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: s12),
-                Wrap(
-                  spacing: s8,
-                  runSpacing: s8,
-                  children: [
-                    _detailTag(_titleFor(item.type), primary50, primary700),
-                    _detailTag(item.category, surfaceChip, textSecondary),
-                  ],
-                ),
-                const SizedBox(height: s20),
-                Text(
-                  item.content,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.5,
-                    fontWeight: FontWeight.w500,
-                    color: ink,
                   ),
-                ),
-                const SizedBox(height: s20),
-                Text(
-                  evidence.isEmpty ? '暂无来源记录' : '来源记录',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: textTertiary,
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, size: iconMedium),
                   ),
+                ],
+              ),
+              const SizedBox(height: s12),
+              Wrap(
+                spacing: s8,
+                runSpacing: s8,
+                children: [
+                  _detailTag(_titleFor(item.type), primary50, primary700),
+                  _detailTag(item.category, surfaceChip, textSecondary),
+                ],
+              ),
+              const SizedBox(height: s20),
+              Text(
+                item.content,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                  color: ink,
                 ),
-                const SizedBox(height: s8),
-                if (evidence.isEmpty)
-                  const Text(
-                    '这条记忆由手动添加或历史数据导入。',
-                    style: TextStyle(fontSize: 13, color: textSecondary),
-                  )
-                else
-                  ...evidence.map(_buildEvidence),
-              ],
-            ),
+              ),
+              const SizedBox(height: s20),
+              Text(
+                evidence.isEmpty ? '暂无来源记录' : '来源记录',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: textTertiary,
+                ),
+              ),
+              const SizedBox(height: s8),
+              if (evidence.isEmpty)
+                const Text(
+                  '这条记忆由手动添加或历史数据导入。',
+                  style: TextStyle(fontSize: 13, color: textSecondary),
+                )
+              else
+                ...evidence.map(_buildEvidence),
+            ],
           ),
         ),
       ),
@@ -289,6 +302,7 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
   String _titleFor(MemoryType type) => switch (type) {
     MemoryType.current => '正在关注',
     MemoryType.explicit => '你明确告诉我的',
+    MemoryType.milestone => '里程碑',
     MemoryType.implicit => '系统从反馈中学到的',
     MemoryType.imported => '已停用 / 历史导入',
   };
@@ -385,7 +399,8 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
           color: paper,
           elevation: 2,
           onSelected: (action) async {
-            final service = SumiScope.read(context).memoryService;
+            final store = SumiScope.read(context);
+            final service = store.memoryService;
             if (action == 'edit') {
               await _showEditor(item: item);
             }
@@ -401,7 +416,11 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
               );
             }
             if (action == 'delete') {
-              await service?.delete(item.id);
+              if (item.type == MemoryType.milestone) {
+                await store.deleteMilestoneMemory(item.id);
+              } else {
+                await service?.delete(item.id);
+              }
             }
             await service?.exportUserModel();
             if (mounted) SumiScope.read(context).scheduleLocalIndex();
@@ -414,10 +433,11 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
             if (item.type == MemoryType.current &&
                 item.status == MemoryStatus.active)
               const PopupMenuItem(value: 'end', child: Text('结束当前事项')),
-            PopupMenuItem(
-              value: 'toggle',
-              child: Text(item.status == MemoryStatus.active ? '停用' : '重新启用'),
-            ),
+            if (item.type != MemoryType.milestone)
+              PopupMenuItem(
+                value: 'toggle',
+                child: Text(item.status == MemoryStatus.active ? '停用' : '重新启用'),
+              ),
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
         ),

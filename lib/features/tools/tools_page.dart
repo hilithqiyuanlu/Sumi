@@ -41,7 +41,10 @@ class ToolsPage extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: s8),
                     padding: const EdgeInsets.fromLTRB(s14, s10, s8, s10),
                     decoration: BoxDecoration(
-                      border: Border.all(color: surfaceChip),
+                      color: tool.system ? surfaceAlt : null,
+                      border: Border.all(
+                        color: tool.system ? neutral200 : surfaceChip,
+                      ),
                       borderRadius: BorderRadius.circular(radius8),
                     ),
                     child: Row(
@@ -52,36 +55,48 @@ class ToolsPage extends StatelessWidget {
                             children: [
                               Text(
                                 tool.label,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
-                                  color: ink,
+                                  color: tool.system ? textTertiary : ink,
                                 ),
                               ),
                               const SizedBox(height: s2),
                               Text(
                                 tool.description,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   height: 1.4,
-                                  color: textSecondary,
+                                  color: tool.system ? textTertiary : textSecondary,
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        if (tool.system)
+                          const Text(
+                            '系统',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: textTertiary,
+                            ),
+                          )
+                        else
                         Switch(
-                          value: enabled.contains(tool.name),
-                          onChanged: (value) {
-                            H.click();
-                            final next = {...enabled};
-                            if (value) {
-                              next.add(tool.name);
-                            } else {
-                              next.remove(tool.name);
-                            }
-                            store.updateEnabledTools(next);
-                          },
+                          value: tool.system || enabled.contains(tool.name),
+                          onChanged: tool.system
+                              ? null
+                              : (value) {
+                                  H.click();
+                                  final next = {...enabled};
+                                  if (value) {
+                                    next.add(tool.name);
+                                  } else {
+                                    next.remove(tool.name);
+                                  }
+                                  store.updateEnabledTools(next);
+                                },
                         ),
                       ],
                     ),

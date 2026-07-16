@@ -13,6 +13,8 @@ mixin SumiStoreProjects {
   StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
   MemoryService? get memoryServiceForStore;
+  Future<void> onProjectDeleted(String projectId);
+  Future<void> onProjectTodoDeleted(TodoItem todo);
   void afterProjectMutation({bool affectsTodayLoad = false});
 
   /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
@@ -82,6 +84,13 @@ mixin SumiStoreProjects {
 
   /// 删除项目 → 级联删除月卡 + 系统 todo。
   Future<void> deleteProject(String id) async {
+    final projectTodos = todoItems
+        .where((todo) => todo.projectId == id)
+        .toList(growable: false);
+    for (final todo in projectTodos) {
+      await onProjectTodoDeleted(todo);
+    }
+    await onProjectDeleted(id);
     projectList.removeWhere((p) => p.id == id);
     monthCardList.removeWhere((m) => m.projectId == id);
     todoItems.removeWhere(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -19,15 +20,30 @@ abstract interface class ReminderScheduler {
 
 /// 使用系统通知提供后台、锁屏和 App 关闭后的声音与震动提醒。
 class SystemReminderService implements ReminderScheduler {
-  static const _channelId = 'sumi_learning_reminders';
-  static const _channelName = '学习提醒';
+  static const _channelId = 'sumi_alarm_v2';
+  static const _channelName = '计时与闹钟提醒';
   static const _channelDescription = '学习计时和闹钟到点提醒';
+  static const _darwinCategoryId = 'sumi_alarm';
+  static const _stopActionId = 'stop_reminder';
 
   final FlutterLocalNotificationsPlugin _notifications;
+  final Future<void> Function(String timerId)? onStopAction;
   bool _initialized = false;
 
-  SystemReminderService({FlutterLocalNotificationsPlugin? notifications})
-    : _notifications = notifications ?? FlutterLocalNotificationsPlugin();
+  SystemReminderService({
+    FlutterLocalNotificationsPlugin? notifications,
+    this.onStopAction,
+  }) : _notifications = notifications ?? FlutterLocalNotificationsPlugin();
+
+  /// 通知插件在单元测试或不支持的平台上可能没有注册；提醒不可用时不应
+  /// 影响应用数据恢复和聊天等主流程。
+  Future<void> initialize() async {
+    try {
+      await _initialize();
+    } catch (_) {
+      // 后续 schedule/show 会继续安全降级为 unavailable。
+    }
+  }
 
   Future<void> _initialize() async {
     if (_initialized) return;
@@ -40,7 +56,7 @@ class SystemReminderService implements ReminderScheduler {
     }
 
     await _notifications.initialize(
-      settings: const InitializationSettings(
+      settings: InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,
@@ -50,10 +66,35 @@ class SystemReminderService implements ReminderScheduler {
           defaultPresentBanner: true,
           defaultPresentList: true,
           defaultPresentSound: true,
+          notificationCategories: [
+            DarwinNotificationCategory(
+              _darwinCategoryId,
+              actions: [
+                DarwinNotificationAction.plain(
+                  _stopActionId,
+                  '停止提醒',
+                  options: {DarwinNotificationActionOption.foreground},
+                ),
+              ],
+            ),
+          ],
         ),
       ),
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
     );
     _initialized = true;
+    final launchDetails = await _notifications
+        .getNotificationAppLaunchDetails();
+    final response = launchDetails?.notificationResponse;
+    if (launchDetails?.didNotificationLaunchApp == true && response != null) {
+      _handleNotificationResponse(response);
+    }
+  }
+
+  void _handleNotificationResponse(NotificationResponse response) {
+    if (response.actionId != _stopActionId || response.payload == null) return;
+    final callback = onStopAction;
+    if (callback != null) unawaited(callback(response.payload!));
   }
 
   @override
@@ -210,15 +251,35 @@ class SystemReminderService implements ReminderScheduler {
       importance: Importance.max,
       priority: Priority.max,
       playSound: true,
+      sound: const RawResourceAndroidNotificationSound('sumi_alarm'),
       enableVibration: true,
-      vibrationPattern: Int64List.fromList([0, 700, 250, 900, 250, 900]),
+      vibrationPattern: Int64List.fromList([
+        0,
+        1000,
+        220,
+        1000,
+        220,
+        1000,
+        220,
+        1000,
+      ]),
       category: AndroidNotificationCategory.alarm,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      actions: const [
+        AndroidNotificationAction(
+          _stopActionId,
+          '停止提醒',
+          showsUserInterface: true,
+        ),
+      ],
     ),
     iOS: const DarwinNotificationDetails(
       presentAlert: true,
       presentBanner: true,
       presentList: true,
       presentSound: true,
+      sound: 'sumi_alarm.caf',
+      categoryIdentifier: _darwinCategoryId,
     ),
   );
 

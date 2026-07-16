@@ -152,7 +152,7 @@ void main() {
     expect(prompt, isNot(contains('movableTodoIds')));
   });
 
-  test('记忆提取只发送当前消息和最多三条候选，且不重试', () async {
+  test('记忆提取使用扩展上下文，格式正确时一次完成', () async {
     var calls = 0;
     Map<String, Object?>? requestBody;
     final client = MockClient((request) async {
@@ -182,8 +182,32 @@ void main() {
     final payload = jsonDecode(
       ((messages.last as Map<String, Object?>)['content'] as String),
     ) as Map<String, Object?>;
-    expect((payload['message'] as String).length, 240);
-    expect((payload['candidates'] as List<Object?>), hasLength(3));
+    expect((payload['message'] as String).length, 480);
+    expect((payload['candidates'] as List<Object?>), hasLength(4));
+    final system =
+        ((messages.first as Map<String, Object?>)['content'] as String);
+    expect(system, contains('自然但稳定的表达'));
+  });
+
+  test('记忆提取格式错误时只修复一次', () async {
+    var calls = 0;
+    final client = MockClient((_) async {
+      calls++;
+      return _jsonChatResponse(
+        calls == 1
+            ? 'not json'
+            : '''{"action":"save","category":"preference",
+              "content":"偏好短时练习","quotedText":"我通常更适合短时练习"}''',
+      );
+    });
+
+    final result = await AiService(
+      apiKey: 'key',
+      client: client,
+    ).extractMemory(message: '我通常更适合短时练习。', candidates: const []);
+
+    expect(result?.action, MemoryExtractionAction.save);
+    expect(calls, 2);
   });
 
   test('评估接口不支持 response_format 时自动降级一次', () async {

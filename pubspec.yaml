@@ -1,7 +1,7 @@
 name: sumi
 description: "Sumi（米糖）— 本地优先的自学个人助手"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.0-134.0.dev
@@ -21,6 +21,7 @@ dependencies:
   llamadart: ^0.8.16
   llamadart_llama_cpp_flutter: ^0.0.10
   flutter_local_notifications: ^22.0.1
+  just_audio: ^0.10.5
   flutter_timezone: ^5.1.0
   timezone: ^0.11.1
 
@@ -32,3 +33,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/audio/sumi_alarm.wav

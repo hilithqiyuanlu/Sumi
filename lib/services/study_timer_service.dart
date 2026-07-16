@@ -1,15 +1,18 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../data/study_timer_database.dart';
 import '../models/models.dart';
-import 'timer_controller.dart';
-import '../utils/haptics.dart';
+import 'foreground_reminder_service.dart';
 import 'system_reminder_service.dart';
+import 'timer_controller.dart';
 
 class StudyTimerService {
   final StudyTimerDatabase database;
   final TimerController controller;
   final ReminderScheduler reminders;
+  final ForegroundReminder foregroundReminders;
   final DateTime Function() _now;
   Timer? _ticker;
   bool _foreground = true;
@@ -18,14 +21,19 @@ class StudyTimerService {
     required this.database,
     required this.controller,
     ReminderScheduler? reminders,
+    ForegroundReminder? foregroundReminders,
     DateTime Function()? now,
   }) : reminders = reminders ?? SystemReminderService(),
+       foregroundReminders = foregroundReminders ?? ForegroundReminderService(),
        _now = now ?? DateTime.now;
+
+  ValueListenable<StudyTimer?> get activeReminder =>
+      foregroundReminders.activeReminder;
 
   Future<void> restore() async {
     final timers = await database.loadAll();
     controller.replaceAll(timers);
-    await _reconcile(playHaptic: false, showNotification: false);
+    await _reconcile();
     _ensureTicker();
   }
 
@@ -105,10 +113,19 @@ class StudyTimerService {
       ),
     );
     await reminders.cancel(id);
+    await _stopForegroundReminder(id);
     _ensureTicker();
   }
 
-  Future<void> finish(String id) => _complete(id, playHaptic: false);
+  Future<void> finish(String id) async {
+    final timer = controller.byId(id);
+    if (timer?.status == StudyTimerStatus.completed) {
+      await _stopForegroundReminder(id);
+      await reminders.cancel(id);
+      return;
+    }
+    await _complete(id);
+  }
 
   Future<void> cancel(String id) async {
     final timer = controller.byId(id);
@@ -126,6 +143,17 @@ class StudyTimerService {
       ),
     );
     await reminders.cancel(id);
+    await _stopForegroundReminder(id);
+    _ensureTicker();
+  }
+
+  Future<void> delete(String id) async {
+    final timer = controller.byId(id);
+    if (timer == null) return;
+    await reminders.cancel(id);
+    await _stopForegroundReminder(id);
+    await database.delete(id);
+    controller.remove(id);
     _ensureTicker();
   }
 
@@ -134,50 +162,49 @@ class StudyTimerService {
     if (!foreground) {
       _ticker?.cancel();
       _ticker = null;
+      final activeTimer = activeReminder.value;
+      if (activeTimer != null) {
+        await reminders.showNow(activeTimer);
+        await foregroundReminders.stop();
+      }
       return;
     }
-    await _reconcile(playHaptic: true, showNotification: false);
+    await _reconcile();
     _ensureTicker();
   }
 
-  Future<void> _reconcile({
-    required bool playHaptic,
-    required bool showNotification,
-  }) async {
+  Future<void> _reconcile() async {
     final now = _now();
     for (final timer in controller.timers) {
       if (timer.status == StudyTimerStatus.running &&
           timer.remainingAt(now) == 0) {
-        await _complete(
-          timer.id,
-          playHaptic: playHaptic,
-          showNotification: showNotification,
-        );
+        await _complete(timer.id);
       }
     }
   }
 
-  Future<void> _complete(
-    String id, {
-    required bool playHaptic,
-    bool showNotification = false,
-  }) async {
+  Future<void> _complete(String id) async {
     final timer = controller.byId(id);
-    if (timer == null || timer.status == StudyTimerStatus.completed) return;
-    await _save(
-      timer.copyWith(
-        remainingSeconds: 0,
-        status: StudyTimerStatus.completed,
-        clearStartedAt: true,
-        updatedAt: _now(),
-      ),
-    );
-    await reminders.cancel(id);
-    if (showNotification && _foreground) {
-      await reminders.showNow(timer);
+    if (timer == null) return;
+    if (timer.status == StudyTimerStatus.completed) {
+      if (_foreground) await foregroundReminders.start(timer);
+      return;
     }
-    if (playHaptic && _foreground) H.timerFinished();
+    final remainingAtCompletion = timer.remainingAt(_now());
+    final completed = timer.copyWith(
+      remainingSeconds: remainingAtCompletion,
+      status: StudyTimerStatus.completed,
+      clearStartedAt: true,
+      updatedAt: _now(),
+    );
+    await _save(completed);
+    await reminders.cancel(id);
+    if (_foreground) await foregroundReminders.start(completed);
     _ensureTicker();
+  }
+
+  Future<void> _stopForegroundReminder(String id) async {
+    if (activeReminder.value?.id == id) await foregroundReminders.stop();
   }
 
   Future<void> _save(StudyTimer timer) async {
@@ -199,7 +226,7 @@ class StudyTimerService {
       return;
     }
     _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) async {
-      await _reconcile(playHaptic: true, showNotification: true);
+      await _reconcile();
       controller.tick();
     });
   }
@@ -208,9 +235,13 @@ class StudyTimerService {
     _ticker?.cancel();
     _ticker = null;
     controller.clear();
+    await foregroundReminders.stop();
     await reminders.cancelAll();
     await database.clearAll();
   }
 
-  void dispose() => _ticker?.cancel();
+  Future<void> dispose() async {
+    _ticker?.cancel();
+    await foregroundReminders.dispose();
+  }
 }

@@ -176,7 +176,8 @@ Future<Database> _openDatabase() async {
       created_at TEXT NOT NULL,
       reasoning_content TEXT,
       tool_calls_json TEXT,
-      tool_call_id TEXT
+      tool_call_id TEXT,
+      todo_result_json TEXT
     )
   ''');
   await db.execute('''
@@ -189,6 +190,21 @@ Future<Database> _openDatabase() async {
       todo_id TEXT,
       domain TEXT,
       created_at TEXT NOT NULL
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE milestones (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, todo_id TEXT NOT NULL,
+      source_message_id TEXT NOT NULL, quote TEXT NOT NULL, todo_title TEXT NOT NULL,
+      month_index INTEGER NOT NULL, occurred_at TEXT NOT NULL, memory_id TEXT,
+      created_at TEXT NOT NULL, UNIQUE(source_message_id, todo_id)
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE pending_milestone_statements (
+      message_id TEXT NOT NULL, todo_id TEXT NOT NULL, quote TEXT NOT NULL,
+      occurred_at TEXT NOT NULL, created_at TEXT NOT NULL,
+      UNIQUE(message_id, todo_id)
     )
   ''');
   await db.execute('''
@@ -838,6 +854,82 @@ void main() {
       isFalse,
     );
     expect(await memory.list(), hasLength(1));
+  });
+
+  test('记忆采集诊断只返回状态聚合与失败类别', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final memory = MemoryService(
+      SumiLocalDatabase(database: db),
+      now: () => DateTime(2026, 7, 16, 10),
+    );
+
+    await memory.claimExtraction('ignored');
+    await memory.applyExtractionDecision(
+      messageId: 'ignored',
+      userMessage: '今天随便聊聊。',
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.ignore,
+      ),
+      candidateReplaceIds: const {},
+    );
+    await memory.claimExtraction('saved');
+    await memory.applyExtractionDecision(
+      messageId: 'saved',
+      userMessage: '我通常更适合短时练习。',
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.save,
+        category: 'preference',
+        content: '偏好短时练习',
+        quotedText: '我通常更适合短时练习',
+      ),
+      candidateReplaceIds: const {},
+    );
+    await memory.claimExtraction('failed');
+    await memory.applyExtractionDecision(
+      messageId: 'failed',
+      userMessage: '我通常更适合短时练习。',
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.save,
+        category: 'preference',
+        content: '偏好短时练习',
+        quotedText: '不存在的原话',
+      ),
+      candidateReplaceIds: const {},
+    );
+
+    final diagnostics = await memory.extractionDiagnostics();
+
+    expect(
+      (diagnostics.applied, diagnostics.ignored, diagnostics.failed),
+      (1, 1, 1),
+    );
+    expect(diagnostics.failuresByCategory, {'validation': 1});
+  });
+
+  test('旧记忆采集表会自动补充失败类别列', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    await db.execute('''CREATE TABLE memory_extraction_runs (
+      message_id TEXT PRIMARY KEY, status TEXT NOT NULL,
+      decision_json TEXT, processed_at TEXT NOT NULL)''');
+    final memory = MemoryService(SumiLocalDatabase(database: db));
+
+    await memory.ensureTables();
+    await memory.claimExtraction('legacy-run');
+    await memory.finishExtraction(
+      'legacy-run',
+      status: 'failed',
+      errorCategory: 'runtime',
+    );
+
+    final columns = await db.rawQuery(
+      'PRAGMA table_info(memory_extraction_runs)',
+    );
+    expect(columns.any((column) => column['name'] == 'error_category'), isTrue);
+    expect((await memory.extractionDiagnostics()).failuresByCategory, {
+      'runtime': 1,
+    });
   });
 
   test('当前学习状态会按项目和类别替换，并在 30 天后过期', () async {

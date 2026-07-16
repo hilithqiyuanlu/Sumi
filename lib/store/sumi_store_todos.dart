@@ -10,6 +10,8 @@ mixin SumiStoreTodos {
   DateTime get selectedDate;
   StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
+  Future<void> onProjectTodoCompleted(TodoItem todo);
+  Future<void> onProjectTodoDeleted(TodoItem todo);
   void afterTodoMutation({bool affectsTodayLoad = false});
 
   bool _affectsTodayLoad(String? before, [String? after]) {
@@ -27,6 +29,7 @@ mixin SumiStoreTodos {
     String? condensedFrom,
     String? date,
     String? body,
+    String? reminderTime,
   }) async {
     if (title.trim().isEmpty) return null;
     final nextOrder = _nextSortOrder();
@@ -36,6 +39,7 @@ mixin SumiStoreTodos {
       date: date ?? dateKey(selectedDate),
       title: title.trim(),
       body: body,
+      reminderTime: reminderTime,
       sortOrder: nextOrder,
       createdAt: DateTime.now(),
       condensedFrom: condensedFrom,
@@ -98,6 +102,7 @@ mixin SumiStoreTodos {
     afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
     if (todoItems[i].done) {
       await signalService?.emitTodoCompleted(todoItems[i]);
+      await onProjectTodoCompleted(todoItems[i]);
     } else {
       await signalService?.emitTodoUncompleted(todoItems[i]);
     }
@@ -110,6 +115,7 @@ mixin SumiStoreTodos {
     final todo = todoItems[i];
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可删除
     await signalService?.emitTodoDeleted(todo);
+    await onProjectTodoDeleted(todo);
     todoItems.removeWhere((t) => t.id == id);
     afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
   }

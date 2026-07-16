@@ -166,6 +166,8 @@ class _MetricRow extends StatelessWidget {
     final label = switch (metric.capability) {
       ModelCapability.chat => '聊天',
       ModelCapability.structured => '结构化生成',
+      ModelCapability.suggestionQuestions => '建议提问',
+      ModelCapability.dailyReflection => '每日回顾',
       ModelCapability.memoryExtraction => '记忆提取',
       ModelCapability.webSearch => '搜索',
       ModelCapability.embedding => '语义检索',

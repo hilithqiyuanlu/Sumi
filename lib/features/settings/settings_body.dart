@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
 import 'signal_log_page.dart';
 import 'model_router_metrics_page.dart';
+import 'memory_extraction_diagnostics_page.dart';
 import 'local_retrieval_page.dart';
 import 'app_update_page.dart';
 
@@ -76,29 +77,6 @@ class _SettingsBodyState extends State<SettingsBody> {
           ),
         ),
         const SizedBox(height: s24),
-        _sectionHeader('思考模式'),
-        const SizedBox(height: s12),
-        _buildCard(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              '深度思考',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            subtitle: const Text(
-              '开启后提升复杂问题处理能力，不展示内部推理',
-              style: TextStyle(fontSize: 12),
-            ),
-            trailing: Switch(
-              value: store.thinkingEnabled,
-              onChanged: (v) {
-                H.click();
-                store.setThinkingEnabled(v);
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: s24),
         _sectionHeader('关于与更新'),
         const SizedBox(height: s12),
         _buildCard(
@@ -149,6 +127,70 @@ class _SettingsBodyState extends State<SettingsBody> {
                     store.setShowAllMonthCards(v);
                   },
                 ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  '建议问 Sumi',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '使用 AI 生成适合向 Sumi 提问的入口',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: Switch(
+                  value: store.appSettings.suggestionQuestionsEnabled,
+                  onChanged: (value) {
+                    H.click();
+                    store.setSuggestionQuestionsEnabled(value);
+                  },
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  '安排较满分析',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '使用 AI 分析今日任务压力，关闭后不产生相关调用',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: Switch(
+                  value: store.appSettings.scheduleLoadAnalysisEnabled,
+                  onChanged: (value) {
+                    H.click();
+                    store.setScheduleLoadAnalysisEnabled(value);
+                  },
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  '记忆采集诊断',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  '查看近 7 天的保存、忽略与失败汇总',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  size: iconSection,
+                  color: textTertiary,
+                ),
+                onTap: () {
+                  H.light();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MemoryExtractionDiagnosticsPage(),
+                    ),
+                  );
+                },
               ),
               const Divider(height: 1),
               ListTile(

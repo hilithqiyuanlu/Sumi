@@ -10,7 +10,6 @@ mixin SumiStoreChat {
   ChatDatabase? get chatDatabase;
   ChatCapability? get chatAgent;
   ToolExecutor? get toolExecutor;
-  bool get thinkingEnabled;
   DateTime get selectedDate;
   set selectedDate(DateTime d);
   void triggerNavigateToToday();
@@ -23,6 +22,19 @@ mixin SumiStoreChat {
   String? get currentProjectId;
   void scheduleLocalIndex();
   Future<void> refreshScheduleCardsForConversation(String? conversationId);
+  Future<void> processMilestoneMessage({
+    required String messageId,
+    required String message,
+  });
+  MilestoneService get milestones;
+  StructuredGenerationCapability? get structuredAi;
+  Future<TodoItem?> addUserTodo(
+    String title, {
+    String? condensedFrom,
+    String? date,
+    String? body,
+    String? reminderTime,
+  });
 
   // --- 状态 ---
   String? _currentConversationId;
@@ -47,6 +59,8 @@ mixin SumiStoreChat {
   /// 用户发起对话时的首页问候语（仅首条消息注入一次上下文）
   String? _activeGreeting;
   String? _activeToolDefaultDate;
+  String? _todoDraft;
+  Set<String> _milestoneSourceMessageIds = <String>{};
 
   String? get currentConversationId => _currentConversationId;
   String? get streamingAssistantMessageId =>
@@ -60,6 +74,175 @@ mixin SumiStoreChat {
   bool get isTemporaryConversation => _isTemporaryConversation;
   String? get activeToolDefaultDate => _activeToolDefaultDate;
   ValueListenable<ChatViewState> get chatView => chatController.view;
+
+  void recordMilestoneSource(String messageId) {
+    if (!_milestoneSourceMessageIds.add(messageId)) return;
+    _publishChatState();
+  }
+
+  void removeMilestoneSources(Iterable<String> messageIds) {
+    final before = _milestoneSourceMessageIds.length;
+    _milestoneSourceMessageIds.removeAll(messageIds);
+    if (_milestoneSourceMessageIds.length == before) return;
+    _publishChatState();
+  }
+
+  ChatSendResult sendUnifiedMessage(String content, {String? currentGreeting}) {
+    final text = content.trim();
+    if (text.isEmpty) return ChatSendResult.empty;
+    if (_isStreaming) return ChatSendResult.busy;
+    final classifier = structuredAi;
+    if (classifier == null) {
+      return sendMessage(text, currentGreeting: currentGreeting);
+    }
+    _isStreaming = true;
+    _streamConversationId = _currentConversationId;
+    _streamAssistantMessageId = null;
+    _currentToolCallLabel = '正在理解输入';
+    _publishChatState();
+    unawaited(_routeUnifiedInput(text, currentGreeting: currentGreeting));
+    return ChatSendResult.accepted;
+  }
+
+  Future<void> _routeUnifiedInput(
+    String text, {
+    String? currentGreeting,
+  }) async {
+    try {
+      final decision = await structuredAi?.classifyInput(
+        text,
+        draft: _todoDraft,
+      );
+      if (decision != null &&
+          decision.intent == InputIntent.createTodo &&
+          decision.confidence >= 0.85 &&
+          (decision.title?.trim().isNotEmpty ?? false) &&
+          (decision.date?.isNotEmpty ?? false)) {
+        await _recordTodoCreation(text, decision);
+        _todoDraft = null;
+        return;
+      }
+      final lacksTodoFields =
+          decision != null &&
+          ((decision.title?.trim().isEmpty ?? true) ||
+              (decision.date?.isEmpty ?? true));
+      final shouldClarify =
+          decision != null &&
+          (decision.intent == InputIntent.clarifyTodo ||
+              (decision.intent == InputIntent.createTodo &&
+                  (lacksTodoFields || decision.confidence >= 0.65)));
+      if (shouldClarify) {
+        _todoDraft = _todoDraft == null ? text : '$_todoDraft\n$text';
+        final question =
+            decision.clarification ??
+            ((decision.title?.trim().isEmpty ?? true)
+                ? '要记下什么事项？'
+                : (decision.date?.isEmpty ?? true)
+                ? '这件事准备什么时候做？'
+                : '你要我把它记成待办吗？');
+        await _recordClarification(text, question);
+        return;
+      }
+    } catch (_) {
+      // 分类不可用时按普通聊天处理，绝不创建事项。
+    }
+    _todoDraft = null;
+    _isStreaming = false;
+    _currentToolCallLabel = null;
+    _publishChatState();
+    sendMessage(text, currentGreeting: currentGreeting);
+  }
+
+  Future<void> _recordClarification(String userText, String question) async {
+    await _ensureInputConversation();
+    final convId = _currentConversationId!;
+    final messages = [
+      ChatMessage(
+        id: newSumiId('msg'),
+        conversationId: convId,
+        role: 'user',
+        content: userText,
+        createdAt: DateTime.now(),
+      ),
+      ChatMessage(
+        id: newSumiId('msg'),
+        conversationId: convId,
+        role: 'assistant',
+        content: question,
+        createdAt: DateTime.now(),
+      ),
+    ];
+    await _appendDirectMessages(messages);
+  }
+
+  Future<void> _recordTodoCreation(
+    String userText,
+    InputClassification decision,
+  ) async {
+    final todo = await addUserTodo(
+      decision.title!.trim(),
+      date: decision.date,
+      reminderTime: decision.reminderTime,
+    );
+    if (todo == null) return;
+    await _ensureInputConversation();
+    final convId = _currentConversationId!;
+    final messages = [
+      ChatMessage(
+        id: newSumiId('msg'),
+        conversationId: convId,
+        role: 'user',
+        content: userText,
+        createdAt: DateTime.now(),
+      ),
+      ChatMessage(
+        id: newSumiId('msg'),
+        conversationId: convId,
+        role: 'assistant',
+        content: '已创建事项',
+        createdAt: DateTime.now(),
+        todoResultJson: jsonEncode({
+          'todoId': todo.id,
+          'title': todo.title,
+          'date': todo.date,
+          'reminderTime': todo.reminderTime,
+        }),
+      ),
+    ];
+    await _appendDirectMessages(messages);
+  }
+
+  Future<void> _ensureInputConversation() async {
+    final today = dateKey(DateTime.now());
+    await _getOrCreateConversationForDate(today);
+  }
+
+  Future<void> _appendDirectMessages(List<ChatMessage> messages) async {
+    final db = chatDatabase;
+    final temporary = _isTemporaryConversation;
+    if (!temporary && db != null) {
+      for (final message in messages) {
+        await db.saveMessage(message);
+      }
+      await db.touchConversation(_currentConversationId!);
+    }
+    _currentMessages = [..._currentMessages, ...messages];
+    for (final message in messages) {
+      if (message.role == 'user') {
+        unawaited(
+          processMilestoneMessage(
+            messageId: message.id,
+            message: message.content,
+          ),
+        );
+      }
+    }
+    _messageSentSequence++;
+    _isStreaming = false;
+    _currentToolCallLabel = null;
+    if (!temporary) scheduleLocalIndex();
+    _publishChatState();
+  }
 
   void _publishChatState({bool throttled = false}) {
     if (throttled) {
@@ -78,7 +261,9 @@ mixin SumiStoreChat {
   void _emitChatViewState() {
     _chatPublishTimer = null;
     final isShowingStream =
-        _isStreaming && _streamConversationId == _currentConversationId;
+        _isStreaming &&
+        (_streamConversationId == null ||
+            _streamConversationId == _currentConversationId);
     chatController.view.value = ChatViewState(
       conversationId: _currentConversationId,
       messages: List.unmodifiable(_currentMessages),
@@ -90,6 +275,7 @@ mixin SumiStoreChat {
       failure: _chatFailureConversationId == _currentConversationId
           ? _chatFailure
           : null,
+      milestoneSourceMessageIds: Set.unmodifiable(_milestoneSourceMessageIds),
     );
   }
 
@@ -208,6 +394,7 @@ mixin SumiStoreChat {
       _currentConversationId = 'temp-$dateKey';
       _currentDateKey = dateKey;
       _currentMessages = [];
+      _milestoneSourceMessageIds = <String>{};
       _isTemporaryConversation = true;
     } else {
       if (db == null) {
@@ -221,6 +408,9 @@ mixin SumiStoreChat {
       _currentConversationId = conv.id;
       _currentDateKey = dateKey;
       _currentMessages = await db.loadMessages(conv.id);
+      _milestoneSourceMessageIds = await milestones.sourceMessageIdsFor(
+        _currentMessages.map((message) => message.id),
+      );
       _isTemporaryConversation = false;
     }
 
@@ -401,6 +591,12 @@ mixin SumiStoreChat {
       _currentMessages = [..._currentMessages, userMsg];
       if (!isTemporary) scheduleLocalIndex();
       if (!isTemporary) {
+        unawaited(
+          processMilestoneMessage(
+            messageId: userMessageId,
+            message: userMsg.content,
+          ),
+        );
         final extractor = memoryExtractionService;
         if (extractor != null) {
           unawaited(
@@ -645,7 +841,6 @@ mixin SumiStoreChat {
     final iterator = StreamIterator(
       svc.sendAgentLoop(
         messages: messages,
-        thinkingEnabled: thinkingEnabled,
         validProjectIds: projectList.map((project) => project.id).toSet(),
         enabledTools: appSettings.enabledTools.toSet(),
         onToolCall: (call) {

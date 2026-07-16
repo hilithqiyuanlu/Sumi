@@ -8,6 +8,67 @@ import 'dart:convert';
 
 enum TodoSource { user, system }
 
+/// 统一输入的判定结果。只有 createTodo 可以直接创建事项。
+enum InputIntent { chat, createTodo, clarifyTodo }
+
+class InputClassification {
+  final InputIntent intent;
+  final double confidence;
+  final String? title;
+  final String? date;
+  final String? reminderTime;
+  final List<String> missingFields;
+  final String? clarification;
+
+  const InputClassification({
+    required this.intent,
+    required this.confidence,
+    this.title,
+    this.date,
+    this.reminderTime,
+    this.missingFields = const [],
+    this.clarification,
+  });
+
+  factory InputClassification.fromJson(Map<String, Object?> json) {
+    final name = json['intent'] as String? ?? 'chat';
+    return InputClassification(
+      intent: InputIntent.values.firstWhere(
+        (value) => value.name == name,
+        orElse: () => InputIntent.chat,
+      ),
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      title: json['title'] as String?,
+      date: json['date'] as String?,
+      reminderTime: json['reminderTime'] as String?,
+      missingFields: (json['missingFields'] as List<Object?>?)
+              ?.whereType<String>()
+              .toList(growable: false) ??
+          const [],
+      clarification: json['clarification'] as String?,
+    );
+  }
+}
+
+class MilestoneRecognition {
+  final double confidence;
+  final String? todoId;
+  final String? quotedText;
+
+  const MilestoneRecognition({
+    required this.confidence,
+    this.todoId,
+    this.quotedText,
+  });
+
+  factory MilestoneRecognition.fromJson(Map<String, Object?> json) =>
+      MilestoneRecognition(
+        confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+        todoId: json['todoId'] as String?,
+        quotedText: json['quotedText'] as String?,
+      );
+}
+
 /// 用户行为信号类型（07 轮新增）。
 enum SignalType {
   todoCreated,
@@ -31,18 +92,20 @@ enum ProjectColor { lemon, mint, lilac, cherry, sky, peach, sage }
 class AppSettings {
   final String deepseekApiKey;
   final String tavilyApiKey;
-  final bool thinkingEnabled;
   final bool localTextGenerationEnabled;
   final bool showAllMonthCards; // 开发者开关：披露全部月卡
+  final bool suggestionQuestionsEnabled;
+  final bool scheduleLoadAnalysisEnabled;
   final String userName; // 用户昵称
   final List<String> enabledTools;
 
   const AppSettings({
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
-    this.thinkingEnabled = true,
     this.localTextGenerationEnabled = true,
     this.showAllMonthCards = false,
+    this.suggestionQuestionsEnabled = true,
+    this.scheduleLoadAnalysisEnabled = true,
     this.userName = '',
     this.enabledTools = const [
       'search_web',
@@ -58,19 +121,23 @@ class AppSettings {
   AppSettings copyWith({
     String? deepseekApiKey,
     String? tavilyApiKey,
-    bool? thinkingEnabled,
     bool? localTextGenerationEnabled,
     bool? showAllMonthCards,
+    bool? suggestionQuestionsEnabled,
+    bool? scheduleLoadAnalysisEnabled,
     String? userName,
     List<String>? enabledTools,
   }) {
     return AppSettings(
       deepseekApiKey: deepseekApiKey ?? this.deepseekApiKey,
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
-      thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
       localTextGenerationEnabled:
           localTextGenerationEnabled ?? this.localTextGenerationEnabled,
       showAllMonthCards: showAllMonthCards ?? this.showAllMonthCards,
+      suggestionQuestionsEnabled:
+          suggestionQuestionsEnabled ?? this.suggestionQuestionsEnabled,
+      scheduleLoadAnalysisEnabled:
+          scheduleLoadAnalysisEnabled ?? this.scheduleLoadAnalysisEnabled,
       userName: userName ?? this.userName,
       enabledTools: enabledTools ?? this.enabledTools,
     );
@@ -79,9 +146,10 @@ class AppSettings {
   Map<String, Object?> toJson({bool includeSecrets = false}) => {
     'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
     'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
-    'thinkingEnabled': thinkingEnabled,
     'localTextGenerationEnabled': localTextGenerationEnabled,
     'showAllMonthCards': showAllMonthCards,
+    'suggestionQuestionsEnabled': suggestionQuestionsEnabled,
+    'scheduleLoadAnalysisEnabled': scheduleLoadAnalysisEnabled,
     'userName': userName,
     'enabledTools': enabledTools,
   };
@@ -89,25 +157,28 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, Object?> json) => AppSettings(
     deepseekApiKey: (json['deepseekApiKey'] as String?) ?? '',
     tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
-    thinkingEnabled: (json['thinkingEnabled'] as bool?) ?? true,
     localTextGenerationEnabled:
         (json['localTextGenerationEnabled'] as bool?) ?? true,
     showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
+    suggestionQuestionsEnabled:
+        (json['suggestionQuestionsEnabled'] as bool?) ?? true,
+    scheduleLoadAnalysisEnabled:
+        (json['scheduleLoadAnalysisEnabled'] as bool?) ?? true,
     userName: (json['userName'] as String?) ?? '',
-    enabledTools:
-        (json['enabledTools'] as List<Object?>?)
-            ?.whereType<String>()
-            .toSet()
-            .toList(growable: false) ??
-        const [
-          'search_web',
-          'read_memory',
-          'read_todos',
-          'read_signals',
-          'write_todo',
-          'create_study_timer',
-          'start_project_generation',
-        ],
+    enabledTools: {
+      ...(json['enabledTools'] as List<Object?>?)
+              ?.whereType<String>()
+              .toSet() ??
+          const {
+            'search_web',
+            'read_memory',
+            'read_todos',
+            'read_signals',
+            'create_study_timer',
+            'start_project_generation',
+          },
+      'write_todo',
+    }.toList(growable: false),
   );
 }
 
@@ -215,6 +286,79 @@ class SearchSnippet {
     'content': content,
   };
 }
+
+/// One compact question shown in the homepage suggestion strip.
+/// It is a prompt for Sumi, never an instruction that the app executes itself.
+class SuggestionQuestion {
+  final String id;
+  final int slot;
+  final String text;
+  final String intent;
+  final bool isToday;
+  final bool keepExisting;
+  final String? todoId;
+  final String? projectId;
+
+  const SuggestionQuestion({
+    required this.id,
+    required this.slot,
+    required this.text,
+    required this.intent,
+    required this.isToday,
+    this.keepExisting = false,
+    this.todoId,
+    this.projectId,
+  });
+
+  SuggestionQuestion copyWith({
+    String? id,
+    int? slot,
+    String? text,
+    String? intent,
+    bool? isToday,
+    bool? keepExisting,
+    Object? todoId = _suggestionQuestionUnset,
+    Object? projectId = _suggestionQuestionUnset,
+  }) => SuggestionQuestion(
+    id: id ?? this.id,
+    slot: slot ?? this.slot,
+    text: text ?? this.text,
+    intent: intent ?? this.intent,
+    isToday: isToday ?? this.isToday,
+    keepExisting: keepExisting ?? this.keepExisting,
+    todoId: identical(todoId, _suggestionQuestionUnset)
+        ? this.todoId
+        : todoId as String?,
+    projectId: identical(projectId, _suggestionQuestionUnset)
+        ? this.projectId
+        : projectId as String?,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'slot': slot,
+    'text': text,
+    'intent': intent,
+    'isToday': isToday,
+    if (keepExisting) 'keepExisting': true,
+    if (todoId != null) 'todoId': todoId,
+    if (projectId != null) 'projectId': projectId,
+  };
+
+  factory SuggestionQuestion.fromJson(Map<String, Object?> json) =>
+      SuggestionQuestion(
+        id: (json['id'] as String?) ?? '',
+        slot: (json['slot'] as num?)?.toInt() ?? 0,
+        text: (json['text'] as String?) ?? '',
+        intent: (json['intent'] as String?) ?? '',
+        isToday: json['isToday'] == true,
+        keepExisting: json['keepExisting'] == true,
+        todoId: json['todoId'] as String?,
+        projectId: json['projectId'] as String?,
+      );
+}
+
+const _suggestionQuestionUnset = Object();
 
 class GoalAssessment {
   final double clarity;
@@ -470,6 +614,31 @@ class MonthCard {
   );
 }
 
+/// 可追溯的项目进展节点，不属于普通长期记忆。
+class Milestone {
+  final String id;
+  final String projectId;
+  final String todoId;
+  final String sourceMessageId;
+  final String quote;
+  final String todoTitle;
+  final int monthIndex;
+  final DateTime occurredAt;
+  final String? memoryId;
+
+  const Milestone({
+    required this.id,
+    required this.projectId,
+    required this.todoId,
+    required this.sourceMessageId,
+    required this.quote,
+    required this.todoTitle,
+    required this.monthIndex,
+    required this.occurredAt,
+    this.memoryId,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Conversation
 // ---------------------------------------------------------------------------
@@ -570,6 +739,7 @@ class ChatMessage {
   final String? reasoningContent; // AI 思考过程（仅 assistant 消息）
   final String? toolCallsJson; // 工具调用 JSON（仅 assistant 消息，DB 序列化用）
   final String? toolCallId; // tool 消息对应的 tool_call_id（仅 tool 消息）
+  final String? todoResultJson;
 
   const ChatMessage({
     required this.id,
@@ -580,6 +750,7 @@ class ChatMessage {
     this.reasoningContent,
     this.toolCallsJson,
     this.toolCallId,
+    this.todoResultJson,
   });
 
   ChatMessage copyWith({
@@ -587,6 +758,7 @@ class ChatMessage {
     String? reasoningContent,
     String? toolCallsJson,
     String? toolCallId,
+    String? todoResultJson,
   }) {
     return ChatMessage(
       id: id,
@@ -597,6 +769,7 @@ class ChatMessage {
       reasoningContent: reasoningContent ?? this.reasoningContent,
       toolCallsJson: toolCallsJson ?? this.toolCallsJson,
       toolCallId: toolCallId ?? this.toolCallId,
+      todoResultJson: todoResultJson ?? this.todoResultJson,
     );
   }
 
@@ -609,6 +782,7 @@ class ChatMessage {
     if (reasoningContent != null) 'reasoningContent': reasoningContent,
     if (toolCallsJson != null) 'toolCallsJson': toolCallsJson,
     if (toolCallId != null) 'toolCallId': toolCallId,
+    if (todoResultJson != null) 'todoResultJson': todoResultJson,
   };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
@@ -622,6 +796,7 @@ class ChatMessage {
     reasoningContent: json['reasoningContent'] as String?,
     toolCallsJson: json['toolCallsJson'] as String?,
     toolCallId: json['toolCallId'] as String?,
+    todoResultJson: json['todoResultJson'] as String?,
   );
 }
 

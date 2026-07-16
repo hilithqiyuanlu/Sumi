@@ -23,9 +23,10 @@
 - **📡 行为信号** — todo 创建/完成/编辑/拖拽、项目目标/水平/周期设定等 10 种信号自动采集，AI 通过 read_signals 工具查询历史模式；信号数据同时嵌入本地向量库供混合检索
 - **📊 日程负载** — 自动检测未来 7 天事项密度，评估日负荷与连续高负荷；超负荷时生成调整建议（将未完成事项移至较空日期），对话列表内嵌卡片确认或忽略；App 退到后台时推送系统通知提醒
 - **🔍 本地检索** — 端侧 BGE-small-zh-v1.5 嵌入模型，混合检索（语义相似度 65% + 关键词 15% + 来源可信度 12% + 时间衰减 8%），无需网络即可从历史对话/记忆/项目中检索相关内容注入 prompt
-- **🔀 模型路由** — 能力接口抽象（Chat/Structured/MemoryExtraction/WebSearch/Embedding），统一度量采集（耗时/成功率/错误分类），当前全部路由云端，本地模型可插拔扩展
+- **🔀 模型路由** — 统一选择聊天、结构化生成、记忆提取、搜索与嵌入能力，并记录匿名耗时/成功率；聊天保持云端，短结构化任务可优先使用本地模型
 - **🔧 工具注册中心** — ChatToolRegistry 集中管理所有工具定义（名称/标签/描述/分组/JSON Schema），执行器按注册表动态启用工具；统一的 ReminderScheduler 接口抽象系统提醒能力，方便测试替换
-- **🖥️ 端侧文本生成** — 可选下载本地语言模型（ONNX Runtime），支持端侧结构化生成与记忆提取，无网络也能使用基础 AI 能力
+- **🖥️ 端侧文本生成** — 可选下载本地语言模型 Qwen3.5-0.8B（GGUF / llamadart），支持端侧结构化生成与记忆提取，无网络也能使用基础 AI 能力
+- **🏁 里程碑与每日复盘** — 识别用户明确表达的完成与突破，沉淀为可回看的学习里程碑；每日复盘将事项、对话与记忆整理为可确认的总结
 - **🛡️ AI 契约校验** — 所有 AI 结构化输出经 AiContracts 强校验（字段类型、长度、取值范围），非法输出自动拦截，防止脏数据落库
 - **🔐 本地优先** — SQLite 持久化，API Key 走 Keychain 安全存储，无需服务器
 
@@ -101,7 +102,7 @@ lib/
 │   ├── signal_service.dart              # 信号采集 / 编辑区分 / 凝练还原保护
 │   ├── snapshot_write_queue.dart        # 串行快照写入队列
 │   ├── memory_service.dart              # 记忆引擎 — 结构化存储 / 证据链 / 提取管线 / 建议偏好学习
-│   ├── memory_extraction.dart           # AI 记忆提取 — 从对话消息中识别偏好/目标/约束
+│   ├── memory_extraction.dart           # AI 记忆提取 — 识别长期偏好/目标/约束 + 当前进度/困难/短期限制
 │   ├── model_router.dart                # 模型路由器 — 能力接口抽象 + 度量采集
 │   ├── model_router_metrics.dart        # 路由诊断指标持久化
 │   ├── model_package_manager.dart       # 本地模型包下载/校验管理
@@ -118,6 +119,10 @@ lib/
 │   ├── local_text_generation_runtime.dart     # 端侧文本生成运行时
 │   ├── local_text_model_package.dart          # 端侧文本模型包管理
 │   ├── local_structured_generation.dart       # 端侧结构化生成
+│   ├── app_update_service.dart            # 应用更新检测（版本比对/APK 下载校验）
+│   ├── today_suggestion_mapper.dart       # 今日建议映射（记忆→问候语建议）
+│   ├── milestone_service.dart              # 学习里程碑存储与记忆关联
+│   ├── daily_reflection.dart               # 每日复盘持久化与生成协调
 │   └── secure_settings_store.dart       # Keychain 安全存储
 ├── widgets/
 │   ├── score_bar.dart                   # 评估分数条
@@ -144,13 +149,13 @@ lib/
 │   │   ├── month_card_pager.dart
 │   │   ├── project_editor_page.dart
 │   │   └── project_generation_page.dart
-│   ├── settings/                        # 设置、用户模型编辑器、信号日志、本地检索、路由诊断、本地文本模型
+│   ├── settings/                        # 设置、用户模型编辑器、信号日志、本地智能、路由诊断
 │   │   ├── settings_body.dart
 │   │   ├── user_model_editor_page.dart
 │   │   ├── signal_log_page.dart
-│   │   ├── local_retrieval_page.dart
-│   │   ├── local_text_model_page.dart
+│   │   ├── local_retrieval_page.dart       # 本地智能（检索与文本生成）
 │   │   ├── model_router_metrics_page.dart
+│   │   ├── app_update_page.dart
 │   │   └── user_hypotheses_page.dart
 │   ├── memory/                          # 记忆管理中心
 │   │   └── memory_center_page.dart
@@ -159,7 +164,7 @@ lib/
 │   └── shared/                          # 拖拽把手
 │       └── drag_handle.dart
 ├── android/.../EmbeddingEngine.kt       # Android 端侧嵌入引擎
-├── test/                                # 测试套件（16 个文件）
+├── test/                                # 测试套件（22 个文件）
 ├── tools/                               # 开发工具脚本
 └── docs/                                # 技术文档
 ```

@@ -22,9 +22,22 @@ mixin SumiStorePersist {
   MemoryService? get memoryServiceForStore;
   Future<void> persistSnapshotNow(Map<String, Object?> snapshot);
   ModelRouterMetricsStore get modelRouterMetrics;
+  List<SuggestionQuestion> get cachedSuggestionQuestions;
+  set cachedSuggestionQuestions(List<SuggestionQuestion> value);
+  String? get suggestionQuestionsFingerprint;
+  set suggestionQuestionsFingerprint(String? value);
+  DateTime? get suggestionQuestionsGeneratedAt;
+  set suggestionQuestionsGeneratedAt(DateTime? value);
+  Set<String> get rejectedSuggestionIntents;
+  Set<String> get disabledSuggestionIntents;
+  Set<String> get acceptedSuggestionIntents;
+  void restoreSuggestionQuestionFeedback(Map<String, Object?>? value);
+  void setSuggestionsDirty(bool value);
   Future<void> deleteLocalRetrievalModel();
   Future<void> clearStudyTimers();
   Future<void> clearScheduleProposals();
+  Future<void> clearMilestones();
+  Future<void> clearDailyReflections();
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -53,12 +66,6 @@ mixin SumiStorePersist {
       appSettings = AppSettings.fromJson(settingsMap);
     }
 
-    // Thinking 模式
-    final thinkEnabled = map['thinkingEnabled'] as bool?;
-    if (thinkEnabled != null) {
-      appSettings = appSettings.copyWith(thinkingEnabled: thinkEnabled);
-    }
-
     // Projects / MonthCards / Todos
     _restoreList(
       map['projects'] as List<Object?>?,
@@ -81,6 +88,25 @@ mixin SumiStorePersist {
     }
     final metrics = map['modelRouterMetrics'] as Map<String, Object?>?;
     modelRouterMetrics.restore(metrics);
+    final cached = map['suggestionQuestions'];
+    if (cached is List<Object?>) {
+      cachedSuggestionQuestions = cached
+          .whereType<Map<String, Object?>>()
+          .map(SuggestionQuestion.fromJson)
+          .where((item) => item.id.isNotEmpty && item.text.isNotEmpty)
+          .toList(growable: false);
+      if (cachedSuggestionQuestions.length == 5) {
+        setSuggestionsDirty(false);
+      }
+    }
+    suggestionQuestionsFingerprint =
+        map['suggestionQuestionsFingerprint'] as String?;
+    suggestionQuestionsGeneratedAt = DateTime.tryParse(
+      map['suggestionQuestionsGeneratedAt'] as String? ?? '',
+    );
+    restoreSuggestionQuestionFeedback(
+      map['suggestionQuestionFeedback'] as Map<String, Object?>?,
+    );
     // monthViewExpanded 已由 AnimationController 管理，不再持久化
   }
 
@@ -93,8 +119,20 @@ mixin SumiStorePersist {
       'todos': todoItems.map((t) => t.toJson()).toList(),
       'currentProjectId': currentProjectId,
       'selectedDate': selectedDate.toIso8601String(),
-      'thinkingEnabled': appSettings.thinkingEnabled,
       'modelRouterMetrics': modelRouterMetrics.toJson(),
+      if (cachedSuggestionQuestions.isNotEmpty)
+        'suggestionQuestions':
+            cachedSuggestionQuestions.map((item) => item.toJson()).toList(),
+      if (suggestionQuestionsFingerprint != null)
+        'suggestionQuestionsFingerprint': suggestionQuestionsFingerprint,
+      if (suggestionQuestionsGeneratedAt != null)
+        'suggestionQuestionsGeneratedAt':
+            suggestionQuestionsGeneratedAt!.toIso8601String(),
+      'suggestionQuestionFeedback': {
+        'sentIntents': acceptedSuggestionIntents.toList(growable: false),
+        'notSuitableIntents': rejectedSuggestionIntents.toList(growable: false),
+        'disabledIntents': disabledSuggestionIntents.toList(growable: false),
+      },
     };
   }
 
@@ -127,6 +165,8 @@ mixin SumiStorePersist {
     modelRouterMetrics.clear();
     await clearStudyTimers();
     await clearScheduleProposals();
+    await clearMilestones();
+    await clearDailyReflections();
     // 本地检索是可选组件；平台通道不可用时不应阻断用户数据清除。
     try {
       await deleteLocalRetrievalModel();

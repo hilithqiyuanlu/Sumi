@@ -15,6 +15,7 @@ class MonthCalendar extends StatelessWidget {
     final store = SumiScope.watchTodos(context);
     final selected = dateOnly(store.selectedDate);
     final today = dateOnly(DateTime.now());
+    final todayKey = dateKey(today);
 
     // 当月第一天和最后一天
     final firstOfMonth = DateTime(selected.year, selected.month, 1);
@@ -63,12 +64,19 @@ class MonthCalendar extends StatelessWidget {
             final isSelected = isSameDate(date, selected);
             final isTodayDate = isSameDate(date, today);
             final isPast = date.isBefore(today) && !isTodayDate;
+            final hasTodos = store.todoItems.any(
+              (todo) =>
+                  !todo.done &&
+                  (todo.date == dateKey(date) ||
+                      (todo.date == null && dateKey(date) == todayKey)),
+            );
 
             return _CalendarCell(
               day: date.day,
               isSelected: isSelected,
               isToday: isTodayDate,
               isPast: isPast,
+              hasTodos: hasTodos,
               onTap: () => store.selectDate(date),
             );
           }).toList(),
@@ -83,6 +91,7 @@ class _CalendarCell extends StatelessWidget {
   final bool isSelected;
   final bool isToday;
   final bool isPast;
+  final bool hasTodos;
   final VoidCallback? onTap;
 
   const _CalendarCell({
@@ -90,15 +99,17 @@ class _CalendarCell extends StatelessWidget {
     this.isSelected = false,
     this.isToday = false,
     this.isPast = false,
+    this.hasTodos = false,
     this.onTap,
   });
 
   const _CalendarCell.empty()
-      : day = null,
-        isSelected = false,
-        isToday = false,
-        isPast = false,
-        onTap = null;
+    : day = null,
+      isSelected = false,
+      isToday = false,
+      isPast = false,
+      hasTodos = false,
+      onTap = null;
 
   @override
   Widget build(BuildContext context) {
@@ -132,19 +143,35 @@ class _CalendarCell extends StatelessWidget {
           child: Container(
             width: cellWidth * 0.7,
             height: cellWidth * 0.7,
-            decoration: BoxDecoration(
-              color: bgColor,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                '$day',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: isSelected || isToday ? FontWeight.w700 : FontWeight.w400,
-                  color: txtColor,
+            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Text(
+                  '$day',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected || isToday
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                    color: txtColor,
+                  ),
                 ),
-              ),
+                if (hasTodos)
+                  const Positioned(
+                    bottom: 4,
+                    child: SizedBox(
+                      width: 4,
+                      height: 4,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: primary500,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),

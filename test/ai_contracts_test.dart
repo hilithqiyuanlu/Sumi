@@ -118,6 +118,38 @@ void main() {
       expect(result.errors, contains('建议不能重复'));
     });
 
+    test('建议提问必须完整、可发送且只能关联已有数据', () {
+      List<Map<String, Object?>> questions({String todoId = 'todo-1'}) => [
+        for (var slot = 0; slot < 5; slot++)
+          {
+            'slot': slot,
+            'text': '帮我分析第${slot + 1}个学习问题',
+            'intent': '学习分析',
+            'isToday': slot == 1 || slot == 3,
+            'keepExisting': false,
+            if (slot == 1) 'todoId': todoId,
+            if (slot == 3) 'projectId': 'project-1',
+          },
+      ];
+
+      expect(
+        AiContracts.suggestionQuestions(
+          {'questions': questions()},
+          validTodoIds: const {'todo-1'},
+          validProjectIds: const {'project-1'},
+        ).isValid,
+        isTrue,
+      );
+      expect(
+        AiContracts.suggestionQuestions(
+          {'questions': questions(todoId: 'unknown')},
+          validTodoIds: const {'todo-1'},
+          validProjectIds: const {'project-1'},
+        ).isValid,
+        isFalse,
+      );
+    });
+
     test('周计划必须完整覆盖请求日期，且事项日期不能越界', () {
       final valid = AiContracts.weeklyTodos(
         {

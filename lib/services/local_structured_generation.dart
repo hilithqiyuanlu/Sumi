@@ -68,6 +68,27 @@ class LocalFirstStructuredGeneration implements StructuredGenerationCapability {
   }
 
   @override
+  Future<InputClassification?> classifyInput(String text, {String? draft}) =>
+      cloud.classifyInput(text, draft: draft);
+
+  @override
+  Future<MilestoneRecognition?> recognizeMilestone({
+    required String message,
+    required List<TodoItem> candidates,
+  }) => cloud.recognizeMilestone(message: message, candidates: candidates);
+
+  @override
+  Future<DailyReflectionResult?> generateDailyReflection({
+    required String date,
+    required List<Map<String, Object?>> messages,
+    required List<Map<String, Object?>> signals,
+  }) => cloud.generateDailyReflection(
+    date: date,
+    messages: messages,
+    signals: signals,
+  );
+
+  @override
   Future<DailyTodoResult?> generateDailyTodos({
     required String monthPlanTitle,
     required String monthPlanSummary,

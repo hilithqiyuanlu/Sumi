@@ -101,7 +101,11 @@ class MemoryExtractionService {
         candidates: candidates,
       );
       if (decision == null) {
-        await memory.finishExtraction(messageId, status: 'failed');
+        await memory.finishExtraction(
+          messageId,
+          status: 'failed',
+          errorCategory: 'no_valid_decision',
+        );
         return;
       }
       final applied = await memory.applyExtractionDecision(
@@ -119,7 +123,11 @@ class MemoryExtractionService {
     } catch (_) {
       // Background extraction is intentionally silent and must not affect chat.
       try {
-        await memory.finishExtraction(messageId, status: 'failed');
+        await memory.finishExtraction(
+          messageId,
+          status: 'failed',
+          errorCategory: 'runtime',
+        );
       } catch (_) {
         // The app may have been closed while this best-effort task was running.
       }

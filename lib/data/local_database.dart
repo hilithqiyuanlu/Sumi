@@ -20,7 +20,7 @@ class SumiLocalDatabase {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 17,
+      version: 21,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -36,6 +36,8 @@ class SumiLocalDatabase {
         await _createMemoryExtractionTables(db);
         await _createStudyTimersTable(db);
         await _createScheduleProposalTable(db);
+        await _createMilestoneTables(db);
+        await _createDailyReflectionTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -83,6 +85,18 @@ class SumiLocalDatabase {
         if (oldVersion < 17) {
           await _createScheduleProposalTable(db);
         }
+        if (oldVersion < 18) {
+          await _migrateV17toV18(db);
+        }
+        if (oldVersion < 19) {
+          await _createMilestoneTables(db);
+        }
+        if (oldVersion < 20) {
+          await _migrateV19toV20(db);
+        }
+        if (oldVersion < 21) {
+          await _createDailyReflectionTables(db);
+        }
       },
     );
     return _db!;
@@ -109,6 +123,7 @@ class SumiLocalDatabase {
         reasoning_content TEXT,
         tool_calls_json TEXT,
         tool_call_id TEXT,
+        todo_result_json TEXT,
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       )
     ''');
@@ -160,6 +175,59 @@ class SumiLocalDatabase {
   Future<void> _migrateV4toV5(Database db) async {
     await db.execute(
       "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
+  Future<void> _migrateV17toV18(Database db) async {
+    await db.execute("ALTER TABLE messages ADD COLUMN todo_result_json TEXT");
+  }
+
+  Future<void> _createMilestoneTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS milestones (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, todo_id TEXT NOT NULL,
+      source_message_id TEXT NOT NULL, quote TEXT NOT NULL, todo_title TEXT NOT NULL,
+      month_index INTEGER NOT NULL, occurred_at TEXT NOT NULL, memory_id TEXT,
+      created_at TEXT NOT NULL, UNIQUE(source_message_id, todo_id))''');
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS pending_milestone_statements (
+      message_id TEXT NOT NULL, todo_id TEXT NOT NULL, quote TEXT NOT NULL,
+      occurred_at TEXT NOT NULL, created_at TEXT NOT NULL,
+      UNIQUE(message_id, todo_id))''',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_milestones_project_month '
+      'ON milestones(project_id, month_index, occurred_at)',
+    );
+  }
+
+  /// v19 曾将待匹配原话只按消息保存，无法关联对应 Todo。
+  Future<void> _migrateV19toV20(Database db) async {
+    await db.execute('DROP TABLE IF EXISTS pending_milestone_statements');
+    await _createMilestoneTables(db);
+  }
+
+  Future<void> _createDailyReflectionTables(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS daily_reflections (
+      date_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      short_summary TEXT,
+      reflection TEXT,
+      highlights_json TEXT NOT NULL DEFAULT '[]',
+      source_fingerprint TEXT,
+      attempted_at TEXT,
+      generated_at TEXT,
+      failure_category TEXT
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_daily_reflections_status_date '
+      'ON daily_reflections(status, date_key)',
+    );
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS daily_reflection_memory_runs (
+      date_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''',
     );
   }
 
@@ -284,13 +352,15 @@ class SumiLocalDatabase {
   }
 
   Future<void> _createScheduleProposalTable(Database db) async {
-    await db.execute('''CREATE TABLE IF NOT EXISTS schedule_rebalance_proposals (
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS schedule_rebalance_proposals (
       id TEXT PRIMARY KEY,
       body_json TEXT NOT NULL,
       fingerprint TEXT NOT NULL,
       status TEXT NOT NULL,
       created_at TEXT NOT NULL
-    )''');
+    )''',
+    );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_schedule_rebalance_fingerprint ON schedule_rebalance_proposals(fingerprint)',
     );
@@ -328,7 +398,7 @@ class SumiLocalDatabase {
   Future<void> _createMemoryExtractionTables(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS memory_extraction_runs (
       message_id TEXT PRIMARY KEY, status TEXT NOT NULL,
-      decision_json TEXT, processed_at TEXT NOT NULL)''');
+      decision_json TEXT, error_category TEXT, processed_at TEXT NOT NULL)''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_memory_extraction_runs_processed ON memory_extraction_runs(processed_at)',
     );

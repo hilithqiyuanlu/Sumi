@@ -26,6 +26,10 @@ class TimerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void remove(String id) {
+    if (_timers.remove(id) != null) notifyListeners();
+  }
+
   void tick() => notifyListeners();
 
   void clear() {

@@ -36,7 +36,7 @@ class ChatPromptBuilder {
     Iterable<String> enabledTools = const [],
   }) {
     final blocks = <String>[basePrompt];
-    final enabled = enabledTools.toSet();
+    final enabled = enabledTools.where((name) => name != 'write_todo').toSet();
     if (enabled.isNotEmpty) {
       blocks.add('## 当前可用工具');
       blocks.add(

@@ -17,6 +17,12 @@ class StructuredAiService {
 
   Future<SplitResult?> splitTodo(String text) => _client.splitTodo(text);
   Future<String?> polishTodo(String text) => _client.polishTodo(text);
+  Future<InputClassification?> classifyInput(String text, {String? draft}) =>
+      _client.classifyInput(text, draft: draft);
+  Future<MilestoneRecognition?> recognizeMilestone({
+    required String message,
+    required List<TodoItem> candidates,
+  }) => _client.recognizeMilestone(message: message, candidates: candidates);
 
   Future<PlanResult?> generatePlan({
     required String goal,
@@ -67,6 +73,16 @@ class StructuredAiService {
     scheduledHours: scheduledHours,
   );
 
+  Future<DailyReflectionResult?> generateDailyReflection({
+    required String date,
+    required List<Map<String, Object?>> messages,
+    required List<Map<String, Object?>> signals,
+  }) => _client.generateDailyReflection(
+    date: date,
+    messages: messages,
+    signals: signals,
+  );
+
   Future<WeeklyTodoResult?> generateWeeklyTodos({
     required String monthPlanTitle,
     required String monthPlanSummary,
@@ -111,6 +127,27 @@ class StructuredAiService {
   );
 }
 
+class SuggestionQuestionAiService {
+  final AiTransport _client;
+  const SuggestionQuestionAiService(this._client);
+
+  String? get lastError => _client.lastApiError;
+
+  Future<List<SuggestionQuestion>?> recommend({
+    required Map<String, Object?> context,
+    required List<SuggestionQuestion> existing,
+    required Set<String> validTodoIds,
+    required Set<String> validProjectIds,
+    required Set<String> forbiddenIntents,
+  }) => _client.recommendSuggestionQuestions(
+    context: context,
+    existing: existing,
+    validTodoIds: validTodoIds,
+    validProjectIds: validProjectIds,
+    forbiddenIntents: forbiddenIntents,
+  );
+}
+
 class ChatAgentService {
   final AiTransport _client;
   const ChatAgentService(this._client);
@@ -119,12 +156,13 @@ class ChatAgentService {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    bool thinkingEnabled = true,
     int maxTurns = 5,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
   }) async* {
-    final allowedTools = enabledTools ?? ChatToolRegistry.allNames.toSet();
+    final allowedTools = (enabledTools ?? ChatToolRegistry.allNames.toSet())
+        .where((name) => name != 'write_todo')
+        .toSet();
     for (var turn = 0; turn < maxTurns; turn++) {
       List<ToolCall>? pendingCalls;
       final contentBuf = StringBuffer();
@@ -133,7 +171,6 @@ class ChatAgentService {
       yield AgentActivityEvent('正在生成回复');
       await for (final event in _client.streamChatMessages(
         messages,
-        thinkingEnabled: thinkingEnabled,
         tools: ChatToolRegistry.schemasFor(allowedTools),
       )) {
         switch (event) {
@@ -252,6 +289,7 @@ class AiRuntime {
   late final ChatAgentService chat;
   late final WebSearchService search;
   late final MemoryExtractionAiService memoryExtraction;
+  late final SuggestionQuestionAiService suggestionQuestions;
 
   AiRuntime({
     required String apiKey,
@@ -274,6 +312,7 @@ class AiRuntime {
     chat = ChatAgentService(transport);
     search = WebSearchService(transport);
     memoryExtraction = MemoryExtractionAiService(transport);
+    suggestionQuestions = SuggestionQuestionAiService(transport);
   }
 
   void close() => transport.close();

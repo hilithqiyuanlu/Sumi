@@ -22,13 +22,15 @@ class ChatBubble extends StatelessWidget {
   final DateTime? timestamp;
   final String? activityLabel;
   final String? toolCallsJson;
+  final String? todoResultJson;
+  final VoidCallback? onOpenTodo;
+  final bool showMilestoneSaved;
   final VoidCallback? onDelete;
   final Future<ChatSendResult> Function(String content)? onEdit;
   final TimerController? timerController;
   final Future<void> Function(String id)? onStartTimer;
   final Future<void> Function(String id)? onPauseTimer;
   final Future<void> Function(String id)? onFinishTimer;
-  final Future<void> Function(String id)? onCancelTimer;
   final ProjectGenerationController? projectGenerationController;
 
   const ChatBubble({
@@ -39,13 +41,15 @@ class ChatBubble extends StatelessWidget {
     this.timestamp,
     this.activityLabel,
     this.toolCallsJson,
+    this.todoResultJson,
+    this.onOpenTodo,
+    this.showMilestoneSaved = false,
     this.onDelete,
     this.onEdit,
     this.timerController,
     this.onStartTimer,
     this.onPauseTimer,
     this.onFinishTimer,
-    this.onCancelTimer,
     this.projectGenerationController,
   });
 
@@ -79,6 +83,8 @@ class ChatBubble extends StatelessWidget {
           // 工具调用指示（仅 AI 且有 tool_calls 时显示，简洁样式）
           if (!isUser && toolCallsJson != null && toolCallsJson!.isNotEmpty)
             _ToolCallIndicator(toolCallsJson: toolCallsJson!),
+          if (!isUser && todoResultJson != null)
+            _TodoResultCard(json: todoResultJson!, onOpen: onOpenTodo),
           if (!isUser && toolCallsJson != null && timerController != null)
             _StudyTimerFromToolCalls(
               toolCallsJson: toolCallsJson!,
@@ -86,7 +92,6 @@ class ChatBubble extends StatelessWidget {
               onStart: onStartTimer,
               onPause: onPauseTimer,
               onFinish: onFinishTimer,
-              onCancel: onCancelTimer,
             ),
           if (!isUser &&
               toolCallsJson != null &&
@@ -96,44 +101,46 @@ class ChatBubble extends StatelessWidget {
               controller: projectGenerationController!,
             ),
           // 气泡（用户消息可删除；最新一条还可编辑后重新发送）
-          GestureDetector(
-            onLongPress: isUser
-                ? () => _showUserMessageActions(context)
-                : () => _copyContent(context),
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.78,
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: s12,
-                vertical: s10,
-              ),
-              decoration: BoxDecoration(
-                color: isUser ? mint : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(isUser ? radius20 : s4),
-                  topRight: Radius.circular(isUser ? s4 : radius20),
-                  bottomLeft: const Radius.circular(radius20),
-                  bottomRight: const Radius.circular(radius20),
+          if (todoResultJson == null)
+            GestureDetector(
+              onLongPress: isUser
+                  ? () => _showUserMessageActions(context)
+                  : () => _copyContent(context),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.78,
                 ),
-                border: Border.all(
-                  color: isUser
-                      ? Colors.transparent
-                      : line.withValues(alpha: 0.3),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: s12,
+                  vertical: s10,
                 ),
-                boxShadow: isUser
-                    ? null
-                    : const [
-                        BoxShadow(
-                          color: Color(0x080E1115),
-                          offset: Offset(0, 1),
-                          blurRadius: 3,
-                        ),
-                      ],
+                decoration: BoxDecoration(
+                  color: isUser ? mint : Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(isUser ? radius20 : s4),
+                    topRight: Radius.circular(isUser ? s4 : radius20),
+                    bottomLeft: const Radius.circular(radius20),
+                    bottomRight: const Radius.circular(radius20),
+                  ),
+                  border: Border.all(
+                    color: isUser
+                        ? Colors.transparent
+                        : line.withValues(alpha: 0.3),
+                  ),
+                  boxShadow: isUser
+                      ? null
+                      : const [
+                          BoxShadow(
+                            color: Color(0x080E1115),
+                            offset: Offset(0, 1),
+                            blurRadius: 3,
+                          ),
+                        ],
+                ),
+                child: _buildContent(),
               ),
-              child: _buildContent(),
             ),
-          ),
+          if (isUser && showMilestoneSaved) const _MilestoneSavedHint(),
         ],
       ),
     );
@@ -342,6 +349,87 @@ class ChatBubble extends StatelessWidget {
   );
 }
 
+class _MilestoneSavedHint extends StatelessWidget {
+  const _MilestoneSavedHint();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: s4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.bookmark_added_outlined, size: 14, color: primary500),
+            SizedBox(width: s4),
+            Text('已收录为里程碑', style: TextStyle(fontSize: 12, color: primary500)),
+          ],
+        ),
+      );
+}
+
+class _TodoResultCard extends StatelessWidget {
+  final String json;
+  final VoidCallback? onOpen;
+
+  const _TodoResultCard({required this.json, this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      final data = jsonDecode(json) as Map<String, Object?>;
+      final title = data['title'] as String? ?? '事项';
+      final date = data['date'] as String? ?? '';
+      final time = data['reminderTime'] as String?;
+      return GestureDetector(
+        onTap: onOpen,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.78,
+          margin: const EdgeInsets.only(bottom: s4),
+          padding: const EdgeInsets.symmetric(horizontal: s12, vertical: s10),
+          decoration: BoxDecoration(
+            color: primary50,
+            borderRadius: BorderRadius.circular(radius8),
+            border: Border.all(color: primary100),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: primary500),
+              const SizedBox(width: s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '已创建待办',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      [
+                        date,
+                        time,
+                      ].whereType<String>().where((v) => v.isNotEmpty).join('  '),
+                      style: const TextStyle(fontSize: 12, color: textTertiary),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: textTertiary),
+            ],
+          ),
+        ),
+      );
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+  }
+}
+
 /// 流式输出光标。
 class _Cursor extends StatefulWidget {
   const _Cursor();
@@ -450,7 +538,6 @@ class _StudyTimerFromToolCalls extends StatelessWidget {
   final Future<void> Function(String id)? onStart;
   final Future<void> Function(String id)? onPause;
   final Future<void> Function(String id)? onFinish;
-  final Future<void> Function(String id)? onCancel;
 
   const _StudyTimerFromToolCalls({
     required this.toolCallsJson,
@@ -458,7 +545,6 @@ class _StudyTimerFromToolCalls extends StatelessWidget {
     this.onStart,
     this.onPause,
     this.onFinish,
-    this.onCancel,
   });
 
   @override
@@ -486,7 +572,6 @@ class _StudyTimerFromToolCalls extends StatelessWidget {
           onStart: onStart,
           onPause: onPause,
           onFinish: onFinish,
-          onCancel: onCancel,
         );
       },
     );
@@ -498,30 +583,36 @@ class _StudyTimerCard extends StatelessWidget {
   final Future<void> Function(String id)? onStart;
   final Future<void> Function(String id)? onPause;
   final Future<void> Function(String id)? onFinish;
-  final Future<void> Function(String id)? onCancel;
 
   const _StudyTimerCard({
     required this.timer,
     this.onStart,
     this.onPause,
     this.onFinish,
-    this.onCancel,
   });
 
   @override
   Widget build(BuildContext context) {
     final remaining = timer.remainingAt(DateTime.now());
     final isAlarm = timer.kind == StudyTimerKind.alarm;
-    final minutes = (remaining ~/ 60).toString().padLeft(2, '0');
-    final seconds = (remaining % 60).toString().padLeft(2, '0');
     final finished =
         timer.status == StudyTimerStatus.completed ||
         timer.status == StudyTimerStatus.cancelled;
     final running = timer.status == StudyTimerStatus.running;
+    // Completed timers preserve the actual remaining duration at the moment
+    // the user stopped, so this remains accurate after an app restart.
+    final elapsed = (timer.totalSeconds - remaining)
+        .clamp(0, timer.totalSeconds)
+        .toInt();
+    final display = switch (timer.status) {
+      StudyTimerStatus.completed when isAlarm => _clock(timer.alertAt),
+      StudyTimerStatus.completed => '${elapsed ~/ 60}min',
+      _ => _countdownLabel(remaining),
+    };
     return Container(
       width: MediaQuery.of(context).size.width * 0.78,
-      margin: const EdgeInsets.only(bottom: s6),
-      padding: const EdgeInsets.all(s12),
+      margin: const EdgeInsets.only(bottom: s4),
+      padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s8),
       decoration: BoxDecoration(
         color: primary50,
         borderRadius: BorderRadius.circular(radius8),
@@ -541,6 +632,8 @@ class _StudyTimerCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   timer.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -548,63 +641,58 @@ class _StudyTimerCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '$minutes:$seconds',
+                display,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                   color: primary700,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: s4),
-          Text(switch (timer.status) {
-            StudyTimerStatus.ready => '准备开始，开始后会通过系统声音和震动提醒',
-            StudyTimerStatus.running when isAlarm =>
-              '将在 ${_clock(timer.alertAt)} 通过系统声音和震动提醒',
-            StudyTimerStatus.running => '正在计时，到点会通过系统声音和震动提醒',
-            StudyTimerStatus.paused => '已暂停',
-            StudyTimerStatus.completed when isAlarm => '闹钟已到',
-            StudyTimerStatus.completed => '计时完成',
-            StudyTimerStatus.cancelled => '已取消',
-          }, style: const TextStyle(fontSize: 12, color: textTertiary)),
-          if (!finished) ...[
-            const SizedBox(height: s10),
-            Row(
-              children: [
-                if (!isAlarm)
-                  OutlinedButton.icon(
-                    onPressed: running
-                        ? () => onPause?.call(timer.id)
-                        : () => onStart?.call(timer.id),
-                    icon: Icon(
-                      running ? Icons.pause : Icons.play_arrow,
-                      size: iconSmall,
-                    ),
-                    label: Text(running ? '暂停' : '开始'),
-                  ),
-                if (!isAlarm) ...[
-                  const SizedBox(width: s8),
-                  IconButton(
-                    tooltip: '结束',
-                    onPressed: () => onFinish?.call(timer.id),
-                    icon: const Icon(
-                      Icons.stop_circle_outlined,
-                      size: iconMedium,
-                    ),
-                  ),
-                ],
+              if (!isAlarm && !finished) ...[
+                const SizedBox(width: s4),
                 IconButton(
-                  tooltip: '取消',
-                  onPressed: () => onCancel?.call(timer.id),
-                  icon: const Icon(Icons.close, size: iconMedium),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: running ? '暂停' : '开始',
+                  onPressed: running
+                      ? () => onPause?.call(timer.id)
+                      : () => onStart?.call(timer.id),
+                  icon: Icon(running ? Icons.pause : Icons.play_arrow),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: '完成',
+                  onPressed: () => onFinish?.call(timer.id),
+                  icon: const Icon(Icons.stop_circle_outlined),
                 ),
               ],
-            ),
-          ],
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(switch (timer.status) {
+            StudyTimerStatus.ready => '准备开始',
+            StudyTimerStatus.running when isAlarm =>
+              '将在 ${_clock(timer.alertAt)} 提醒',
+            StudyTimerStatus.running => '正在计时',
+            StudyTimerStatus.paused => '已暂停',
+            StudyTimerStatus.completed when isAlarm => '闹钟已到',
+            StudyTimerStatus.completed => '本次学习 ${_durationLabel(elapsed)}',
+            StudyTimerStatus.cancelled => '已取消',
+          }, style: const TextStyle(fontSize: 12, color: textTertiary)),
         ],
       ),
     );
+  }
+
+  String _durationLabel(int seconds) {
+    final minutes = seconds ~/ 60;
+    if (minutes == 0) return '$seconds 秒';
+    return '$minutes 分钟';
+  }
+
+  String _countdownLabel(int seconds) {
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final remainder = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$remainder';
   }
 
   String _clock(DateTime? value) {

@@ -6,11 +6,7 @@ class SumiScope extends StatelessWidget {
   final AppStore store;
   final Widget child;
 
-  const SumiScope({
-    required this.store,
-    required this.child,
-    super.key,
-  });
+  const SumiScope({required this.store, required this.child, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +20,13 @@ class SumiScope extends StatelessWidget {
             controller: store.settingsController,
             child: _SelectionScope(
               controller: store.selection,
-              child: child,
+              child: _MilestoneScope(
+                controller: store.milestoneController,
+                child: _DailyReflectionScope(
+                  controller: store.dailyReflectionController,
+                  child: child,
+                ),
+              ),
             ),
           ),
         ),
@@ -33,9 +35,11 @@ class SumiScope extends StatelessWidget {
   }
 
   static AppStore read(BuildContext context) {
-    final scope = context
-        .getElementForInheritedWidgetOfExactType<_AppStoreScope>()
-        ?.widget as _AppStoreScope?;
+    final scope =
+        context
+                .getElementForInheritedWidgetOfExactType<_AppStoreScope>()
+                ?.widget
+            as _AppStoreScope?;
     assert(scope != null, 'SumiScope.read: 未找到 SumiScope');
     return scope!.store;
   }
@@ -59,6 +63,16 @@ class SumiScope extends StatelessWidget {
     context.dependOnInheritedWidgetOfExactType<_SelectionScope>();
     return read(context);
   }
+
+  static AppStore watchMilestones(BuildContext context) {
+    context.dependOnInheritedWidgetOfExactType<_MilestoneScope>();
+    return read(context);
+  }
+
+  static AppStore watchDailyReflections(BuildContext context) {
+    context.dependOnInheritedWidgetOfExactType<_DailyReflectionScope>();
+    return read(context);
+  }
 }
 
 class _AppStoreScope extends InheritedWidget {
@@ -72,7 +86,7 @@ class _AppStoreScope extends InheritedWidget {
 
 class _TodoScope extends InheritedNotifier<TodoController> {
   const _TodoScope({required TodoController controller, required super.child})
-      : super(notifier: controller);
+    : super(notifier: controller);
 }
 
 class _ProjectScope extends InheritedNotifier<ProjectController> {
@@ -92,6 +106,21 @@ class _SettingsScope extends InheritedNotifier<SettingsController> {
 class _SelectionScope extends InheritedNotifier<SelectionController> {
   const _SelectionScope({
     required SelectionController controller,
+    required super.child,
+  }) : super(notifier: controller);
+}
+
+class _MilestoneScope extends InheritedNotifier<MilestoneController> {
+  const _MilestoneScope({
+    required MilestoneController controller,
+    required super.child,
+  }) : super(notifier: controller);
+}
+
+class _DailyReflectionScope
+    extends InheritedNotifier<DailyReflectionController> {
+  const _DailyReflectionScope({
+    required DailyReflectionController controller,
     required super.child,
   }) : super(notifier: controller);
 }

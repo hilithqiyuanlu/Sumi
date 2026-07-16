@@ -13,6 +13,7 @@ class MonthCardPager extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = SumiScope.watchProjects(context);
+    SumiScope.watchMilestones(context);
     SumiScope.watchSettings(context);
     final cards = store.monthCardsFor(project.id);
     final cycle = project.cycleMonths;
@@ -27,15 +28,16 @@ class MonthCardPager extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: s16),
         itemBuilder: (context, index) {
           final card = cards.cast<MonthCard?>().firstWhere(
-                (m) => m?.monthIndex == index,
-                orElse: () => MonthCard(
-                  id: 'fallback',
-                  projectId: project.id,
-                  monthIndex: index,
-                  title: '',
-                ),
-              )!;
-          final isUnlocked = store.appSettings.showAllMonthCards ||
+            (m) => m?.monthIndex == index,
+            orElse: () => MonthCard(
+              id: 'fallback',
+              projectId: project.id,
+              monthIndex: index,
+              title: '',
+            ),
+          )!;
+          final isUnlocked =
+              store.appSettings.showAllMonthCards ||
               index <= project.currentMonthIndex;
           final isCurrent = index == project.currentMonthIndex;
 
@@ -46,6 +48,8 @@ class MonthCardPager extends StatelessWidget {
                 card: card,
                 monthIndex: index,
                 isCurrent: isCurrent,
+                projectCreatedAt: project.createdAt,
+                milestones: store.milestones.forProjectMonth(project.id, index),
               ),
             );
           }
@@ -64,18 +68,24 @@ class _UnlockedCard extends StatelessWidget {
   final MonthCard card;
   final int monthIndex;
   final bool isCurrent;
+  final DateTime projectCreatedAt;
+  final Future<List<Milestone>> milestones;
 
   const _UnlockedCard({
     required this.card,
     required this.monthIndex,
     required this.isCurrent,
+    required this.projectCreatedAt,
+    required this.milestones,
   });
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final cardDate =
-        DateTime(now.year, now.month + monthIndex, 1);
+    final cardDate = DateTime(
+      projectCreatedAt.year,
+      projectCreatedAt.month + monthIndex,
+      1,
+    );
     final monthLabel = '${cardDate.month}月';
 
     return Container(
@@ -94,7 +104,10 @@ class _UnlockedCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: s10,
+                  vertical: s4,
+                ),
                 decoration: BoxDecoration(
                   color: isCurrent ? mintDeep : primary100,
                   borderRadius: BorderRadius.circular(radiusPill),
@@ -143,7 +156,47 @@ class _UnlockedCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: s8),
+          FutureBuilder<List<Milestone>>(
+            future: milestones,
+            builder: (context, snapshot) {
+              final items = snapshot.data ?? const <Milestone>[];
+              final latest = items.isEmpty ? null : items.first;
+              return SizedBox(
+                height: 40,
+                child: latest == null
+                    ? const SizedBox.shrink()
+                    : Row(
+                        children: [
+                          const Icon(
+                            Icons.bookmark_added_outlined,
+                            size: 16,
+                            color: primary500,
+                          ),
+                          const SizedBox(width: s6),
+                          Expanded(
+                            child: Text(
+                              '“${latest.quote}” · ${latest.todoTitle}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ),
+                          if (items.length > 1)
+                            Text(
+                              '+${items.length - 1}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: primary500,
+                              ),
+                            ),
+                        ],
+                      ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -171,9 +224,14 @@ class _LockedMonthCard extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.all(Radius.circular(radiusCard)),
             ),
-            title: const Text('提示', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            content:
-                const Text('前方的区域还没有开放，过段时间再来探索吧', style: TextStyle(fontSize: 14)),
+            title: const Text(
+              '提示',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            content: const Text(
+              '前方的区域还没有开放，过段时间再来探索吧',
+              style: TextStyle(fontSize: 14),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
@@ -194,7 +252,10 @@ class _LockedMonthCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: s10, vertical: s4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: s10,
+                vertical: s4,
+              ),
               decoration: BoxDecoration(
                 color: primary100,
                 borderRadius: BorderRadius.circular(radiusPill),
@@ -210,11 +271,7 @@ class _LockedMonthCard extends StatelessWidget {
             ),
             const Expanded(
               child: Center(
-                child: Icon(
-                  Icons.lock_outline,
-                  size: 36,
-                  color: textTertiary,
-                ),
+                child: Icon(Icons.lock_outline, size: 36, color: textTertiary),
               ),
             ),
           ],

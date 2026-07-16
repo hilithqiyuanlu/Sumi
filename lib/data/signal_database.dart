@@ -29,9 +29,15 @@ class SignalDatabase {
         created_at TEXT NOT NULL
       )
     ''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_signals_time ON signals(time)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id)');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_signals_time ON signals(time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_signals_project ON signals(project_id)',
+    );
     _tableEnsured = true;
     debugPrint('[SignalDB] 自愈：已确保 signals 表存在');
   }
@@ -99,6 +105,39 @@ class SignalDatabase {
     return rows.map(_fromRow).toList();
   }
 
+  /// 返回单个自然日的学习行为。使用半开区间，避免时区字符串比较的边界问题。
+  Future<List<UserSignal>> queryDate(String date) async {
+    await _ensureTable();
+    final start = DateTime.parse(date);
+    final end = start.add(const Duration(days: 1));
+    final rows = await (await _db).query(
+      'signals',
+      where: 'time >= ? AND time < ?',
+      whereArgs: [start.toIso8601String(), end.toIso8601String()],
+      orderBy: 'time ASC',
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  Future<List<String>> pastSignalDates({
+    required String beforeDate,
+    int limit = 1000,
+  }) async {
+    await _ensureTable();
+    final rows = await (await _db).rawQuery(
+      '''SELECT DISTINCT substr(time, 1, 10) AS date_key
+         FROM signals
+         WHERE time < ?
+         ORDER BY date_key ASC
+         LIMIT ?''',
+      ['${beforeDate}T00:00:00.000', limit],
+    );
+    return rows
+        .map((row) => row['date_key'] as String?)
+        .whereType<String>()
+        .toList(growable: false);
+  }
+
   /// 统计信号数量。
   Future<int> count({SignalType? type, String? range}) async {
     await _ensureTable();
@@ -153,7 +192,9 @@ class SignalDatabase {
       "SELECT CAST(substr(time, 12, 2) AS INTEGER) as hour, COUNT(*) as cnt FROM signals WHERE time >= ? GROUP BY hour ORDER BY cnt DESC LIMIT 4",
       [cutoff.toIso8601String()],
     );
-    return rows.map((r) => {'hour': r['hour'] as int, 'count': r['cnt'] as int}).toList();
+    return rows
+        .map((r) => {'hour': r['hour'] as int, 'count': r['cnt'] as int})
+        .toList();
   }
 
   UserSignal _fromRow(Map<String, Object?> row) {
@@ -168,7 +209,9 @@ class SignalDatabase {
       projectId: row['project_id'] as String?,
       todoId: row['todo_id'] as String?,
       domain: row['domain'] as String?,
-      createdAt: DateTime.tryParse((row['created_at'] as String?) ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse((row['created_at'] as String?) ?? '') ??
+          DateTime.now(),
     );
   }
 
@@ -176,7 +219,9 @@ class SignalDatabase {
   static String formatForPrompt(List<UserSignal> signals, {int maxItems = 50}) {
     if (signals.isEmpty) return '（暂无信号）';
     final buf = StringBuffer();
-    final display = signals.length > maxItems ? signals.take(maxItems) : signals;
+    final display = signals.length > maxItems
+        ? signals.take(maxItems)
+        : signals;
     for (final s in display) {
       final ctx = s.context;
       final time = s.time.toIso8601String().substring(0, 16);
@@ -187,7 +232,9 @@ class SignalDatabase {
       if (project is String && project.isNotEmpty) buf.write(' [项目:$project]');
       buf.write(' ($time)');
       if (ctx['completedOnTime'] == true) buf.write(' ✓按时');
-      if (ctx['changePercent'] != null) buf.write(' 变化:${ctx['changePercent']}%');
+      if (ctx['changePercent'] != null) {
+        buf.write(' 变化:${ctx['changePercent']}%');
+      }
       buf.writeln();
     }
     if (signals.length > maxItems) {

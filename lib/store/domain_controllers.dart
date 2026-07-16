@@ -22,6 +22,19 @@ class ProjectController extends ChangeNotifier {
   void markChanged() => notifyListeners();
 }
 
+class MilestoneController extends ChangeNotifier {
+  void markChanged() => notifyListeners();
+}
+
+class DailyReflectionController extends ChangeNotifier {
+  int revision = 0;
+
+  void markChanged() {
+    revision++;
+    notifyListeners();
+  }
+}
+
 class SettingsController extends ChangeNotifier {
   AppSettings _value = const AppSettings();
 
@@ -39,6 +52,7 @@ class ChatViewState {
   final String? activityLabel;
   final int messageSentSequence;
   final ChatFailure? failure;
+  final Set<String> milestoneSourceMessageIds;
 
   const ChatViewState({
     required this.conversationId,
@@ -49,6 +63,7 @@ class ChatViewState {
     required this.activityLabel,
     required this.messageSentSequence,
     required this.failure,
+    this.milestoneSourceMessageIds = const {},
   });
 
   static const empty = ChatViewState(
@@ -60,6 +75,7 @@ class ChatViewState {
     activityLabel: null,
     messageSentSequence: 0,
     failure: null,
+    milestoneSourceMessageIds: {},
   );
 }
 
@@ -76,12 +92,10 @@ class ChatFailure {
 }
 
 class ChatController {
-  final ValueNotifier<ChatViewState> view =
-      ValueNotifier(ChatViewState.empty);
+  final ValueNotifier<ChatViewState> view = ValueNotifier(ChatViewState.empty);
 
   void dispose() => view.dispose();
 }
-
 
 class SelectionController extends ChangeNotifier {
   int navigateToTodaySequence = 0;
