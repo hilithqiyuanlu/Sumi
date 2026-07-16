@@ -24,6 +24,7 @@ mixin SumiStorePersist {
   ModelRouterMetricsStore get modelRouterMetrics;
   Future<void> deleteLocalRetrievalModel();
   Future<void> clearStudyTimers();
+  Future<void> clearScheduleProposals();
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -125,6 +126,7 @@ mixin SumiStorePersist {
     await memoryServiceForStore?.clearAll();
     modelRouterMetrics.clear();
     await clearStudyTimers();
+    await clearScheduleProposals();
     // 本地检索是可选组件；平台通道不可用时不应阻断用户数据清除。
     try {
       await deleteLocalRetrievalModel();

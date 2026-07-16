@@ -101,6 +101,25 @@ class SystemReminderService implements ReminderScheduler {
     }
   }
 
+  /// 普通的负荷提醒，不申请精确闹钟权限，也不承诺后台持续检测。
+  Future<void> showScheduleRebalanceAlert({required int moveCount}) async {
+    try {
+      await _initialize();
+      if (!await _requestNotificationPermission()) return;
+      await _notifications.show(
+        id: 713021,
+        title: '本周安排较满',
+        body: moveCount > 0
+            ? 'Sumi 已准备 $moveCount 项可调整的排期方案。'
+            : 'Sumi 发现本周任务较集中，打开 App 查看建议。',
+        notificationDetails: _details,
+        payload: 'schedule_rebalance',
+      );
+    } catch (_) {
+      // 通知不可用时，前台卡片仍然保留。
+    }
+  }
+
   @override
   Future<void> cancel(String timerId) async {
     try {
@@ -162,6 +181,25 @@ class SystemReminderService implements ReminderScheduler {
           : ReminderScheduleQuality.unavailable;
     }
     return ReminderScheduleQuality.unavailable;
+  }
+
+  Future<bool> _requestNotificationPermission() async {
+    final android = _notifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (android != null) {
+      final enabled = await android.areNotificationsEnabled() ?? false;
+      return enabled ||
+          (await android.requestNotificationsPermission() ?? false);
+    }
+    final ios = _notifications
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    return ios == null ||
+        await ios.requestPermissions(alert: true, badge: false, sound: true) ==
+            true;
   }
 
   NotificationDetails get _details => NotificationDetails(

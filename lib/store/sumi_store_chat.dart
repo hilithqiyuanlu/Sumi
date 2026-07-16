@@ -40,9 +40,12 @@ mixin SumiStoreChat {
   // 流式请求必须绑定到创建它的会话和占位消息，不能依赖当前列表的位置。
   String? _streamConversationId;
   String? _streamAssistantMessageId;
+  StreamIterator<StreamEvent>? _activeAgentIterator;
+  bool _stopRequested = false;
 
   /// 用户发起对话时的首页问候语（仅首条消息注入一次上下文）
   String? _activeGreeting;
+  String? _activeToolDefaultDate;
 
   String? get currentConversationId => _currentConversationId;
   List<ChatMessage> get currentMessages => List.unmodifiable(_currentMessages);
@@ -50,6 +53,7 @@ mixin SumiStoreChat {
   bool get isLoadingConversation => _isLoadingConversation;
   String? get currentToolCallLabel => _currentToolCallLabel;
   bool get isTemporaryConversation => _isTemporaryConversation;
+  String? get activeToolDefaultDate => _activeToolDefaultDate;
   ValueListenable<ChatViewState> get chatView => chatController.view;
 
   void _publishChatState({bool throttled = false}) {
@@ -88,9 +92,11 @@ mixin SumiStoreChat {
       _currentConversationId == conversationId;
 
   void _startStreaming(String conversationId, String assistantMessageId) {
+    if (_stopRequested) return;
     _isStreaming = true;
     _streamConversationId = conversationId;
     _streamAssistantMessageId = assistantMessageId;
+    _activeToolDefaultDate = dateKey(selectedDate);
   }
 
   void _finishStreaming(String assistantMessageId) {
@@ -99,6 +105,25 @@ mixin SumiStoreChat {
     _streamConversationId = null;
     _streamAssistantMessageId = null;
     _currentToolCallLabel = null;
+    _activeToolDefaultDate = null;
+  }
+
+  /// Stops the active response while preserving content received so far.
+  void stopGenerating() {
+    final iterator = _activeAgentIterator;
+    if (!_isStreaming) return;
+    _stopRequested = true;
+    if (iterator != null) unawaited(iterator.cancel());
+    final assistantMessageId = _streamAssistantMessageId;
+    if (assistantMessageId != null) {
+      _finishStreaming(assistantMessageId);
+    } else {
+      _isStreaming = false;
+      _streamConversationId = null;
+      _currentToolCallLabel = null;
+      _activeToolDefaultDate = null;
+    }
+    _publishChatState();
   }
 
   void _updateCurrentAssistantMessage({
@@ -150,6 +175,7 @@ mixin SumiStoreChat {
 
   void disposeChatView() {
     _chatPublishTimer?.cancel();
+    unawaited(_activeAgentIterator?.cancel());
   }
 
   /// 判断 dateKey 是否为未来日期（相对于今天）。
@@ -300,6 +326,7 @@ mixin SumiStoreChat {
     }
 
     _isStreaming = true;
+    _stopRequested = false;
     _streamConversationId = _currentConversationId;
     _streamAssistantMessageId = null;
     _chatFailure = null;
@@ -460,6 +487,7 @@ mixin SumiStoreChat {
     _chatFailure = null;
     _chatFailureConversationId = null;
     _isStreaming = true;
+    _stopRequested = false;
     _currentToolCallLabel = '正在准备回复';
     final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
     _currentMessages = [
@@ -515,6 +543,7 @@ mixin SumiStoreChat {
     final convId = _currentConversationId;
     if (convId == null) return;
     final isTemporary = _isTemporaryConversation;
+    _stopRequested = false;
 
     // 找到并移除最后一条 AI 消息及该消息之后（同一轮）的 tool 消息，
     // 保留更早轮次的 assistant/tool 结果，避免上下文非法。
@@ -607,13 +636,13 @@ mixin SumiStoreChat {
     final toolCallsList = <Map<String, Object?>>[];
     String? agentError;
 
-    try {
-      await for (final event in svc.sendAgentLoop(
+    final iterator = StreamIterator(svc.sendAgentLoop(
         messages: messages,
         thinkingEnabled: thinkingEnabled,
         validProjectIds: projectList.map((project) => project.id).toSet(),
         enabledTools: appSettings.enabledTools.toSet(),
         onToolCall: (call) {
+          if (_stopRequested) return;
           toolCallsList.add({
             'id': call.id,
             'type': 'function',
@@ -632,10 +661,16 @@ mixin SumiStoreChat {
           _publishChatState();
         },
         executeTool: (call) async {
+          if (_stopRequested) return '用户已停止生成。';
           final result = await exec.execute(call);
           return result;
         },
-      )) {
+      ));
+    _activeAgentIterator = iterator;
+    try {
+      while (!_stopRequested && await iterator.moveNext()) {
+        if (_stopRequested) break;
+        final event = iterator.current;
         switch (event) {
           case ContentDelta(text: final t):
             contentBuf.write(t);
@@ -660,8 +695,14 @@ mixin SumiStoreChat {
         }
       }
     } catch (e) {
-      debugPrint('Sumi Agent Loop 错误: $e');
-      agentError = '请求失败，请检查网络后重试。';
+      if (!_stopRequested) {
+        debugPrint('Sumi Agent Loop 错误: $e');
+        agentError = '请求失败，请检查网络后重试。';
+      }
+    } finally {
+      if (identical(_activeAgentIterator, iterator)) {
+        _activeAgentIterator = null;
+      }
     }
 
     if (agentError != null) {
@@ -743,6 +784,8 @@ mixin SumiStoreChat {
     String? greeting,
     required String query,
     Map<String, double> memorySemanticScores = const {},
+    required DateTime localNow,
+    required DateTime conversationDate,
   }) async {
     var hotPrompt = '';
     if (memoryService != null && query.isNotEmpty) {
@@ -776,6 +819,8 @@ mixin SumiStoreChat {
           )
           .toList(),
       greeting: greeting,
+      localNow: localNow,
+      selectedDate: conversationDate,
       enabledTools: appSettings.enabledTools,
     );
   }
@@ -813,10 +858,14 @@ mixin SumiStoreChat {
         if (result.document.source == EmbeddingDocumentSource.userMemory)
           result.document.sourceId: result.semanticScore,
     };
+    final localNow = DateTime.now();
+    final conversationDate = selectedDate;
     final systemPrompt = await _buildSystemPrompt(
       greeting: greeting,
       query: userQuery ?? '',
       memorySemanticScores: memorySemanticScores,
+      localNow: localNow,
+      conversationDate: conversationDate,
     );
     final messages = <Map<String, Object?>>[
       {'role': 'system', 'content': systemPrompt},

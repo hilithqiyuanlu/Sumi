@@ -6,6 +6,7 @@ enum MemoryExtractionAction { ignore, save, replace }
 
 class MemoryExtractionDecision {
   final MemoryExtractionAction action;
+  final MemoryType type;
   final String? category;
   final String? content;
   final String? quotedText;
@@ -13,6 +14,7 @@ class MemoryExtractionDecision {
 
   const MemoryExtractionDecision({
     required this.action,
+    this.type = MemoryType.explicit,
     this.category,
     this.content,
     this.quotedText,
@@ -21,6 +23,7 @@ class MemoryExtractionDecision {
 
   Map<String, Object?> toJson() => {
     'action': action.name,
+    'type': type.name,
     if (category != null) 'category': category,
     if (content != null) 'content': content,
     if (quotedText != null) 'quotedText': quotedText,
@@ -30,19 +33,25 @@ class MemoryExtractionDecision {
 
 class MemoryExtractionCandidate {
   final String id;
+  final MemoryType type;
   final String category;
   final String content;
+  final String? projectId;
 
   const MemoryExtractionCandidate({
     required this.id,
+    this.type = MemoryType.explicit,
     required this.category,
     required this.content,
+    this.projectId,
   });
 
   Map<String, Object?> toJson() => {
     'id': id,
+    'type': type.name,
     'category': category,
     'content': content,
+    if (projectId != null) 'projectId': projectId,
   };
 }
 
@@ -59,20 +68,34 @@ class MemoryExtractionService {
   final MemoryService memory;
   final MemoryExtractionCapability capability;
   final void Function() onMemoryChanged;
+  final String? Function() currentProjectId;
+  Future<void> _queue = Future<void>.value();
 
   MemoryExtractionService({
     required this.memory,
     required this.capability,
     required this.onMemoryChanged,
+    required this.currentProjectId,
   });
 
-  Future<void> process({
+  Future<void> process({required String messageId, required String message}) {
+    _queue = _queue.then(
+      (_) => _process(messageId: messageId, message: message),
+    );
+    return _queue;
+  }
+
+  Future<void> _process({
     required String messageId,
     required String message,
   }) async {
     try {
       if (!await memory.claimExtraction(messageId)) return;
-      final candidates = await memory.explicitCandidates(limit: 3);
+      final projectId = currentProjectId();
+      final candidates = await memory.extractionCandidates(
+        projectId: projectId,
+        limit: 6,
+      );
       final decision = await capability.extractMemory(
         message: message,
         candidates: candidates,
@@ -86,6 +109,7 @@ class MemoryExtractionService {
         userMessage: message,
         decision: decision,
         candidateReplaceIds: candidates.map((item) => item.id).toSet(),
+        currentProjectId: projectId,
       );
       if (!applied) return;
       if (decision.action != MemoryExtractionAction.ignore) {

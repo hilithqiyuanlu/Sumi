@@ -67,7 +67,7 @@ class ChatBubble extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(bottom: s4),
                 child: Text(
-                  '${timestamp!.month}/${timestamp!.day} ${timestamp!.hour.toString().padLeft(2, '0')}:${timestamp!.minute.toString().padLeft(2, '0')}',
+                  '${timestamp!.hour.toString().padLeft(2, '0')}:${timestamp!.minute.toString().padLeft(2, '0')}',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,

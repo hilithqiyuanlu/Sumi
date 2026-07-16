@@ -31,6 +31,8 @@ class ChatPromptBuilder {
     String hypotheses = '',
     List<Map<String, Object?>> projects = const [],
     String? greeting,
+    DateTime? localNow,
+    DateTime? selectedDate,
     Iterable<String> enabledTools = const [],
   }) {
     final blocks = <String>[basePrompt];
@@ -80,6 +82,32 @@ class ChatPromptBuilder {
         ),
       );
       blocks.add('用户可能在回应该问候，也可能是在发起独立话题，请根据消息内容判断。');
+    }
+    if (localNow != null) {
+      final offset = localNow.timeZoneOffset;
+      final sign = offset.isNegative ? '-' : '+';
+      final hours = offset.inHours.abs().toString().padLeft(2, '0');
+      final minutes =
+          (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
+      final weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+      blocks.add('## 当前设备时间');
+      blocks.add(
+        PromptContext.dataBlock(
+          kind: 'device_time',
+          source: 'device_local_clock',
+          data: {
+            'localNow': localNow.toIso8601String(),
+            'weekday': '周${weekdays[localNow.weekday - 1]}',
+            'utcOffset': '$sign$hours:$minutes',
+            if (selectedDate != null)
+              'selectedCalendarDate':
+                  '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+          },
+        ),
+      );
+      blocks.add(
+        '涉及“现在”“稍后”“几分钟后”等相对时间时，必须以此设备本地时间计算；创建待办但未指定日期时，默认使用当前选中的日历日期。',
+      );
     }
     return blocks.join('\n\n');
   }

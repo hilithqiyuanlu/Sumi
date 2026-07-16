@@ -131,6 +131,15 @@ class _Structured implements StructuredGenerationCapability {
   }) async => null;
 
   @override
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  }) async => null;
+
+  @override
   Future<GoalAssessment?> assessGoal({
     required String goal,
     required String level,

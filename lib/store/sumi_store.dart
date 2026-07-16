@@ -11,6 +11,7 @@ import '../data/chat_database.dart';
 import '../data/embedding_document_store.dart';
 import '../data/local_database.dart';
 import '../data/signal_database.dart';
+import '../data/schedule_proposal_database.dart';
 import '../data/study_timer_database.dart';
 import '../models/models.dart';
 import '../services/ai_service.dart';
@@ -37,8 +38,10 @@ import '../services/project_generation_controller.dart';
 import '../services/secure_settings_store.dart';
 import '../services/signal_service.dart';
 import '../services/study_timer_service.dart';
+import '../services/system_reminder_service.dart';
 import '../services/timer_controller.dart';
 import '../services/snapshot_write_queue.dart';
+import '../services/schedule_load_service.dart';
 import '../services/tool_executor.dart';
 import '../services/user_model_service.dart';
 import '../services/memory_service.dart';
@@ -68,6 +71,13 @@ class AppStore
   late final LocalTextGenerationCoordinator _localTextCoordinator;
   late final TimerController timerController;
   late final StudyTimerService _studyTimers;
+  late final ScheduleProposalDatabase _scheduleProposals;
+  final ScheduleLoadAssessor _scheduleLoadAssessor = ScheduleLoadAssessor();
+  ScheduleRebalanceProposal? _pendingScheduleProposal;
+  bool _scheduleAssessmentRunning = false;
+  bool _rollingPlanningRunning = false;
+  bool _appInForeground = true;
+  String? _scheduleNotificationSentProposalId;
   final ProjectGenerationController projectGenerationController =
       ProjectGenerationController();
   ChatDatabase? _chatDatabase;
@@ -190,9 +200,8 @@ class AppStore
   Future<void> cancelStudyTimer(String id) => _studyTimers.cancel(id);
   @override
   Future<void> clearStudyTimers() => _studyTimers.clearAll();
-
-  Future<void> handleAppLifecycle(AppLifecycleState state) =>
-      _studyTimers.handleLifecycle(state == AppLifecycleState.resumed);
+  ScheduleRebalanceProposal? get pendingScheduleProposal =>
+      _pendingScheduleProposal;
 
   /// Thinking 模式开关。
   @override
@@ -299,6 +308,7 @@ class AppStore
       controller: store.timerController,
       now: store._now,
     );
+    store._scheduleProposals = ScheduleProposalDatabase(db);
 
     // 07 轮：初始化信号数据库和用户模型服务
     store._signalDb = signalDatabaseOverride ?? SignalDatabase(db);
@@ -364,6 +374,8 @@ class AppStore
     // 从快照恢复数据
     await store.loadFromDb();
     await store._studyTimers.restore();
+    store._pendingScheduleProposal = await store._scheduleProposals
+        .latestPending();
 
     // 回填安全存储中的 API Key（快照中不存明文）
     store.appSettings = store.appSettings.copyWith(
@@ -379,7 +391,7 @@ class AppStore
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
 
     // 检测并生成每日 todo —— 不阻塞启动，后台静默执行
-    store.checkAndGenerateDaily();
+    unawaited(store._runRollingPlanAndScheduleAssessment());
 
     return store;
   }
@@ -404,6 +416,7 @@ class AppStore
         memory: _memoryService!,
         capability: _modelRouter!.memoryExtraction,
         onMemoryChanged: _scheduleLocalIndex,
+        currentProjectId: () => currentProjectId,
       );
       _toolExecutor = ToolExecutor(
         searchService: _modelRouter!.search,
@@ -417,6 +430,7 @@ class AppStore
         },
         currentConversationId: () => currentConversationId,
         isToolEnabled: isToolEnabled,
+        defaultTodoDate: () => activeToolDefaultDate ?? dateKey(selectedDate),
         readTodos: ({String? filter}) => _readTodosForTool(filter: filter),
         writeTodo:
             ({
@@ -616,6 +630,7 @@ class AppStore
     _persist();
     todoController.markChanged();
     _scheduleLocalIndex();
+    unawaited(_assessScheduleAfterChange());
   }
 
   @override
@@ -624,11 +639,142 @@ class AppStore
     projectController.markChanged();
     todoController.markChanged();
     _scheduleLocalIndex();
+    if (!_rollingPlanningRunning) {
+      unawaited(_runRollingPlanAndScheduleAssessment());
+    }
   }
 
   void afterSettingsMutation() {
     _persist();
     settingsController.markChanged();
+  }
+
+  Future<void> handleAppLifecycle(AppLifecycleState state) async {
+    await _studyTimers.handleLifecycle(state == AppLifecycleState.resumed);
+    if (state == AppLifecycleState.resumed) {
+      _appInForeground = true;
+      await _runRollingPlanAndScheduleAssessment();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _appInForeground = false;
+      unawaited(_notifyPendingScheduleProposalIfNeeded());
+    }
+  }
+
+  Future<void> _runRollingPlanAndScheduleAssessment() async {
+    if (_rollingPlanningRunning) return;
+    _rollingPlanningRunning = true;
+    try {
+      await checkAndGenerateDaily();
+    } finally {
+      _rollingPlanningRunning = false;
+    }
+    await _assessScheduleAfterChange();
+  }
+
+  Future<void> _assessScheduleAfterChange() async {
+    if (_scheduleAssessmentRunning) return;
+    _scheduleAssessmentRunning = true;
+    try {
+      final assessment = _scheduleLoadAssessor.assess(
+        projects: projectList,
+        todos: todoItems,
+        today: _now(),
+      );
+      final lastProposal = await _scheduleProposals.latest();
+      if (!assessment.overloaded ||
+          _pendingScheduleProposal != null ||
+          await _scheduleProposals.hasFingerprint(assessment.fingerprint) ||
+          (lastProposal != null &&
+              assessment.score <= lastProposal.overloadScore + .5)) {
+        return;
+      }
+      final proposal = _scheduleLoadAssessor.propose(
+        assessment: assessment,
+        todos: todoItems,
+        today: _now(),
+      );
+      if (proposal == null) return;
+      await _scheduleProposals.save(proposal);
+      _pendingScheduleProposal = proposal;
+      todoController.markChanged();
+      unawaited(_notifyPendingScheduleProposalIfNeeded());
+    } finally {
+      _scheduleAssessmentRunning = false;
+    }
+  }
+
+  Future<void> acceptScheduleProposal() async {
+    final proposal = _pendingScheduleProposal;
+    if (proposal == null || proposal.status != ScheduleProposalStatus.pending) {
+      return;
+    }
+    final originalDates = <String, String>{};
+    for (final move in proposal.moves) {
+      final index = todoItems.indexWhere((todo) => todo.id == move.todoId);
+      if (index == -1) continue;
+      final todo = todoItems[index];
+      if (todo.done ||
+          todo.pinned ||
+          todo.reminderTime != null ||
+          todo.date != move.fromDate ||
+          isPastDate(todo.date)) {
+        continue;
+      }
+      originalDates[todo.id] = todo.date!;
+      todoItems[index] = todo.copyWith(date: move.toDate);
+    }
+    if (originalDates.isNotEmpty) {
+      for (final entry in originalDates.entries) {
+        final todo = todoItems.firstWhere((item) => item.id == entry.key);
+        await _signalService?.emitTodoMovedDate(todo, entry.value, todo.date!);
+      }
+      _persist();
+      _scheduleLocalIndex();
+    }
+    await _scheduleProposals.updateStatus(
+      proposal.id,
+      ScheduleProposalStatus.accepted,
+    );
+    _pendingScheduleProposal = null;
+    todoController.markChanged();
+  }
+
+  Future<void> _notifyPendingScheduleProposalIfNeeded() async {
+    final proposal = _pendingScheduleProposal;
+    if (_appInForeground ||
+        proposal == null ||
+        proposal.status != ScheduleProposalStatus.pending ||
+        proposal.notificationSent ||
+        _scheduleNotificationSentProposalId == proposal.id) {
+      return;
+    }
+    _scheduleNotificationSentProposalId = proposal.id;
+    final updated = await _scheduleProposals.markNotificationSent(proposal.id);
+    if (updated == null || !updated.notificationSent) return;
+    if (_pendingScheduleProposal?.id == updated.id) {
+      _pendingScheduleProposal = updated;
+    }
+    await SystemReminderService().showScheduleRebalanceAlert(
+      moveCount: proposal.moves.length,
+    );
+  }
+
+  Future<void> dismissScheduleProposal() async {
+    final proposal = _pendingScheduleProposal;
+    if (proposal == null) return;
+    await _scheduleProposals.updateStatus(
+      proposal.id,
+      ScheduleProposalStatus.dismissed,
+    );
+    _pendingScheduleProposal = null;
+    todoController.markChanged();
+  }
+
+  @override
+  Future<void> clearScheduleProposals() async {
+    _pendingScheduleProposal = null;
+    await _scheduleProposals.clearAll();
   }
 
   Future<void> downloadLocalRetrievalModel() =>

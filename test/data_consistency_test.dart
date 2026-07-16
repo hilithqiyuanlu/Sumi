@@ -840,6 +840,65 @@ void main() {
     expect(await memory.list(), hasLength(1));
   });
 
+  test('当前学习状态会按项目和类别替换，并在 30 天后过期', () async {
+    var now = DateTime(2026, 7, 1, 9);
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final memory = MemoryService(
+      SumiLocalDatabase(database: db),
+      now: () => now,
+    );
+    await memory.ensureTables();
+    await memory.claimExtraction('progress-1');
+    final first = await memory.applyExtractionDecision(
+      messageId: 'progress-1',
+      userMessage: '我现在学到第三章了。',
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.save,
+        type: MemoryType.current,
+        category: 'progress',
+        content: '学到第三章',
+        quotedText: '我现在学到第三章了',
+      ),
+      candidateReplaceIds: const {},
+      currentProjectId: 'project-1',
+    );
+    expect(first, isTrue);
+
+    await memory.claimExtraction('progress-2');
+    final second = await memory.applyExtractionDecision(
+      messageId: 'progress-2',
+      userMessage: '我已经学到第五章了。',
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.save,
+        type: MemoryType.current,
+        category: 'progress',
+        content: '学到第五章',
+        quotedText: '我已经学到第五章了',
+      ),
+      candidateReplaceIds: const {},
+      currentProjectId: 'project-1',
+    );
+    expect(second, isTrue);
+    var current = (await memory.list())
+        .where((item) => item.type == MemoryType.current)
+        .toList();
+    expect(
+      current
+          .where((item) => item.status == MemoryStatus.active)
+          .single
+          .content,
+      '学到第五章',
+    );
+
+    now = now.add(const Duration(days: 31));
+    await memory.expireStaleCurrent();
+    current = (await memory.list())
+        .where((item) => item.type == MemoryType.current)
+        .toList();
+    expect(current.every((item) => item.status != MemoryStatus.active), isTrue);
+  });
+
   test('记忆召回优先明确约束，且不混入其他项目的当前事项', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
@@ -1118,6 +1177,23 @@ void main() {
     await store.selectDate(tomorrow);
     expect(store.chatView.value.isTemporaryConversation, isTrue);
     expect(await chatDb.findConversationByDate(dateKey(tomorrow)), isNull);
+  });
+
+  test('完成待办记录完成时间，取消完成时清除', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final store = await _createStore(db);
+    final todo = await store.addUserTodo('完成排序测试');
+    expect(todo, isNotNull);
+
+    await store.toggleTodo(todo!.id);
+    final completed = store.todoItems.single;
+    expect(completed.done, isTrue);
+    expect(completed.completedAt, isNotNull);
+
+    await store.toggleTodo(todo.id);
+    expect(store.todoItems.single.done, isFalse);
+    expect(store.todoItems.single.completedAt, isNull);
   });
 
   test('月份导航遵循方向规则并受五年范围限制', () async {

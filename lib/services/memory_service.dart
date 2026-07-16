@@ -176,14 +176,23 @@ class MemoryService {
     return rows.map(_evidenceFromRow).toList(growable: false);
   }
 
-  Future<List<MemoryExtractionCandidate>> explicitCandidates({
-    int limit = 3,
+  static const _currentExpiry = Duration(days: 30);
+
+  Future<List<MemoryExtractionCandidate>> extractionCandidates({
+    String? projectId,
+    int limit = 6,
   }) async {
     await ensureTables();
+    await expireStaleCurrent();
     final rows = await (await _db).query(
       'memory_items',
-      where: 'type = ? AND status = ?',
-      whereArgs: [MemoryType.explicit.name, MemoryStatus.active.name],
+      where: '''status = ? AND (type = ? OR (type = ? AND project_id = ?))''',
+      whereArgs: [
+        MemoryStatus.active.name,
+        MemoryType.explicit.name,
+        MemoryType.current.name,
+        projectId ?? '',
+      ],
       orderBy: 'last_confirmed_at DESC, created_at DESC',
       limit: limit,
     );
@@ -192,8 +201,10 @@ class MemoryService {
           final item = _itemFromRow(row);
           return MemoryExtractionCandidate(
             id: item.id,
+            type: item.type,
             category: item.category,
             content: item.content,
+            projectId: item.projectId,
           );
         })
         .toList(growable: false);
@@ -241,6 +252,7 @@ class MemoryService {
     required String userMessage,
     required MemoryExtractionDecision decision,
     required Set<String> candidateReplaceIds,
+    String? currentProjectId,
   }) async {
     await ensureTables();
     if (decision.action == MemoryExtractionAction.ignore) {
@@ -250,7 +262,10 @@ class MemoryService {
     final category = decision.category?.trim() ?? '';
     final content = decision.content?.trim() ?? '';
     final quote = decision.quotedText?.trim() ?? '';
-    final valid = const {'preference', 'goal', 'constraint'};
+    final isCurrent = decision.type == MemoryType.current;
+    final valid = isCurrent
+        ? const {'progress', 'difficulty', 'short_term_constraint'}
+        : const {'preference', 'goal', 'constraint'};
     if (!valid.contains(category) ||
         content.length < 2 ||
         content.length > 200 ||
@@ -267,12 +282,29 @@ class MemoryService {
       await finishExtraction(messageId, status: 'failed', decision: decision);
       return false;
     }
+    if (isCurrent && (currentProjectId == null || currentProjectId.isEmpty)) {
+      await finishExtraction(messageId, status: 'failed', decision: decision);
+      return false;
+    }
 
     final db = await _db;
     final now = _now();
     try {
       await db.transaction((txn) async {
-        if (decision.action == MemoryExtractionAction.replace) {
+        if (isCurrent) {
+          await txn.update(
+            'memory_items',
+            {'status': MemoryStatus.superseded.name},
+            where:
+                'type = ? AND project_id = ? AND category = ? AND status = ?',
+            whereArgs: [
+              MemoryType.current.name,
+              currentProjectId,
+              category,
+              MemoryStatus.active.name,
+            ],
+          );
+        } else if (decision.action == MemoryExtractionAction.replace) {
           final oldRows = await txn.query(
             'memory_items',
             where: 'id = ? AND type = ? AND status = ?',
@@ -299,7 +331,7 @@ class MemoryService {
           'memory_items',
           where: 'type = ? AND status = ? AND category = ? AND content = ?',
           whereArgs: [
-            MemoryType.explicit.name,
+            decision.type.name,
             MemoryStatus.active.name,
             category,
             content,
@@ -321,10 +353,10 @@ class MemoryService {
         if (duplicates.isEmpty) {
           await txn.insert('memory_items', {
             'id': memoryId,
-            'type': MemoryType.explicit.name,
+            'type': decision.type.name,
             'category': category,
             'content': content,
-            'project_id': null,
+            'project_id': isCurrent ? currentProjectId : null,
             'status': MemoryStatus.active.name,
             'confidence': 1.0,
             'source': MemorySource.userMessage.name,
@@ -522,12 +554,25 @@ class MemoryService {
     );
   }
 
+  Future<void> expireStaleCurrent() async {
+    await ensureTables();
+    final cutoff = _now().subtract(_currentExpiry).toIso8601String();
+    await (await _db).update(
+      'memory_items',
+      {'status': MemoryStatus.inactive.name},
+      where:
+          'type = ? AND status = ? AND last_confirmed_at IS NOT NULL AND last_confirmed_at < ?',
+      whereArgs: [MemoryType.current.name, MemoryStatus.active.name, cutoff],
+    );
+  }
+
   Future<List<MemoryItem>> search(
     String query, {
     String? projectId,
     int limit = 8,
     Map<String, double> semanticScores = const {},
   }) async {
+    await expireStaleCurrent();
     final normalized = query.trim().toLowerCase();
     final candidates = await list(includeHistorical: false);
     final scored = candidates

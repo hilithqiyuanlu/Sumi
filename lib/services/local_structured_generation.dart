@@ -64,8 +64,23 @@ class LocalFirstStructuredGeneration implements StructuredGenerationCapability {
             date: date,
             timeConstraint: timeConstraint,
             scheduledHours: scheduledHours,
-          );
+    );
   }
+
+  @override
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  }) => cloud.generateWeeklyTodos(
+    monthPlanTitle: monthPlanTitle,
+    monthPlanSummary: monthPlanSummary,
+    dates: dates,
+    timeConstraint: timeConstraint,
+    scheduledHours: scheduledHours,
+  );
 
   @override
   Future<PlanResult?> generatePlan({

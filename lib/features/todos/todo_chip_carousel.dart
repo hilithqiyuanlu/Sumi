@@ -18,6 +18,8 @@ class TodoChipCarousel extends StatefulWidget {
 
 class _TodoChipCarouselState extends State<TodoChipCarousel> {
   final _scrollController = ScrollController();
+  String? _lastDateKey;
+  int _lastTodoCount = 0;
 
   @override
   void dispose() {
@@ -34,6 +36,10 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
 
     todos.sort((a, b) {
       if (a.done != b.done) return a.done ? 1 : -1;
+      if (a.done) {
+        return (b.completedAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(a.completedAt ?? DateTime.fromMillisecondsSinceEpoch(0));
+      }
       if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
       return b.sortOrder.compareTo(a.sortOrder);
     });
@@ -46,6 +52,16 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
     final store = SumiScope.watchTodos(context);
     SumiScope.watchProjects(context);
     final todos = _getFilteredTodos(store);
+    final selectedDateKey = dateKey(dateOnly(store.selectedDate));
+    if (_lastDateKey != selectedDateKey || todos.length > _lastTodoCount) {
+      _lastDateKey = selectedDateKey;
+      _lastTodoCount = todos.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) _scrollController.jumpTo(0);
+      });
+    } else {
+      _lastTodoCount = todos.length;
+    }
 
     if (todos.isEmpty) {
       return const SizedBox.shrink();

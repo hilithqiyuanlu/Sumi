@@ -19,6 +19,8 @@ class ChatInput extends StatefulWidget {
   final ValueChanged<String>? onAddTodo;
   final ValueChanged<InputMode>? onModeChanged;
   final bool enabled;
+  final bool isStreaming;
+  final VoidCallback? onStopGenerating;
   final VoiceInputService? voiceService;
   final bool isFutureDate;
 
@@ -29,6 +31,8 @@ class ChatInput extends StatefulWidget {
     this.onAddTodo,
     this.onModeChanged,
     this.enabled = true,
+    this.isStreaming = false,
+    this.onStopGenerating,
     this.voiceService,
     this.isFutureDate = false,
   });
@@ -295,7 +299,8 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   Widget build(BuildContext context) {
-    final showSendButton = _hasText && widget.enabled && !_isRecording;
+    final showSendButton = widget.isStreaming ||
+        (_hasText && widget.enabled && !_isRecording);
     final hasVoice = _voice != null;
     final isCancelHint = _voiceHint == _VoiceHint.cancel;
 
@@ -341,7 +346,8 @@ class _ChatInputState extends State<ChatInput> {
             top: s16,
             bottom: MediaQuery.of(context).padding.bottom + s8,
           ),
-          child: Container(
+          child: TextFieldTapRegion(
+            child: Container(
             constraints: const BoxConstraints(maxHeight: 200),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.82),
@@ -376,7 +382,9 @@ class _ChatInputState extends State<ChatInput> {
                     Padding(
                       padding: const EdgeInsets.only(left: 14),
                       child: GestureDetector(
-                        onTap: widget.enabled ? _toggleMode : null,
+                        onTap: widget.enabled && !widget.isStreaming
+                            ? _toggleMode
+                            : null,
                         child: AnimatedScale(
                           scale: _modePressed ? 0.88 : 1.0,
                           duration: const Duration(milliseconds: 100),
@@ -415,7 +423,7 @@ class _ChatInputState extends State<ChatInput> {
                           child: TextField(
                             controller: _controller,
                             focusNode: _focusNode,
-                            enabled: widget.enabled,
+                            enabled: widget.enabled && !widget.isStreaming,
                             maxLines: 4,
                             minLines: 1,
                             textInputAction: TextInputAction.newline,
@@ -454,7 +462,11 @@ class _ChatInputState extends State<ChatInput> {
                           color: Colors.transparent,
                           shape: const CircleBorder(),
                           child: InkWell(
-                            onTap: showSendButton ? _send : null,
+                            onTap: widget.isStreaming
+                                ? widget.onStopGenerating
+                                : showSendButton
+                                ? _send
+                                : null,
                             customBorder: const CircleBorder(),
                             overlayColor: WidgetStatePropertyAll(
                               Colors.white.withValues(alpha: 0.3),
@@ -467,9 +479,9 @@ class _ChatInputState extends State<ChatInput> {
                                 color: mintDeep,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(
-                                Icons.send,
-                                size: 22,
+                              child: Icon(
+                                widget.isStreaming ? Icons.stop : Icons.send,
+                                size: widget.isStreaming ? 20 : 22,
                                 color: Colors.white,
                               ),
                             ),
@@ -481,6 +493,7 @@ class _ChatInputState extends State<ChatInput> {
                 ),
               ),
             ),
+          ),
           ),
         ),
       ],

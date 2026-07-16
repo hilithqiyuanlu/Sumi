@@ -631,6 +631,7 @@ class TodoItem {
   final bool done;
   final bool pinned; // 置顶
   final int sortOrder; // 手动排序序号（越大越靠前）
+  final DateTime? completedAt;
   final String? reminderTime; // 提醒时间 "HH:mm"
   final DateTime createdAt;
   final String? condensedFrom; // 07 轮：AI 凝练前原始文本，用于凝练还原保护
@@ -645,6 +646,7 @@ class TodoItem {
     this.done = false,
     this.pinned = false,
     this.sortOrder = 0,
+    this.completedAt,
     this.reminderTime,
     required this.createdAt,
     this.condensedFrom,
@@ -668,6 +670,7 @@ class TodoItem {
     bool? done,
     bool? pinned,
     int? sortOrder,
+    Object? completedAt = undefined,
     Object? reminderTime = undefined,
     Object? date = undefined,
     Object? projectId = undefined,
@@ -683,6 +686,9 @@ class TodoItem {
       done: done ?? this.done,
       pinned: pinned ?? this.pinned,
       sortOrder: sortOrder ?? this.sortOrder,
+      completedAt: completedAt == undefined
+          ? this.completedAt
+          : completedAt as DateTime?,
       reminderTime: reminderTime == undefined
           ? this.reminderTime
           : reminderTime as String?,
@@ -703,6 +709,7 @@ class TodoItem {
     'done': done,
     'pinned': pinned,
     'sortOrder': sortOrder,
+    'completedAt': completedAt?.toIso8601String(),
     'reminderTime': reminderTime,
     'createdAt': createdAt.toIso8601String(),
     if (condensedFrom != null) 'condensedFrom': condensedFrom,
@@ -723,6 +730,10 @@ class TodoItem {
       done: (json['done'] as bool?) ?? false,
       pinned: (json['pinned'] as bool?) ?? false,
       sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
+      completedAt:
+          json['completedAt'] == null
+              ? null
+              : DateTime.tryParse(json['completedAt'] as String),
       reminderTime: json['reminderTime'] as String?,
       createdAt:
           DateTime.tryParse((json['createdAt'] as String?) ?? '') ??

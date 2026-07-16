@@ -5,6 +5,7 @@ import 'package:flutter/physics.dart';
 
 import '../../models/models.dart';
 import '../../services/memory_service.dart';
+import '../../services/schedule_load_service.dart';
 
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
@@ -29,6 +30,84 @@ class HomePage extends StatefulWidget {
 
   @override
   State<HomePage> createState() => _HomePageState();
+}
+
+class _ScheduleRebalanceCard extends StatelessWidget {
+  final ScheduleRebalanceProposal proposal;
+  final Future<void> Function() onAccept;
+  final Future<void> Function() onDismiss;
+
+  const _ScheduleRebalanceCard({
+    required this.proposal,
+    required this.onAccept,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final moveCount = proposal.moves.length;
+    final reason = proposal.reasons.isEmpty
+        ? '本周任务较集中'
+        : proposal.reasons.first;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(s16, s12, s16, s4),
+      child: Container(
+        padding: const EdgeInsets.all(s14),
+        decoration: BoxDecoration(
+          color: primary50,
+          borderRadius: BorderRadius.circular(radius8),
+          border: Border.all(color: primary100),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.calendar_month_outlined, color: primary500),
+                SizedBox(width: s8),
+                Text(
+                  '本周安排较满',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: s8),
+            Text(reason, style: const TextStyle(fontSize: 13, color: ink)),
+            const SizedBox(height: s4),
+            Text(
+              moveCount > 0
+                  ? '已准备将 $moveCount 项未完成事项移到后续较空的日期。'
+                  : '暂时没有适合自动移动的事项，你可以手动调整日期。',
+              style: const TextStyle(fontSize: 13, color: textTertiary),
+            ),
+            if (moveCount > 0) ...[
+              const SizedBox(height: s10),
+              Text(
+                proposal.moves
+                    .take(3)
+                    .map((move) => '${move.title} -> ${move.toDate}')
+                    .join('\n'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: textTertiary,
+                ),
+              ),
+            ],
+            const SizedBox(height: s10),
+            Row(
+              children: [
+                if (moveCount > 0)
+                  FilledButton(onPressed: onAccept, child: const Text('确认调整')),
+                if (moveCount > 0) const SizedBox(width: s8),
+                TextButton(onPressed: onDismiss, child: const Text('暂不处理')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _HomePageState extends State<HomePage>
@@ -431,7 +510,8 @@ class _HomePageState extends State<HomePage>
                     },
                     child: Stack(
                       children: [
-                        if (chat.messages.isEmpty)
+                        if (chat.messages.isEmpty &&
+                            store.pendingScheduleProposal == null)
                           _buildEmptyState(store, userName)
                         else
                           _buildMessageList(chat, store),
@@ -485,7 +565,9 @@ class _HomePageState extends State<HomePage>
                             onSend: _handleChatSend,
                             onAddTodo: _handleAddTodo,
                             onModeChanged: _switchMode,
-                            enabled: !chat.isStreaming,
+                            enabled: true,
+                            isStreaming: chat.isStreaming,
+                            onStopGenerating: store.stopGenerating,
                             voiceService: store.voiceService,
                           ),
                         ],
@@ -515,18 +597,25 @@ class _HomePageState extends State<HomePage>
                 ),
               ),
             ),
-          // 抽屉已打开时的遮罩
-          if (_drawerOpen)
-            GestureDetector(
-              onTap: _closeDrawer,
-              onHorizontalDragEnd: (details) {
-                if (details.primaryVelocity != null &&
-                    details.primaryVelocity! > 0) {
-                  _closeDrawer();
-                }
-              },
-              child: Container(color: Colors.black.withValues(alpha: 0.3)),
+          // 抽屉遮罩淡入，避免左边缘打开时出现整块黑屏。
+          IgnorePointer(
+            ignoring: !_drawerOpen,
+            child: AnimatedOpacity(
+              opacity: _drawerOpen ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              child: GestureDetector(
+                onTap: _closeDrawer,
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity != null &&
+                      details.primaryVelocity! > 0) {
+                    _closeDrawer();
+                  }
+                },
+                child: Container(color: Colors.black.withValues(alpha: 0.3)),
+              ),
             ),
+          ),
           SideDrawer(
             isOpen: _drawerOpen,
             onClose: _closeDrawer,
@@ -535,8 +624,8 @@ class _HomePageState extends State<HomePage>
             onOpenTools: _openTools,
             onOpenSearchResult: _openSearchResult,
           ),
-          // 左边缘手势区：仅覆盖内容区域，避开顶部 DateStrip 和底部输入栏
-          _buildGestureArea(topPadding, bottomPadding),
+          // 左边缘手势区仅在抽屉关闭时存在，避免覆盖打开中的抽屉。
+          if (!_drawerOpen) _buildGestureArea(topPadding, bottomPadding),
         ],
       ),
     );
@@ -621,12 +710,24 @@ class _HomePageState extends State<HomePage>
         key: ValueKey(chat.conversationId),
         controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: s16),
-        itemCount: filtered.length + (chat.failure == null ? 0 : 1),
+        itemCount:
+            filtered.length +
+            (chat.failure == null ? 0 : 1) +
+            (store.pendingScheduleProposal == null ? 0 : 1),
         itemBuilder: (context, index) {
-          if (index == filtered.length) {
+          final proposal = store.pendingScheduleProposal;
+          if (proposal != null && index == 0) {
+            return _ScheduleRebalanceCard(
+              proposal: proposal,
+              onAccept: store.acceptScheduleProposal,
+              onDismiss: store.dismissScheduleProposal,
+            );
+          }
+          final messageIndex = index - (proposal == null ? 0 : 1);
+          if (messageIndex == filtered.length) {
             return _buildChatFailure(chat.failure!, store);
           }
-          final message = filtered[index];
+          final message = filtered[messageIndex];
           final originalIndex = messages.indexOf(message);
           return ChatBubble(
             content: message.content,
@@ -646,8 +747,7 @@ class _HomePageState extends State<HomePage>
             onDelete: message.role == 'user'
                 ? () => store.deleteMessagePair(originalIndex)
                 : null,
-            onEdit: message.role == 'user' &&
-                    message.id == latestUserMessageId
+            onEdit: message.role == 'user' && message.id == latestUserMessageId
                 ? (content) => store.editAndResendMessage(
                     originalIndex,
                     content,

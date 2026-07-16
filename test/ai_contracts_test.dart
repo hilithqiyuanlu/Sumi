@@ -117,6 +117,39 @@ void main() {
       expect(result.isValid, isFalse);
       expect(result.errors, contains('建议不能重复'));
     });
+
+    test('周计划必须完整覆盖请求日期，且事项日期不能越界', () {
+      final valid = AiContracts.weeklyTodos(
+        {
+          'days': [
+            {
+              'date': '2026-07-15',
+              'todos': [
+                {'title': '阅读基础章节', 'date': '2026-07-15'},
+              ],
+            },
+            {'date': '2026-07-16', 'todos': <Object?>[]},
+          ],
+        },
+        dates: const ['2026-07-15', '2026-07-16'],
+      );
+      expect(valid.isValid, isTrue, reason: valid.errors.join('；'));
+
+      final invalid = AiContracts.weeklyTodos(
+        {
+          'days': [
+            {
+              'date': '2026-07-15',
+              'todos': [
+                {'title': '阅读基础章节', 'date': '2026-07-16'},
+              ],
+            },
+          ],
+        },
+        dates: const ['2026-07-15', '2026-07-16'],
+      );
+      expect(invalid.isValid, isFalse);
+    });
   });
 
   group('记忆提取契约', () {

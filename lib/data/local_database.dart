@@ -20,7 +20,7 @@ class SumiLocalDatabase {
     final dbPath = p.join(dir.path, _dbName);
     _db = await openDatabase(
       dbPath,
-      version: 16,
+      version: 17,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE app_snapshot (
@@ -35,6 +35,7 @@ class SumiLocalDatabase {
         await _createMemoryTables(db);
         await _createMemoryExtractionTables(db);
         await _createStudyTimersTable(db);
+        await _createScheduleProposalTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -78,6 +79,9 @@ class SumiLocalDatabase {
         }
         if (oldVersion < 16) {
           await _migrateV15toV16(db);
+        }
+        if (oldVersion < 17) {
+          await _createScheduleProposalTable(db);
         }
       },
     );
@@ -276,6 +280,22 @@ class SumiLocalDatabase {
     )''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_study_timers_tool_call ON study_timers(tool_call_id)',
+    );
+  }
+
+  Future<void> _createScheduleProposalTable(Database db) async {
+    await db.execute('''CREATE TABLE IF NOT EXISTS schedule_rebalance_proposals (
+      id TEXT PRIMARY KEY,
+      body_json TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_schedule_rebalance_fingerprint ON schedule_rebalance_proposals(fingerprint)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_schedule_rebalance_status ON schedule_rebalance_proposals(status)',
     );
   }
 

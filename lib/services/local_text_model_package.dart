@@ -118,55 +118,73 @@ class LocalTextModelPackage {
     );
     await directory.create(recursive: true);
     final target = File(p.join(directory.path, manifest.modelFile));
-    var existing = await target.exists() ? await target.length() : 0;
-    if (existing > manifest.sizeBytes) {
-      await target.delete();
-      existing = 0;
-    }
-    if (existing == manifest.sizeBytes) {
-      try {
-        await _verify(manifest, directory);
-        await File(
-          p.join(directory.path, 'manifest.json'),
-        ).writeAsString(jsonEncode(manifest.toJson()));
-        return directory;
-      } on LocalTextModelPackageException {
+    var retriedFromStart = false;
+
+    while (true) {
+      var existing = await target.exists() ? await target.length() : 0;
+      if (existing > manifest.sizeBytes) {
         await target.delete();
         existing = 0;
       }
-    }
-    final request = http.Request('GET', _url(manifest.modelFile));
-    if (existing > 0) request.headers['Range'] = 'bytes=$existing-';
-    final response = await _client
-        .send(request)
-        .timeout(const Duration(minutes: 15));
-    if (response.statusCode != 200 && response.statusCode != 206) {
-      throw LocalTextModelPackageException(
-        '文本模型下载失败（HTTP ${response.statusCode}）',
-      );
-    }
-    if (existing > 0 && response.statusCode == 200) {
-      await target.delete();
-      existing = 0;
-    }
-    final sink = target.openWrite(
-      mode: existing > 0 ? FileMode.append : FileMode.write,
-    );
-    var received = existing;
-    try {
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        onProgress(received, manifest.sizeBytes);
+      if (existing == manifest.sizeBytes) {
+        try {
+          await _verify(manifest, directory);
+          await _writeManifest(manifest, directory);
+          return directory;
+        } on LocalTextModelPackageException {
+          await target.delete();
+          existing = 0;
+        }
       }
-    } finally {
-      await sink.close();
+
+      final request = http.Request('GET', _url(manifest.modelFile));
+      if (existing > 0) request.headers['Range'] = 'bytes=$existing-';
+      final response = await _client
+          .send(request)
+          .timeout(const Duration(minutes: 15));
+      if (response.statusCode != 200 && response.statusCode != 206) {
+        throw LocalTextModelPackageException(
+          '文本模型下载失败（HTTP ${response.statusCode}）',
+        );
+      }
+      if (existing > 0 &&
+          response.statusCode == 206 &&
+          !_startsAt(response.headers['content-range'], existing)) {
+        await target.delete();
+        if (retriedFromStart) {
+          throw const LocalTextModelPackageException('文本模型断点下载数据异常');
+        }
+        retriedFromStart = true;
+        continue;
+      }
+      if (existing > 0 && response.statusCode == 200) {
+        await target.delete();
+        existing = 0;
+      }
+
+      final sink = target.openWrite(
+        mode: existing > 0 ? FileMode.append : FileMode.write,
+      );
+      var received = existing;
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress(received, manifest.sizeBytes);
+        }
+      } finally {
+        await sink.close();
+      }
+      try {
+        await _verify(manifest, directory);
+        await _writeManifest(manifest, directory);
+        return directory;
+      } on LocalTextModelPackageException {
+        if (retriedFromStart) rethrow;
+        await target.delete();
+        retriedFromStart = true;
+      }
     }
-    await _verify(manifest, directory);
-    await File(
-      p.join(directory.path, 'manifest.json'),
-    ).writeAsString(jsonEncode(manifest.toJson()));
-    return directory;
   }
 
   Future<void> activate(Directory candidate) async {
@@ -195,6 +213,21 @@ class LocalTextModelPackage {
 
   Future<Directory> _active() async =>
       Directory(p.join((await _root()).path, 'active'));
+
+  Future<void> _writeManifest(
+    LocalTextModelManifest manifest,
+    Directory directory,
+  ) => File(
+    p.join(directory.path, 'manifest.json'),
+  ).writeAsString(jsonEncode(manifest.toJson()));
+
+  bool _startsAt(String? contentRange, int offset) {
+    final match = RegExp(
+      r'^bytes\\s+(\\d+)-\\d+/\\d+$',
+      caseSensitive: false,
+    ).firstMatch(contentRange?.trim() ?? '');
+    return match != null && int.tryParse(match.group(1)!) == offset;
+  }
 
   Future<void> _verify(
     LocalTextModelManifest manifest,

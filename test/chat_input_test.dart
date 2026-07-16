@@ -46,4 +46,23 @@ void main() {
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller?.text, isEmpty);
   });
+
+  testWidgets('生成中显示停止按钮并触发停止回调', (tester) async {
+    var stopped = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatInput(
+            mode: InputMode.chat,
+            isStreaming: true,
+            onSend: (_) => ChatSendResult.busy,
+            onStopGenerating: () => stopped = true,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.stop));
+    expect(stopped, isTrue);
+  });
 }

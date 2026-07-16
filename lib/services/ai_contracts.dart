@@ -136,6 +136,46 @@ class AiContracts {
     return AiContractValidation.valid({'todos': todos});
   }
 
+  static AiContractValidation<Map<String, Object?>> weeklyTodos(
+    Map<String, Object?> value, {
+    required List<String> dates,
+  }) {
+    final rawDays = value['days'];
+    if (rawDays is! List<Object?>) {
+      return const AiContractValidation.invalid(['days 必须是数组']);
+    }
+    final expected = dates.toSet();
+    final seen = <String>{};
+    final days = <Map<String, Object?>>[];
+    final errors = <String>[];
+    for (final raw in rawDays) {
+      if (raw is! Map<String, Object?>) {
+        errors.add('days 每项必须是对象');
+        continue;
+      }
+      final date = _text(raw['date']);
+      if (!expected.contains(date) || !seen.add(date)) {
+        errors.add('days 必须与请求日期一一对应');
+        continue;
+      }
+      if (raw['todos'] is! List<Object?>) {
+        errors.add('$date 的 todos 必须是数组');
+        continue;
+      }
+      final todos = _todoSeeds(
+        raw['todos'] as List<Object?>,
+        errors,
+        expectedDate: date,
+        minItems: 0,
+        maxItems: 3,
+      );
+      days.add({'date': date, 'todos': todos});
+    }
+    if (seen.length != expected.length) errors.add('days 必须完整覆盖请求日期');
+    if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
+    return AiContractValidation.valid({'days': days});
+  }
+
   static AiContractValidation<Map<String, Object?>> assessment(
     Map<String, Object?> value,
   ) {
@@ -218,12 +258,21 @@ class AiContracts {
     if (action == 'ignore') {
       return const AiContractValidation.valid({'action': 'ignore'});
     }
+    final type = _text(value['type']).isEmpty
+        ? 'explicit'
+        : _text(value['type']);
     final category = _text(value['category']);
     final content = _text(value['content']);
     final quotedText = _text(value['quotedText']);
     final errors = <String>[];
-    if (!const {'preference', 'goal', 'constraint'}.contains(category)) {
-      errors.add('category 必须是 preference、goal 或 constraint');
+    if (!const {'explicit', 'current'}.contains(type)) {
+      errors.add('type 必须是 explicit 或 current');
+    }
+    final validCategories = type == 'current'
+        ? const {'progress', 'difficulty', 'short_term_constraint'}
+        : const {'preference', 'goal', 'constraint'};
+    if (!validCategories.contains(category)) {
+      errors.add('category 与 type 不匹配');
     }
     if (!_lengthBetween(content, 2, 200)) {
       errors.add('content 必须为 2-200 字');
@@ -241,6 +290,7 @@ class AiContracts {
     if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
     return AiContractValidation.valid({
       'action': action,
+      'type': type,
       'category': category,
       'content': content,
       'quotedText': quotedText,

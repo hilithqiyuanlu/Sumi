@@ -49,4 +49,15 @@ void main() {
     expect(decoded['source'], 'search_web');
     expect(decoded['trust'], 'data_only');
   });
+
+  test('提示词包含设备本地时间和当前选中日期', () {
+    final prompt = ChatPromptBuilder.build(
+      localNow: DateTime(2026, 7, 16, 10, 5),
+      selectedDate: DateTime(2026, 7, 20),
+    );
+
+    expect(prompt, contains('"localNow":"2026-07-16T10:05:00.000"'));
+    expect(prompt, contains('"selectedCalendarDate":"2026-07-20"'));
+    expect(prompt, contains('"utcOffset"'));
+  });
 }

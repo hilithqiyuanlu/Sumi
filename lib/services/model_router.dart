@@ -91,6 +91,13 @@ abstract interface class StructuredGenerationCapability {
     required int timeConstraint,
     required int scheduledHours,
   });
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  });
   Future<GoalAssessment?> assessGoal({
     required String goal,
     required String level,
@@ -244,6 +251,21 @@ class _CloudStructuredCapability implements StructuredGenerationCapability {
       scheduledHours: scheduledHours,
     );
   }
+
+  @override
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  }) => _delegate.generateWeeklyTodos(
+    monthPlanTitle: monthPlanTitle,
+    monthPlanSummary: monthPlanSummary,
+    dates: dates,
+    timeConstraint: timeConstraint,
+    scheduledHours: scheduledHours,
+  );
 
   @override
   Future<GoalAssessment?> assessGoal({
@@ -484,6 +506,23 @@ class _MeasuredStructuredCapability implements StructuredGenerationCapability {
       monthPlanTitle: monthPlanTitle,
       monthPlanSummary: monthPlanSummary,
       date: date,
+      timeConstraint: timeConstraint,
+      scheduledHours: scheduledHours,
+    ),
+  );
+
+  @override
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  }) => _track(
+    () => _delegate.generateWeeklyTodos(
+      monthPlanTitle: monthPlanTitle,
+      monthPlanSummary: monthPlanSummary,
+      dates: dates,
       timeConstraint: timeConstraint,
       scheduledHours: scheduledHours,
     ),

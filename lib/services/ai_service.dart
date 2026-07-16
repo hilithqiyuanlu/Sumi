@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 import 'ai_contracts.dart';
 import 'memory_extraction.dart';
+import 'memory_service.dart';
 import 'prompt_context.dart';
 
 // ---------------------------------------------------------------------------
@@ -113,18 +114,42 @@ class DailyTodoResult {
   }
 }
 
+/// A validated set of Todos for several requested dates. Dates absent from
+/// [todosByDate] are intentionally represented as an empty list.
+class WeeklyTodoResult {
+  final Map<String, List<TodoSeed>> todosByDate;
+
+  const WeeklyTodoResult({required this.todosByDate});
+
+  factory WeeklyTodoResult.fromJson(Map<String, Object?> json) {
+    final days = json['days'] as List<Object?>? ?? const [];
+    return WeeklyTodoResult(
+      todosByDate: {
+        for (final raw in days.whereType<Map<String, Object?>>())
+          (raw['date'] as String? ?? ''):
+              (raw['todos'] as List<Object?>? ?? const [])
+                  .whereType<Map<String, Object?>>()
+                  .map(TodoSeed.fromJson)
+                  .toList(growable: false),
+      },
+    );
+  }
+}
+
 class _MemoryExtractionPrompt {
-  static const system = '''你只负责判断一条用户消息是否值得保存为长期记忆。
+  static const system = '''你只负责从一条用户消息中提取可验证的用户信息。
 只输出 JSON，不要解释。每条消息最多选择一条。
 
-允许：用户明确说出的长期 preference、goal、constraint，或对已有长期记忆的明确纠正。
-忽略：一次性问题、临时计划、阶段性事项、情绪、闲聊、行为描述、他人信息、模糊陈述。
+长期事实 type=explicit：用户明确说出的长期 preference、goal、constraint，或对已有长期记忆的明确纠正。
+当前状态 type=current：仅当用户明确说出正在学习的进度 progress、当前困难 difficulty、短期限制 short_term_constraint；仅在存在当前项目数据时使用，不推断项目。
+忽略：一次性问题、闲聊、未明确的情绪、他人信息、模糊陈述。
 不得根据推断补充信息。quotedText 必须逐字摘自用户消息。
 
 格式：
 {"action":"ignore"}
-或 {"action":"save","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话"}
-或 {"action":"replace","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话","replacesId":"候选 ID"}。
+或 {"action":"save","type":"explicit","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话"}
+或 {"action":"save","type":"current","category":"progress|difficulty|short_term_constraint","content":"简短当前状态","quotedText":"用户原话"}
+或 {"action":"replace","type":"explicit","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话","replacesId":"候选 ID"}。
 replace 只能使用输入候选的 ID。''';
 }
 
@@ -290,6 +315,15 @@ class AiTransport {
       '- 如果当天已有足够的待办，可以返回空列表\n'
       '- 可附带 body 作为补充说明\n'
       '- 输出 JSON：{"todos": [{"title": "...", "body": "...", "date": "YYYY-MM-DD"}]}';
+
+  static const _weeklyTodoSystemPrompt =
+      '你是 Sumi。根据一个月计划，为给定的多个日期生成一周学习事项。\n'
+      '要求：\n'
+      '- 每个给定日期必须恰好出现一次，即使没有事项也返回空 todos\n'
+      '- 每天 0-3 项；标题 2-16 字，是可执行的具体动作\n'
+      '- todos 中每项 date 必须等于所在日期\n'
+      '- 不得生成未请求的日期\n'
+      '- 输出 JSON：{"days":[{"date":"YYYY-MM-DD","todos":[{"title":"...","body":"可选","date":"YYYY-MM-DD"}]}]}';
 
   static const _assessmentSystemPrompt =
       '你是 Sumi，一个专业的自学规划评估师。基于搜索结果对用户的学习目标进行多维度评估，给出 A/B/C/D 综合评定。\n'
@@ -627,6 +661,7 @@ class AiTransport {
       for (final item in candidates.take(3))
         MemoryExtractionCandidate(
           id: item.id,
+          type: item.type,
           category: item.category,
           content: item.content.length > 40
               ? item.content.substring(0, 40)
@@ -650,6 +685,10 @@ class AiTransport {
     return MemoryExtractionDecision(
       action: MemoryExtractionAction.values.firstWhere(
         (item) => item.name == result['action'],
+      ),
+      type: MemoryType.values.firstWhere(
+        (item) => item.name == result['type'],
+        orElse: () => MemoryType.explicit,
       ),
       category: result['category'] as String?,
       content: result['content'] as String?,
@@ -1062,6 +1101,30 @@ ${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: Prom
     );
     if (result == null) return null;
     return DailyTodoResult.fromJson(result);
+  }
+
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  }) async {
+    if (dates.isEmpty) return const WeeklyTodoResult(todosByDate: {});
+    final userPrompt =
+        '''月计划：$monthPlanTitle — $monthPlanSummary
+日期集合：${dates.join(', ')}
+本周已安排的事项单位：$scheduledHours / $timeConstraint''';
+    final result = await _callValidatedJsonApi(
+      systemPrompt: _weeklyTodoSystemPrompt,
+      userPrompt: userPrompt,
+      model: _modelFlash,
+      validator: (value) => AiContracts.weeklyTodos(value, dates: dates),
+      thinking: false,
+      maxTokens: 5000,
+      timeoutSeconds: 45,
+    );
+    return result == null ? null : WeeklyTodoResult.fromJson(result);
   }
 
   // ---------------------------------------------------------------------------

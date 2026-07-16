@@ -67,6 +67,20 @@ class StructuredAiService {
     scheduledHours: scheduledHours,
   );
 
+  Future<WeeklyTodoResult?> generateWeeklyTodos({
+    required String monthPlanTitle,
+    required String monthPlanSummary,
+    required List<String> dates,
+    required int timeConstraint,
+    required int scheduledHours,
+  }) => _client.generateWeeklyTodos(
+    monthPlanTitle: monthPlanTitle,
+    monthPlanSummary: monthPlanSummary,
+    dates: dates,
+    timeConstraint: timeConstraint,
+    scheduledHours: scheduledHours,
+  );
+
   Future<GoalAssessment?> assessGoal({
     required String goal,
     required String level,

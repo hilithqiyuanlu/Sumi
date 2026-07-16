@@ -44,14 +44,9 @@ class ProjectTabs extends StatelessWidget {
                     vertical: s14,
                   ),
                   decoration: BoxDecoration(
-                    color: fill.withValues(alpha: isCurrent ? 0.52 : 0.24),
+                    color: isCurrent ? primary500 : fill.withValues(alpha: 0.24),
                     borderRadius: BorderRadius.circular(radiusCard),
-                    border: Border.all(
-                      color: isCurrent
-                          ? primary500
-                          : Colors.transparent,
-                      width: isCurrent ? 2 : 1,
-                    ),
+                    border: Border.all(color: Colors.transparent),
                   ),
                   child: Text(
                     title,
@@ -59,7 +54,7 @@ class ProjectTabs extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isCurrent ? ink : ink.withValues(alpha: 0.72),
+                      color: isCurrent ? Colors.white : ink.withValues(alpha: 0.72),
                     ),
                   ),
                 ),

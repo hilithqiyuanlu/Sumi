@@ -85,7 +85,11 @@ mixin SumiStoreTodos {
     if (i == -1) return;
     final todo = todoItems[i];
     if (isPastDate(todo.date)) return; // 07 轮：过去日期不可操作
-    todoItems[i] = todo.copyWith(done: !todo.done);
+    final isCompleting = !todo.done;
+    todoItems[i] = todo.copyWith(
+      done: isCompleting,
+      completedAt: isCompleting ? DateTime.now() : null,
+    );
     afterTodoMutation();
     if (todoItems[i].done) {
       await signalService?.emitTodoCompleted(todoItems[i]);
@@ -143,6 +147,7 @@ mixin SumiStoreTodos {
           done: todo.done,
           pinned: todo.pinned,
           sortOrder: todo.sortOrder,
+          completedAt: todo.completedAt,
           reminderTime: todo.reminderTime,
           createdAt: todo.createdAt,
         );
@@ -293,6 +298,7 @@ mixin SumiStoreTodos {
             done: todo.done,
             pinned: todo.pinned,
             sortOrder: todo.sortOrder,
+            completedAt: todo.completedAt,
             reminderTime: reminderTime ?? todo.reminderTime,
             createdAt: todo.createdAt,
           );

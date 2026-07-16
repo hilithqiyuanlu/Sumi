@@ -12,6 +12,7 @@ class ToolExecutor {
   final String Function() currentUserMessage;
   final String? Function() currentConversationId;
   final bool Function(String name) isToolEnabled;
+  final String Function() defaultTodoDate;
   final String Function({String? filter}) readTodos;
   final Future<void> Function({
     required String title,
@@ -47,6 +48,7 @@ class ToolExecutor {
     required this.currentUserMessage,
     required this.currentConversationId,
     required this.isToolEnabled,
+    required this.defaultTodoDate,
     required this.readTodos,
     required this.writeTodo,
     required this.createStudyTimer,
@@ -175,7 +177,7 @@ class ToolExecutor {
     try {
       await writeTodo(
         title: title,
-        date: args['date'] as String?,
+        date: args['date'] as String? ?? defaultTodoDate(),
         projectId: args['projectId'] as String?,
         body: args['body'] as String?,
       );
