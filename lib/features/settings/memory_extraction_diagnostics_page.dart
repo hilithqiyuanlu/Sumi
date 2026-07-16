@@ -67,6 +67,20 @@ class _MemoryExtractionDiagnosticsPageState
             ),
             const SizedBox(height: s12),
             _Summary(data: data),
+            if (data.sources.isNotEmpty) ...[
+              const SizedBox(height: s24),
+              const Text(
+                '采集入口',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textSecondary,
+                ),
+              ),
+              const SizedBox(height: s8),
+              for (final entry in data.sources.entries)
+                _FailureRow(label: _sourceLabel(entry.key), count: entry.value),
+            ],
             if (failures.isNotEmpty) ...[
               const SizedBox(height: s24),
               const Text(
@@ -95,10 +109,15 @@ class _MemoryExtractionDiagnosticsPageState
     'no_valid_decision' => '模型未返回可用结果',
     'validation' => '原话或字段校验失败',
     'replacement' => '替换目标无效',
-    'scope' => '缺少当前项目',
     'storage' => '本地写入失败',
     'runtime' => '后台运行异常',
     _ => '未知失败',
+  };
+
+  static String _sourceLabel(String value) => switch (value) {
+    'unified_input' => '统一输入',
+    'chat' => '普通聊天',
+    _ => '其他入口',
   };
 }
 
@@ -119,6 +138,7 @@ class _Summary extends StatelessWidget {
         _Stat(label: '已保存', value: data.applied),
         _Stat(label: '已忽略', value: data.ignored),
         _Stat(label: '失败', value: data.failed),
+        _Stat(label: '重试', value: data.retries),
       ],
     ),
   );

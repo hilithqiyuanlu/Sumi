@@ -4,7 +4,226 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../data/signal_database.dart';
+import '../data/local_database.dart';
 import '../models/models.dart';
+import 'memory_service.dart';
+import 'package:sqflite/sqflite.dart';
+
+enum UserModelStatus { observing, active, disabled }
+
+class UserModelItem {
+  final String id;
+  final String kind;
+  final String content;
+  final double confidence;
+  final UserModelStatus status;
+  final String? sourceMemoryId;
+  final DateTime createdAt;
+  final DateTime? lastVerifiedAt;
+
+  const UserModelItem({
+    required this.id,
+    required this.kind,
+    required this.content,
+    required this.confidence,
+    required this.status,
+    this.sourceMemoryId,
+    required this.createdAt,
+    this.lastVerifiedAt,
+  });
+}
+
+class UserModelEvidence {
+  final String kind;
+  final String summary;
+  final DateTime occurredAt;
+
+  const UserModelEvidence({
+    required this.kind,
+    required this.summary,
+    required this.occurredAt,
+  });
+}
+
+class UserModelStore {
+  final SumiLocalDatabase _store;
+  final DateTime Function() _now;
+
+  UserModelStore(this._store, {DateTime Function()? now})
+    : _now = now ?? DateTime.now;
+
+  Future<Database> get _db => _store.database;
+
+  Future<void> ensureTables() async {
+    final db = await _db;
+    await db.execute('''CREATE TABLE IF NOT EXISTS user_model_items (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, content TEXT NOT NULL,
+      confidence REAL NOT NULL, status TEXT NOT NULL, source_memory_id TEXT UNIQUE,
+      created_at TEXT NOT NULL, last_verified_at TEXT)''');
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS user_model_evidence (
+      id TEXT PRIMARY KEY, item_id TEXT NOT NULL, kind TEXT NOT NULL,
+      reference_id TEXT, summary TEXT NOT NULL, occurred_at TEXT NOT NULL,
+      FOREIGN KEY(item_id) REFERENCES user_model_items(id) ON DELETE CASCADE)''',
+    );
+  }
+
+  Future<void> syncFromImplicit(MemoryService memory) async {
+    await ensureTables();
+    for (final source in await memory.list()) {
+      if (source.type != MemoryType.implicit) continue;
+      final status = source.status == MemoryStatus.disabled
+          ? UserModelStatus.disabled
+          : source.confidence >= .85
+          ? UserModelStatus.active
+          : UserModelStatus.observing;
+      await (await _db).insert('user_model_items', {
+        'id': 'model-${source.id}',
+        'kind': source.category,
+        'content': source.content,
+        'confidence': source.confidence,
+        'status': status.name,
+        'source_memory_id': source.id,
+        'created_at': source.createdAt.toIso8601String(),
+        'last_verified_at': source.lastConfirmedAt?.toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      for (final evidence in await memory.evidenceFor(source.id)) {
+        await (await _db).insert('user_model_evidence', {
+          'id': 'model-evidence-${source.id}-${evidence.id}',
+          'item_id': 'model-${source.id}',
+          'kind': evidence.kind,
+          'reference_id': evidence.referenceId,
+          'summary': evidence.summary,
+          'occurred_at': evidence.occurredAt.toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    }
+  }
+
+  Future<List<UserModelItem>> list() async {
+    await ensureTables();
+    final rows = await (await _db).query(
+      'user_model_items',
+      orderBy: 'status ASC, confidence DESC, last_verified_at DESC',
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  Future<List<UserModelItem>> activeForSuggestions({int limit = 6}) async {
+    await ensureTables();
+    final rows = await (await _db).query(
+      'user_model_items',
+      where: 'status = ? AND confidence >= ?',
+      whereArgs: [UserModelStatus.active.name, .85],
+      orderBy: 'confidence DESC, last_verified_at DESC, created_at DESC',
+      limit: limit,
+    );
+    return rows.map(_fromRow).toList(growable: false);
+  }
+
+  Future<List<UserModelEvidence>> evidenceFor(String id) async {
+    await ensureTables();
+    final rows = await (await _db).query(
+      'user_model_evidence',
+      where: 'item_id = ?',
+      whereArgs: [id],
+      orderBy: 'occurred_at DESC',
+    );
+    return rows
+        .map(
+          (row) => UserModelEvidence(
+            kind: row['kind'] as String,
+            summary: row['summary'] as String,
+            occurredAt:
+                DateTime.tryParse(row['occurred_at'] as String? ?? '') ??
+                _now(),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> setStatus(String id, UserModelStatus status) async {
+    await ensureTables();
+    final db = await _db;
+    final rows = await db.query(
+      'user_model_items',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final sourceId = rows.single['source_memory_id'] as String?;
+    await db.update(
+      'user_model_items',
+      {'status': status.name, 'last_verified_at': _now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (sourceId != null) {
+      await db.update(
+        'memory_items',
+        {'status': status == UserModelStatus.disabled ? 'disabled' : 'active'},
+        where: 'id = ?',
+        whereArgs: [sourceId],
+      );
+    }
+  }
+
+  Future<void> delete(String id) async {
+    await ensureTables();
+    final db = await _db;
+    final rows = await db.query(
+      'user_model_items',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows.isEmpty) return;
+    final sourceId = rows.single['source_memory_id'] as String?;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'user_model_evidence',
+        where: 'item_id = ?',
+        whereArgs: [id],
+      );
+      await txn.delete('user_model_items', where: 'id = ?', whereArgs: [id]);
+      if (sourceId != null) {
+        await txn.delete(
+          'memory_evidence',
+          where: 'memory_id = ?',
+          whereArgs: [sourceId],
+        );
+        await txn.delete(
+          'memory_items',
+          where: 'id = ?',
+          whereArgs: [sourceId],
+        );
+      }
+    });
+  }
+
+  Future<void> clearAll() async {
+    await ensureTables();
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.delete('user_model_evidence');
+      await txn.delete('user_model_items');
+    });
+  }
+
+  UserModelItem _fromRow(Map<String, Object?> row) => UserModelItem(
+    id: row['id'] as String,
+    kind: row['kind'] as String,
+    content: row['content'] as String,
+    confidence: (row['confidence'] as num).toDouble(),
+    status: UserModelStatus.values.firstWhere(
+      (item) => item.name == row['status'],
+      orElse: () => UserModelStatus.observing,
+    ),
+    sourceMemoryId: row['source_memory_id'] as String?,
+    createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ?? _now(),
+    lastVerifiedAt: DateTime.tryParse(row['last_verified_at'] as String? ?? ''),
+  );
+}
 
 /// 合并操作结果。
 class MergeResult {

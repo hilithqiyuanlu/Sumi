@@ -41,9 +41,10 @@ class InputClassification {
       title: json['title'] as String?,
       date: json['date'] as String?,
       reminderTime: json['reminderTime'] as String?,
-      missingFields: (json['missingFields'] as List<Object?>?)
-              ?.whereType<String>()
-              .toList(growable: false) ??
+      missingFields:
+          (json['missingFields'] as List<Object?>?)?.whereType<String>().toList(
+            growable: false,
+          ) ??
           const [],
       clarification: json['clarification'] as String?,
     );
@@ -93,6 +94,7 @@ class AppSettings {
   final String deepseekApiKey;
   final String tavilyApiKey;
   final bool localTextGenerationEnabled;
+  final bool localSpeechRecognitionEnabled;
   final bool showAllMonthCards; // 开发者开关：披露全部月卡
   final bool suggestionQuestionsEnabled;
   final bool scheduleLoadAnalysisEnabled;
@@ -103,6 +105,7 @@ class AppSettings {
     this.deepseekApiKey = '',
     this.tavilyApiKey = '',
     this.localTextGenerationEnabled = true,
+    this.localSpeechRecognitionEnabled = true,
     this.showAllMonthCards = false,
     this.suggestionQuestionsEnabled = true,
     this.scheduleLoadAnalysisEnabled = true,
@@ -122,6 +125,7 @@ class AppSettings {
     String? deepseekApiKey,
     String? tavilyApiKey,
     bool? localTextGenerationEnabled,
+    bool? localSpeechRecognitionEnabled,
     bool? showAllMonthCards,
     bool? suggestionQuestionsEnabled,
     bool? scheduleLoadAnalysisEnabled,
@@ -133,6 +137,8 @@ class AppSettings {
       tavilyApiKey: tavilyApiKey ?? this.tavilyApiKey,
       localTextGenerationEnabled:
           localTextGenerationEnabled ?? this.localTextGenerationEnabled,
+      localSpeechRecognitionEnabled:
+          localSpeechRecognitionEnabled ?? this.localSpeechRecognitionEnabled,
       showAllMonthCards: showAllMonthCards ?? this.showAllMonthCards,
       suggestionQuestionsEnabled:
           suggestionQuestionsEnabled ?? this.suggestionQuestionsEnabled,
@@ -147,6 +153,7 @@ class AppSettings {
     'deepseekApiKey': includeSecrets ? deepseekApiKey : '',
     'tavilyApiKey': includeSecrets ? tavilyApiKey : '',
     'localTextGenerationEnabled': localTextGenerationEnabled,
+    'localSpeechRecognitionEnabled': localSpeechRecognitionEnabled,
     'showAllMonthCards': showAllMonthCards,
     'suggestionQuestionsEnabled': suggestionQuestionsEnabled,
     'scheduleLoadAnalysisEnabled': scheduleLoadAnalysisEnabled,
@@ -159,6 +166,8 @@ class AppSettings {
     tavilyApiKey: (json['tavilyApiKey'] as String?) ?? '',
     localTextGenerationEnabled:
         (json['localTextGenerationEnabled'] as bool?) ?? true,
+    localSpeechRecognitionEnabled:
+        (json['localSpeechRecognitionEnabled'] as bool?) ?? true,
     showAllMonthCards: (json['showAllMonthCards'] as bool?) ?? false,
     suggestionQuestionsEnabled:
         (json['suggestionQuestionsEnabled'] as bool?) ?? true,

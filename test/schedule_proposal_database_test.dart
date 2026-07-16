@@ -106,4 +106,26 @@ void main() {
       isEmpty,
     );
   });
+
+  test('流式回复结束后释放卡片锚点，卡片仍可展示', () async {
+    final database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+    );
+    addTearDown(database.close);
+    final proposals = ScheduleProposalDatabase(
+      SumiLocalDatabase(database: database),
+    );
+    await proposals.save(proposal(anchor: 'assistant-streaming'));
+
+    expect(
+      await proposals.releaseDisplayAnchor(
+        conversationId: 'conversation-1',
+        assistantMessageId: 'assistant-streaming',
+      ),
+      isTrue,
+    );
+    final visible = await proposals.visibleForConversation('conversation-1');
+    expect(visible, hasLength(1));
+    expect(visible.single.displayAnchorMessageId, isNull);
+  });
 }

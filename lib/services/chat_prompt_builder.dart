@@ -52,7 +52,7 @@ class ChatPromptBuilder {
       }
       if (enabled.contains('create_study_timer')) {
         blocks.add(
-          '只有用户明确提出学习计时、倒计时或闹钟请求时才调用 create_study_timer。用户明确说“现在开始”“立刻开始”时才传 startImmediately=true；否则计时器保持待开始。创建闹钟必须取得明确的未来时间并传 alarm + alertAt；时间含糊时先追问，不能猜测。',
+          '只有用户明确提出学习计时、倒计时或闹钟请求时才调用 create_study_timer。相对时长请求（如“开始计时两分钟”“两分钟后提醒我”）一律使用 timer + minutes；其中“开始计时”或“几分钟后提醒我”必须传 startImmediately=true。只有用户明确说闹钟，或给出“明早 8 点、18:30”等绝对时刻时才使用 alarm + alertAt；绝不能把相对时长换算成时间点后创建闹钟。时间含糊时先追问，不能猜测。',
         );
       }
     }
@@ -87,8 +87,7 @@ class ChatPromptBuilder {
       final offset = localNow.timeZoneOffset;
       final sign = offset.isNegative ? '-' : '+';
       final hours = offset.inHours.abs().toString().padLeft(2, '0');
-      final minutes =
-          (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
+      final minutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
       final weekdays = ['一', '二', '三', '四', '五', '六', '日'];
       blocks.add('## 当前设备时间');
       blocks.add(

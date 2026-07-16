@@ -49,3 +49,4 @@ app.*.map.json
 
 # Local Python venv
 .venv-local-embedding/
+.release/

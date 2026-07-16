@@ -13,6 +13,7 @@ enum ModelCapability {
   memoryExtraction,
   webSearch,
   embedding,
+  speechRecognition,
 }
 
 enum ModelRouteOutcome { success, failure, degraded }
@@ -62,7 +63,7 @@ abstract interface class ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    int maxTurns = 5,
+    int maxTurns = 8,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
   });
@@ -243,7 +244,7 @@ class _CloudChatCapability implements ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    int maxTurns = 5,
+    int maxTurns = 8,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
   }) {
@@ -512,7 +513,7 @@ class _MeasuredChatCapability implements ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    int maxTurns = 5,
+    int maxTurns = 8,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
   }) async* {

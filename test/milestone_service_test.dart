@@ -96,4 +96,34 @@ void main() {
     expect(await service.pendingStatements(), isEmpty);
     expect(await service.forProjectMonth('project-1', 0), isEmpty);
   });
+
+  test('删除来源消息后阻止迟到的待匹配记录和里程碑', () async {
+    final todo = TodoItem(
+      id: 'todo-1',
+      source: TodoSource.system,
+      projectId: 'project-1',
+      title: '完成第一课',
+      done: true,
+      createdAt: DateTime(2026, 7, 1),
+    );
+    await service.deleteForSourceMessages(['msg-deleted']);
+
+    await service.savePending(
+      messageId: 'msg-deleted',
+      todoId: todo.id,
+      quote: '我完成第一课了',
+      occurredAt: DateTime(2026, 7, 2),
+    );
+    final milestone = await service.create(
+      todo: todo,
+      sourceMessageId: 'msg-deleted',
+      quote: '我完成第一课了',
+      occurredAt: DateTime(2026, 7, 2),
+      monthIndex: 0,
+    );
+
+    expect(await service.pendingStatements(), isEmpty);
+    expect(milestone, isNull);
+    expect(await service.forProjectMonth('project-1', 0), isEmpty);
+  });
 }

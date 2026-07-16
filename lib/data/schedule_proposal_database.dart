@@ -106,6 +106,33 @@ class ScheduleProposalDatabase {
     return save(updated);
   }
 
+  /// A card created while a reply is streaming is hidden until that reply
+  /// settles. Once it settles, remove the transient anchor so the card is
+  /// rendered at the end of that conversation even if the reply failed.
+  Future<bool> releaseDisplayAnchor({
+    required String conversationId,
+    required String assistantMessageId,
+  }) async {
+    await _ensureTable();
+    final rows = await (await _db).query(
+      'schedule_rebalance_proposals',
+      columns: ['body_json'],
+    );
+    final matches = rows
+        .map(_fromRow)
+        .where(
+          (proposal) =>
+              proposal.conversationId == conversationId &&
+              proposal.displayAnchorMessageId == assistantMessageId &&
+              proposal.status != ScheduleProposalStatus.dismissed,
+        )
+        .toList(growable: false);
+    for (final proposal in matches) {
+      await updatePresentation(proposal.id, clearDisplayAnchor: true);
+    }
+    return matches.isNotEmpty;
+  }
+
   /// Persists the actual number of moved items instead of assuming every
   /// preview item stayed eligible until the user confirmed it.
   Future<ScheduleRebalanceProposal?> complete(

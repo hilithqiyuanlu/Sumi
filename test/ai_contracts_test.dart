@@ -243,6 +243,7 @@ void main() {
           'category': 'preference',
           'content': '偏好短时练习',
           'quotedText': '我长期偏好短时练习',
+          'confidence': .95,
         }).isValid,
         isTrue,
       );
@@ -356,6 +357,15 @@ void main() {
       }, validProjectIds: const {});
       expect(alarm.isValid, isTrue, reason: alarm.errors.join('；'));
       expect(alarm.value?['kind'], 'alarm');
+
+      final contradictoryAlarm =
+          ToolCallValidator.validate('call-9', 'create_study_timer', {
+            'title': '专注学习',
+            'kind': 'alarm',
+            'alertAt': alarmAt.toIso8601String(),
+            'startImmediately': true,
+          }, validProjectIds: const {});
+      expect(contradictoryAlarm.isValid, isFalse);
     });
   });
 }

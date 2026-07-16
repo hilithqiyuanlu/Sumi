@@ -102,7 +102,7 @@ class _Chat implements ChatCapability {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    int maxTurns = 5,
+    int maxTurns = 8,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
   }) {
@@ -320,7 +320,10 @@ void main() {
     );
 
     expect(result?.single.text, '帮我分析今天的学习重点');
-    expect(metrics.values.single.capability, ModelCapability.suggestionQuestions);
+    expect(
+      metrics.values.single.capability,
+      ModelCapability.suggestionQuestions,
+    );
     expect(metrics.values.single.provider, 'cloud');
   });
 
@@ -384,6 +387,10 @@ void main() {
 
     expect(restored.localTextGenerationEnabled, isFalse);
     expect(AppSettings.fromJson(const {}).localTextGenerationEnabled, isTrue);
+    expect(
+      AppSettings.fromJson(const {}).localSpeechRecognitionEnabled,
+      isTrue,
+    );
   });
 
   test('非法工具参数不会执行工具，聊天仍能继续生成', () async {
@@ -539,5 +546,31 @@ void main() {
     expect(serialized, isNot(contains('response')));
     expect(serialized, isNot(contains('content')));
     expect(serialized, isNot(contains('argument')));
+  });
+
+  test('本地语音识别保留每次无内容的诊断记录', () {
+    final now = DateTime(2026, 7, 16, 10, 30);
+    final store = ModelRouterMetricsStore(now: () => now);
+    store.record(
+      ModelRouterMetric(
+        occurredAt: now,
+        capability: ModelCapability.speechRecognition,
+        provider: 'local-sensevoice-1.0.0',
+        outcome: ModelRouteOutcome.success,
+        elapsed: const Duration(milliseconds: 860),
+      ),
+    );
+
+    final events = store.recentEvents(
+      capability: ModelCapability.speechRecognition,
+      providerPrefix: 'local-',
+    );
+    expect(events, hasLength(1));
+    expect(events.single.durationMs, 860);
+    expect(events.single.outcome, ModelRouteOutcome.success);
+
+    final restored = ModelRouterMetricsStore(now: () => now);
+    restored.restore(store.toJson());
+    expect(restored.recentEvents(), hasLength(1));
   });
 }

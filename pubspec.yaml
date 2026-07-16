@@ -16,6 +16,8 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   http: ^1.2.2
   speech_to_text: ^7.0.0
+  record: ^6.1.0
+  sherpa_onnx: ^1.13.4
   flutter_markdown: ^0.7.6
   crypto: ^3.0.6
   llamadart: ^0.8.16

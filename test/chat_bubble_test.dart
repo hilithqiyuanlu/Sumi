@@ -4,7 +4,7 @@ import 'package:sumi/features/chat/chat_bubble.dart';
 import 'package:sumi/store/sumi_store.dart';
 
 void main() {
-  testWidgets('长按用户消息显示编辑、取消和删除操作', (tester) async {
+  testWidgets('长按用户消息只显示编辑、取消和删除操作', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -22,6 +22,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('编辑'), findsOneWidget);
+    expect(find.text('记住这句话'), findsNothing);
     expect(find.text('取消'), findsOneWidget);
     expect(find.text('删除'), findsOneWidget);
   });

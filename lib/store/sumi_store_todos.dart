@@ -8,6 +8,7 @@ mixin SumiStoreTodos {
   List<TodoItem> get todoItems;
   List<Project> get projectList;
   DateTime get selectedDate;
+  DateTime get currentTime;
   StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
   Future<void> onProjectTodoCompleted(TodoItem todo);
@@ -15,7 +16,7 @@ mixin SumiStoreTodos {
   void afterTodoMutation({bool affectsTodayLoad = false});
 
   bool _affectsTodayLoad(String? before, [String? after]) {
-    final today = dateKey(DateTime.now());
+    final today = dateKey(currentTime);
     return before == today || after == today;
   }
 
@@ -48,6 +49,38 @@ mixin SumiStoreTodos {
     afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
     await signalService?.emitTodoCreated(todo);
     return todo;
+  }
+
+  /// 将一组已确认标题一次写入同一天，只触发一次领域通知。
+  Future<List<TodoItem>> addUserTodosForDate(
+    List<String> titles, {
+    required String date,
+    String? condensedFrom,
+  }) async {
+    final normalized = titles
+        .map((title) => title.trim())
+        .where((title) => title.isNotEmpty)
+        .toList(growable: false);
+    if (normalized.isEmpty) return const [];
+    var nextOrder = _nextSortOrder();
+    final created = <TodoItem>[
+      for (final title in normalized)
+        TodoItem(
+          id: newSumiId('todo'),
+          source: TodoSource.user,
+          date: date,
+          title: title,
+          sortOrder: nextOrder++,
+          createdAt: DateTime.now(),
+          condensedFrom: condensedFrom,
+        ),
+    ];
+    todoItems.addAll(created);
+    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(date));
+    for (final todo in created) {
+      await signalService?.emitTodoCreated(todo);
+    }
+    return List.unmodifiable(created);
   }
 
   /// 添加系统 todo。
@@ -120,71 +153,6 @@ mixin SumiStoreTodos {
     afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
   }
 
-  /// 更新标题（含编辑区分 + 凝练还原保护）。
-  Future<void> updateTodoTitle(String id, String newTitle) async {
-    if (newTitle.trim().isEmpty) {
-      deleteTodo(id); // 清空标题 ≈ 删除
-      return;
-    }
-    final i = todoItems.indexWhere((t) => t.id == id);
-    if (i == -1) return;
-    final todo = todoItems[i];
-    if (isPastDate(todo.date)) return; // 07 轮：过去日期不可编辑
-
-    final classification =
-        signalService?.classifyEdit(
-          todo.title,
-          newTitle.trim(),
-          condensedFrom: todo.condensedFrom,
-        ) ??
-        EditClassification.minor;
-
-    switch (classification) {
-      case EditClassification.condensedRestore:
-        // 还原为凝练前文本 → 不产生信号，直接更新
-        todoItems[i] = todo.copyWith(title: newTitle.trim());
-      case EditClassification.cleared:
-        await signalService?.emitTodoDeleted(todo);
-        todoItems.removeWhere((t) => t.id == id);
-      case EditClassification.major:
-        await signalService?.emitTodoDeleted(todo, reason: 'largeEdit');
-        final newTodo = TodoItem(
-          id: id,
-          source: todo.source,
-          projectId: todo.projectId,
-          date: todo.date,
-          title: newTitle.trim(),
-          body: todo.body,
-          done: todo.done,
-          pinned: todo.pinned,
-          sortOrder: todo.sortOrder,
-          completedAt: todo.completedAt,
-          reminderTime: todo.reminderTime,
-          createdAt: todo.createdAt,
-        );
-        todoItems[i] = newTodo;
-        await signalService?.emitTodoCreated(newTodo);
-      case EditClassification.minor:
-        await signalService?.emitTodoEdited(todo, todo.title, newTitle.trim());
-        todoItems[i] = todo.copyWith(title: newTitle.trim());
-    }
-    afterTodoMutation(affectsTodayLoad: _affectsTodayLoad(todo.date));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Pin
-  // ---------------------------------------------------------------------------
-
-  /// 切换置顶。
-  void togglePin(String id) {
-    final i = todoItems.indexWhere((t) => t.id == id);
-    if (i == -1) return;
-    if (isPastDate(todoItems[i].date)) return; // 07 轮：过去日期不可操作
-    todoItems[i] = todoItems[i].copyWith(pinned: !todoItems[i].pinned);
-    afterTodoMutation();
-    // 置顶不产生信号
-  }
-
   // ---------------------------------------------------------------------------
   // 日期
   // ---------------------------------------------------------------------------
@@ -219,24 +187,6 @@ mixin SumiStoreTodos {
     );
     todoItems[i] = todo.copyWith(projectId: projectId);
     afterTodoMutation();
-  }
-
-  // ---------------------------------------------------------------------------
-  // 拖拽排序
-  // ---------------------------------------------------------------------------
-
-  /// 交换两个 todo 的 sortOrder。
-  void reorderTodos(String draggedId, String targetId) {
-    final dragIdx = todoItems.indexWhere((t) => t.id == draggedId);
-    final targetIdx = todoItems.indexWhere((t) => t.id == targetId);
-    if (dragIdx == -1 || targetIdx == -1 || dragIdx == targetIdx) return;
-
-    final dragOrder = todoItems[dragIdx].sortOrder;
-    final targetOrder = todoItems[targetIdx].sortOrder;
-    todoItems[dragIdx] = todoItems[dragIdx].copyWith(sortOrder: targetOrder);
-    todoItems[targetIdx] = todoItems[targetIdx].copyWith(sortOrder: dragOrder);
-    afterTodoMutation();
-    // 排序不产生信号
   }
 
   // ---------------------------------------------------------------------------
@@ -338,38 +288,5 @@ mixin SumiStoreTodos {
           title.trim() != todo.title &&
           _affectsTodayLoad(todo.date),
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 查询
-  // ---------------------------------------------------------------------------
-
-  List<TodoItem> get todos => List.unmodifiable(todoItems);
-
-  List<TodoItem> get userTodos =>
-      todoItems.where((t) => t.source == TodoSource.user).toList();
-
-  List<TodoItem> get systemTodos =>
-      todoItems.where((t) => t.source == TodoSource.system).toList();
-
-  /// 当前选中日期的 todo（date == null 始终显示，匹配日期的显示）。
-  List<TodoItem> get todosForSelectedDate {
-    final key = dateKey(selectedDate);
-    return sortedTodos.where((t) => t.date == null || t.date == key).toList();
-  }
-
-  /// 排序后的 todo 列表。
-  List<TodoItem> get sortedTodos {
-    final list = List<TodoItem>.of(todoItems);
-    list.sort(_todoComparator);
-    return list;
-  }
-
-  int _todoComparator(TodoItem a, TodoItem b) {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    if (!a.done && b.done) return -1;
-    if (a.done && !b.done) return 1;
-    return a.sortOrder.compareTo(b.sortOrder);
   }
 }

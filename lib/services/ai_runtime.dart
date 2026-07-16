@@ -156,7 +156,7 @@ class ChatAgentService {
     required List<Map<String, Object?>> messages,
     required Future<String> Function(ToolCall call) executeTool,
     void Function(ToolCall call)? onToolCall,
-    int maxTurns = 5,
+    int maxTurns = 8,
     Set<String> validProjectIds = const {},
     Set<String>? enabledTools,
   }) async* {
@@ -192,6 +192,12 @@ class ChatAgentService {
         }
       }
       if (failed) return;
+
+      if (pendingCalls != null && pendingCalls.isNotEmpty) {
+        pendingCalls = pendingCalls
+            .map((call) => _normalizeTimerCall(call, messages))
+            .toList(growable: false);
+      }
 
       final assistantMessage = <String, Object?>{
         'role': 'assistant',
@@ -244,8 +250,94 @@ class ChatAgentService {
       }
     }
 
-    yield ContentDelta('\n\n（已达最大轮数，以上为我能获取的信息。）');
+    yield ContentDelta('\n\n（本次工具步骤较多，以上是已完成的部分。）');
     yield StreamDone();
+  }
+
+  static ToolCall _normalizeTimerCall(
+    ToolCall call,
+    List<Map<String, Object?>> messages,
+  ) {
+    if (call.name != 'create_study_timer') return call;
+    final userText = messages.reversed
+        .where((message) => message['role'] == 'user')
+        .map((message) => message['content'])
+        .whereType<String>()
+        .firstOrNull;
+    if (userText == null || !_prefersRelativeTimer(userText)) return call;
+
+    final minutes =
+        _relativeMinutes(userText) ?? _integer(call.arguments['minutes']);
+    if (minutes == null || minutes < 1 || minutes > 480) return call;
+    return ToolCall(
+      id: call.id,
+      name: call.name,
+      arguments: {
+        ...call.arguments,
+        'kind': 'timer',
+        'minutes': minutes,
+        'startImmediately': _startsImmediately(userText),
+      }..remove('alertAt'),
+    );
+  }
+
+  static bool _prefersRelativeTimer(String text) {
+    if (text.contains('闹钟') &&
+        !text.contains('计时器') &&
+        !text.contains('倒计时') &&
+        !text.contains('开始计时')) {
+      return false;
+    }
+    return RegExp(r'计时器|倒计时|开始计时').hasMatch(text) ||
+        RegExp(
+          r'(?:\d+|[一二两三四五六七八九十半]+)(?:秒钟?|分钟|小时)后.{0,12}提醒|提醒.{0,12}(?:\d+|[一二两三四五六七八九十半]+)(?:秒钟?|分钟|小时)后',
+        ).hasMatch(text);
+  }
+
+  static bool _startsImmediately(String text) =>
+      RegExp(r'开始|立刻|立即|现在|马上').hasMatch(text) ||
+      RegExp(r'(?:\d+|[一二两三四五六七八九十半]+)(?:秒钟?|分钟|小时)后.{0,12}提醒').hasMatch(text);
+
+  static int? _relativeMinutes(String text) {
+    final match = RegExp(r'(\d+|[一二两三四五六七八九十半]+)(秒钟?|分钟|小时)').firstMatch(text);
+    if (match == null) return null;
+    final amountText = match.group(1)!;
+    final unit = match.group(2)!;
+    if (amountText == '半') return unit == '小时' ? 30 : 1;
+    final amount = int.tryParse(amountText) ?? _chineseInteger(amountText);
+    if (amount == null) return null;
+    if (unit.startsWith('秒')) return (amount / 60).ceil().clamp(1, 480);
+    return unit == '小时' ? amount * 60 : amount;
+  }
+
+  static int? _chineseInteger(String text) {
+    const digits = {
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    if (text == '十') return 10;
+    final tenAt = text.indexOf('十');
+    if (tenAt < 0) return digits[text];
+    final tens = tenAt == 0 ? 1 : digits[text.substring(0, tenAt)];
+    final ones = tenAt == text.length - 1
+        ? 0
+        : digits[text.substring(tenAt + 1)];
+    if (tens == null || ones == null) return null;
+    return tens * 10 + ones;
+  }
+
+  static int? _integer(Object? value) {
+    if (value is int) return value;
+    if (value is num && value == value.roundToDouble()) return value.toInt();
+    return null;
   }
 
   static String _activityForTool(String name) {

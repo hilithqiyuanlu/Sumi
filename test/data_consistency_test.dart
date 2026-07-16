@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -9,7 +8,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sumi/data/chat_database.dart';
 import 'package:sumi/data/local_database.dart';
 import 'package:sumi/data/signal_database.dart';
-import 'package:sumi/features/calendar/month_view_sheet.dart';
 import 'package:sumi/models/models.dart';
 import 'package:sumi/services/ai_service.dart';
 import 'package:sumi/services/daily_planning_policy.dart';
@@ -20,7 +18,6 @@ import 'package:sumi/services/memory_extraction.dart';
 import 'package:sumi/services/project_generation.dart';
 import 'package:sumi/services/signal_service.dart';
 import 'package:sumi/services/snapshot_write_queue.dart';
-import 'package:sumi/sumi_scope.dart';
 import 'package:sumi/store/sumi_store.dart';
 import 'package:sumi/utils/utils.dart';
 
@@ -44,6 +41,26 @@ class _DelayedStreamClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = request is http.Request && request.body.isNotEmpty
+        ? jsonDecode(request.body) as Map<String, Object?>
+        : const <String, Object?>{};
+    if (body['stream'] != true) {
+      return http.StreamedResponse(
+        Stream.value(
+          utf8.encode(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {'content': '{"action":"ignore"}'},
+                },
+              ],
+            }),
+          ),
+        ),
+        200,
+        headers: const {'content-type': 'application/json; charset=utf-8'},
+      );
+    }
     if (!requested.isCompleted) requested.complete();
     return http.StreamedResponse(
       _chunks.stream,
@@ -263,7 +280,27 @@ Future<SumiStore> _createStore(
     userModelServiceOverride: userModel,
     signalDatabaseOverride: signals,
     now: now,
-  );
+  ).then((store) {
+    addTearDown(store.close);
+    return store;
+  });
+}
+
+Future<void> _waitForChatIdle(SumiStore store) async {
+  if (!store.chatView.value.isStreaming) return;
+  final completed = Completer<void>();
+  void listener() {
+    if (!store.chatView.value.isStreaming && !completed.isCompleted) {
+      completed.complete();
+    }
+  }
+
+  store.chatView.addListener(listener);
+  try {
+    await completed.future.timeout(const Duration(seconds: 2));
+  } finally {
+    store.chatView.removeListener(listener);
+  }
 }
 
 void main() {
@@ -313,7 +350,51 @@ void main() {
     expect(result.single.context['title'], '阅读文档');
   });
 
-  test('建议选择形成可追溯隐式记忆，两次反馈后可用于 Agent', () async {
+  test('删除 Todo 后保留行为信号但移除事项内容', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final signals = SignalDatabase(SumiLocalDatabase(database: db));
+    final timestamp = DateTime(2026, 7, 15, 10);
+    for (final signal in [
+      SignalType.todoCreated,
+      SignalType.todoEdited,
+      SignalType.todoDeleted,
+    ]) {
+      await signals.insert(
+        UserSignal(
+          signal: signal,
+          time: timestamp,
+          todoId: 'deleted-todo',
+          contextJson: jsonEncode({
+            'title': '不再保留的事项',
+            'oldTitle': '旧事项标题',
+            'newTitle': '新事项标题',
+            'changePercent': 32,
+            'plannedDate': '2026-07-15',
+          }),
+          createdAt: timestamp,
+        ),
+      );
+    }
+
+    await signals.redactDeletedTodoContent(todoId: 'deleted-todo');
+    final records = await signals.query(range: 'all');
+
+    expect(records, hasLength(3));
+    expect(records.every((item) => !item.context.containsKey('title')), isTrue);
+    expect(
+      records.every((item) => !item.context.containsKey('oldTitle')),
+      isTrue,
+    );
+    expect(
+      records.every((item) => !item.context.containsKey('newTitle')),
+      isTrue,
+    );
+    expect(records.first.context['changePercent'], 32);
+    expect(SignalDatabase.formatForPrompt(records), isNot(contains('不再保留的事项')));
+  });
+
+  test('建议选择形成可信隐式记忆，但不进入 Agent 上下文', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
     final service = MemoryService(SumiLocalDatabase(database: db));
@@ -328,13 +409,19 @@ void main() {
     await service.recordSelected(first);
     expect(await service.hotForAgent('制定计划'), isEmpty);
 
-    final second = (await service.createSuggestions(
-      realtimeStats: stats,
-    )).firstWhere((item) => item.topic == 'plan');
-    await service.recordSelected(second);
-    final trusted = await service.hotForAgent('制定计划');
-    expect(trusted.single.content, 'plan');
-    expect(trusted.single.confidence, greaterThanOrEqualTo(0.70));
+    for (var i = 0; i < 3; i++) {
+      final next = (await service.createSuggestions(
+        realtimeStats: stats,
+      )).firstWhere((item) => item.topic == 'plan');
+      await service.recordSelected(next);
+    }
+    final implicit = (await service.list()).singleWhere(
+      (item) => item.category == 'suggestion_topic' && item.content == 'plan',
+    );
+    expect(implicit.confidence, greaterThanOrEqualTo(0.85));
+    expect(await service.hotForAgent('制定计划'), isEmpty);
+    final suggested = await service.createSuggestions(realtimeStats: stats);
+    expect(suggested.first.topic, 'plan');
   });
 
   test('不再推荐会停用默认类别，且不会再次生成', () async {
@@ -601,6 +688,46 @@ void main() {
     );
   });
 
+  test('删除来源消息会同步删除无其他证据的自动记忆', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final store = await _createStore(db);
+    await store.selectDate(DateTime.now());
+    final conversationId = store.currentConversationId!;
+    final chat = store.chatDatabase!;
+    final message = ChatMessage(
+      id: 'memory-source-message',
+      conversationId: conversationId,
+      role: 'user',
+      content: '我通常更适合短时练习。',
+      createdAt: DateTime.now(),
+    );
+    await chat.saveMessage(message);
+    final memory = store.memoryService!;
+    await memory.claimExtraction(message.id);
+    await memory.applyExtractionDecision(
+      messageId: message.id,
+      userMessage: message.content,
+      decision: const MemoryExtractionDecision(
+        action: MemoryExtractionAction.save,
+        category: 'preference',
+        content: '偏好短时练习',
+        quotedText: '我通常更适合短时练习',
+        confidence: .9,
+      ),
+      candidateReplaceIds: const {},
+    );
+    await store.selectDate(DateTime.now().subtract(const Duration(days: 1)));
+    await store.selectDate(DateTime.now());
+    expect(store.chatView.value.memorySourceMessageIds, {message.id});
+
+    await store.deleteMessagePair(0);
+
+    expect(await memory.list(), isEmpty);
+    expect(store.chatView.value.memorySourceMessageIds, isEmpty);
+    expect(await chat.loadMessages(conversationId), isEmpty);
+  });
+
   test('行为统计失败时聊天降级回答而不是静默停止', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
@@ -704,38 +831,32 @@ void main() {
     expect(store.chatView.value.failure, isNull);
   });
 
-  test('AI 工具未指定项目时创建用户事项', () async {
+  test('统一输入识别待办后创建用户事项', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
-    var calls = 0;
     final ai = AiService(
       apiKey: 'test',
-      client: MockClient((_) async {
-        calls++;
-        final delta = calls == 1
-            ? {
-                'tool_calls': [
-                  {
-                    'index': 0,
-                    'id': 'call-1',
-                    'function': {
-                      'name': 'write_todo',
-                      'arguments': '{"title":"整理桌面"}',
-                    },
-                  },
-                ],
-              }
-            : {'content': '已经创建'};
-        return http.Response(
-          'data: ${jsonEncode({
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
             'choices': [
-              {'delta': delta},
+              {
+                'message': {
+                  'content': jsonEncode({
+                    'intent': 'createTodo',
+                    'confidence': 0.98,
+                    'title': '整理桌面',
+                    'date': dateKey(DateTime.now()),
+                    'missingFields': <String>[],
+                  }),
+                },
+              },
             ],
-          })}\n\ndata: [DONE]\n\n',
+          }),
           200,
-          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
-        );
-      }),
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
     );
     final local = SumiLocalDatabase(database: db);
     final signals = _FakeSignalDatabase(local);
@@ -747,18 +868,183 @@ void main() {
     );
     final done = Completer<void>();
     store.chatView.addListener(() {
-      final hasReply = store.chatView.value.messages.any(
-        (message) => message.role == 'assistant' && message.content == '已经创建',
+      final view = store.chatView.value;
+      final hasReply = view.messages.any(
+        (message) => message.role == 'assistant' && message.content == '已创建事项',
       );
-      if (hasReply && !done.isCompleted) done.complete();
+      if (hasReply && !view.isStreaming && !done.isCompleted) done.complete();
     });
 
-    store.sendMessage('帮我创建事项');
+    store.sendUnifiedMessage('今天提醒我整理桌面');
     await done.future.timeout(const Duration(seconds: 2));
 
     final todo = store.todoItems.singleWhere((item) => item.title == '整理桌面');
     expect(todo.source, TodoSource.user);
     expect(todo.projectId, isNull);
+  });
+
+  test('待办分类缺少日期时使用提交页面日期', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final now = DateTime(2026, 7, 17, 9);
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': jsonEncode({
+                    'intent': 'createTodo',
+                    'confidence': 0.74,
+                    'title': '完成测试报告',
+                    'missingFields': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    final store = await _createStore(db, ai: ai, now: () => now);
+    await store.selectDate(now);
+
+    expect(store.sendUnifiedMessage('我需要完成测试报告'), ChatSendResult.accepted);
+    await _waitForChatIdle(store);
+
+    expect(store.todoItems.single.title, '完成测试报告');
+    expect(store.todoItems.single.date, '2026-07-17');
+  });
+
+  test('只缺日期的澄清结果直接使用页面日期', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final now = DateTime(2026, 7, 17, 9);
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': jsonEncode({
+                    'intent': 'clarifyTodo',
+                    'confidence': 0.68,
+                    'title': '整理读书笔记',
+                    'missingFields': ['date'],
+                    'clarification': '准备什么时候做？',
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    final store = await _createStore(db, ai: ai, now: () => now);
+    await store.selectDate(now);
+
+    store.sendUnifiedMessage('帮我记下整理读书笔记');
+    await _waitForChatIdle(store);
+
+    expect(store.todoItems.single.title, '整理读书笔记');
+    expect(store.todoItems.single.date, '2026-07-17');
+  });
+
+  test('明确创建命令在模型误判为聊天时仍可兜底', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final now = DateTime(2026, 7, 17, 9);
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': jsonEncode({
+                    'intent': 'chat',
+                    'confidence': 0.95,
+                    'missingFields': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    final store = await _createStore(db, ai: ai, now: () => now);
+    await store.selectDate(now);
+
+    store.sendUnifiedMessage('帮我创建一个待办：整理桌面');
+    await _waitForChatIdle(store);
+
+    expect(store.todoItems.single.title, '整理桌面');
+    expect(store.todoItems.single.date, '2026-07-17');
+  });
+
+  test('计时器请求不会被统一输入误建为待办', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    var chatRequests = 0;
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        if (body['stream'] == true) {
+          chatRequests++;
+          return http.Response(
+            'data: ${jsonEncode({
+              'choices': [
+                {
+                  'delta': {'content': '正在创建计时器'},
+                },
+              ],
+            })}\n\ndata: [DONE]\n\n',
+            200,
+            headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': jsonEncode({
+                    'intent': 'createTodo',
+                    'confidence': 0.99,
+                    'title': '一分钟计时器',
+                    'missingFields': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    final store = await _createStore(db, ai: ai);
+    await store.selectDate(DateTime.now());
+
+    store.sendUnifiedMessage('请你创建一个一分钟的计时器');
+    await _waitForChatIdle(store);
+
+    expect(store.todoItems, isEmpty);
+    expect(chatRequests, 1);
+    expect(store.chatView.value.messages.last.content, '正在创建计时器');
   });
 
   test('提取记忆必须引用当前用户原话，且支持显式替代', () async {
@@ -932,7 +1218,7 @@ void main() {
     });
   });
 
-  test('当前学习状态会按项目和类别替换，并在 30 天后过期', () async {
+  test('当前学习状态会按类别替换，并在 30 天后过期', () async {
     var now = DateTime(2026, 7, 1, 9);
     final db = await _openDatabase();
     addTearDown(db.close);
@@ -953,7 +1239,6 @@ void main() {
         quotedText: '我现在学到第三章了',
       ),
       candidateReplaceIds: const {},
-      currentProjectId: 'project-1',
     );
     expect(first, isTrue);
 
@@ -969,7 +1254,6 @@ void main() {
         quotedText: '我已经学到第五章了',
       ),
       candidateReplaceIds: const {},
-      currentProjectId: 'project-1',
     );
     expect(second, isTrue);
     var current = (await memory.list())
@@ -991,45 +1275,51 @@ void main() {
     expect(current.every((item) => item.status != MemoryStatus.active), isTrue);
   });
 
-  test('记忆召回优先明确约束，且不混入其他项目的当前事项', () async {
+  test('记忆召回优先明确约束，当前关注不按项目过滤', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
     final memory = MemoryService(SumiLocalDatabase(database: db));
-    final constraint = await memory.addManual(
+    final constraint = await memory.addExplicit(
       type: MemoryType.explicit,
       category: 'constraint',
       content: '晚上不安排任务',
+      quotedText: '晚上不要给我安排任务。',
+      messageId: 'memory-constraint',
     );
-    final preference = await memory.addManual(
+    final preference = await memory.addExplicit(
       type: MemoryType.explicit,
       category: 'preference',
       content: '喜欢复盘学习进度',
+      quotedText: '我喜欢复盘学习进度。',
+      messageId: 'memory-preference',
     );
-    final projectCurrent = await memory.addManual(
+    final projectCurrent = await memory.addExplicit(
       type: MemoryType.current,
-      category: 'focus',
+      category: 'progress',
       content: '准备日语考试',
-      projectId: 'project-a',
+      quotedText: '我正在准备日语考试。',
+      messageId: 'memory-project-a',
     );
-    final otherProject = await memory.addManual(
+    final otherProject = await memory.addExplicit(
       type: MemoryType.current,
-      category: 'focus',
+      category: 'difficulty',
       content: '复习数学竞赛',
-      projectId: 'project-b',
+      quotedText: '我正在复习数学竞赛。',
+      messageId: 'memory-project-b',
     );
 
     final result = await memory.hotForAgent(
       '今晚怎么安排学习',
-      projectId: 'project-a',
       semanticScores: {
         constraint.id: .82,
         preference.id: .98,
+        projectCurrent.id: .5,
         otherProject.id: .99,
       },
     );
     expect(result.first.id, constraint.id);
     expect(result.any((item) => item.id == projectCurrent.id), isTrue);
-    expect(result.any((item) => item.id == otherProject.id), isFalse);
+    expect(result.any((item) => item.id == otherProject.id), isTrue);
   });
 
   test('清空数据后清除结构化记忆', () async {
@@ -1230,7 +1520,7 @@ void main() {
     ]);
   });
 
-  test('日期会话互不混合，未来日期保持临时且不落库', () async {
+  test('过去只读已有会话，未来没有会话且聊天入口被拒绝', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
     final local = SumiLocalDatabase(database: db);
@@ -1267,8 +1557,118 @@ void main() {
 
     final tomorrow = today.add(const Duration(days: 1));
     await store.selectDate(tomorrow);
-    expect(store.chatView.value.isTemporaryConversation, isTrue);
+    expect(store.currentConversationId, isNull);
+    expect(store.chatView.value.messages, isEmpty);
+    expect(store.sendMessage('未来不能聊天'), ChatSendResult.empty);
+    expect(store.sendUnifiedMessage('未来不能聊天'), ChatSendResult.empty);
     expect(await chatDb.findConversationByDate(dateKey(tomorrow)), isNull);
+
+    final emptyPast = today.subtract(const Duration(days: 2));
+    await store.selectDate(emptyPast);
+    expect(store.currentConversationId, isNull);
+    expect(await chatDb.findConversationByDate(dateKey(emptyPast)), isNull);
+    expect(store.sendMessage('过去不能聊天'), ChatSendResult.empty);
+  });
+
+  test('未来事项无 AI 时按原文创建并锁定提交日期', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final now = DateTime(2026, 7, 17, 9);
+    final store = await _createStore(db, now: () => now);
+    final target = DateTime(2026, 7, 20);
+    await store.selectDate(target);
+
+    expect(
+      store.startFutureTodoCreation('准备下周的阅读材料'),
+      TodoComposeResult.accepted,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final todo = store.todoItems.single;
+    expect(todo.title, '准备下周的阅读材料');
+    expect(todo.date, '2026-07-20');
+    expect(store.currentMessages, isEmpty);
+    expect(
+      store.futureTodoController.state.value.stage,
+      FutureTodoComposeStage.completed,
+    );
+  });
+
+  test('未来多事项等待确认后批量写入锁定日期', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final now = DateTime(2026, 7, 17, 9);
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': '{"split":true,"items":["阅读第一章","整理章节笔记"]}',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+    final store = await _createStore(db, ai: ai, now: () => now);
+    await store.selectDate(DateTime(2026, 7, 20));
+    expect(
+      store.startFutureTodoCreation('先阅读第一章，再整理章节笔记'),
+      TodoComposeResult.accepted,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final pending = store.futureTodoController.state.value;
+    expect(pending.stage, FutureTodoComposeStage.awaitingConfirmation);
+    expect(store.todoItems, isEmpty);
+
+    await store.confirmFutureTodoCreation(
+      pending.requestId!,
+      pending.candidates,
+      targetDate: pending.targetDate!,
+    );
+    expect(store.todoItems.map((todo) => todo.title), ['阅读第一章', '整理章节笔记']);
+    expect(store.todoItems.every((todo) => todo.date == '2026-07-20'), isTrue);
+  });
+
+  test('未来事项生成中切换日期会取消迟到结果', () async {
+    final db = await _openDatabase();
+    addTearDown(db.close);
+    final response = Completer<http.Response>();
+    final now = DateTime(2026, 7, 17, 9);
+    final ai = AiService(
+      apiKey: 'test',
+      client: MockClient((_) => response.future),
+    );
+    final store = await _createStore(db, ai: ai, now: () => now);
+    await store.selectDate(DateTime(2026, 7, 20));
+    store.startFutureTodoCreation('阅读第一章');
+    await store.selectDate(DateTime(2026, 7, 21));
+    response.complete(
+      http.Response(
+        jsonEncode({
+          'choices': [
+            {
+              'message': {'content': '{"split":false,"items":["阅读第一章"]}'},
+            },
+          ],
+        }),
+        200,
+        headers: const {'content-type': 'application/json; charset=utf-8'},
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(store.todoItems, isEmpty);
+    expect(
+      store.futureTodoController.state.value.stage,
+      FutureTodoComposeStage.cancelled,
+    );
   });
 
   test('完成待办记录完成时间，取消完成时清除', () async {
@@ -1347,39 +1747,19 @@ void main() {
     expect(store.chatView.value.messages.single.content, '七月的对话');
   });
 
-  testWidgets('月视图按钮切换月份并在边界禁用', (tester) async {
+  test('月份边界会禁用继续导航', () async {
     final db = await _openDatabase();
     addTearDown(db.close);
     final store = await _createStore(db, now: () => DateTime(2026, 7, 15));
     await store.selectDate(DateTime(2026, 7, 15));
+    expect(store.canNavigateMonth(forward: true), isTrue);
+    expect(store.canNavigateMonth(forward: false), isTrue);
 
-    await tester.pumpWidget(
-      SumiScope(
-        store: store,
-        child: const MaterialApp(home: Scaffold(body: MonthViewSheet())),
-      ),
-    );
-
-    final previousButton = find.widgetWithIcon(
-      IconButton,
-      Icons.keyboard_arrow_left,
-    );
-    final nextButton = find.widgetWithIcon(
-      IconButton,
-      Icons.keyboard_arrow_right,
-    );
-    expect(previousButton, findsOneWidget);
-    expect(nextButton, findsOneWidget);
-    expect(find.text('7月'), findsOneWidget);
-
-    await tester.tap(nextButton);
-    await tester.pump();
+    await store.navigateMonth(forward: true);
     expect(store.selectedDate, DateTime(2026, 8, 1));
-    expect(find.text('8月'), findsOneWidget);
 
     await store.selectDate(store.lastNavigableMonth);
-    await tester.pump();
-    expect(tester.widget<IconButton>(nextButton).onPressed, isNull);
+    expect(store.canNavigateMonth(forward: true), isFalse);
   });
 
   test('旧版 v2 快照无需迁移即可装载到分域控制器', () async {
@@ -1484,6 +1864,7 @@ void main() {
       database: local,
       secureSettings: _FakeSecureSettingsStore(),
     );
+    await store.flushPersistence();
     final before = local.writes;
     await store.addUserTodo('只写一次');
     await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -1556,10 +1937,13 @@ void main() {
 
     expect(store.projectList.single.name, '自动化测试');
     expect(store.monthCardList, hasLength(1));
-    expect(store.todoItems.single.projectId, 'project-generated');
+    final generatedTodo = store.todoItems.singleWhere(
+      (todo) => todo.title == '阅读测试资料',
+    );
+    expect(generatedTodo.projectId, 'project-generated');
     expect(local.writes, before + 1);
     expect(
-      () => store.todoController.items.add(store.todoItems.single),
+      () => store.todoController.items.add(generatedTodo),
       throwsUnsupportedError,
     );
   });

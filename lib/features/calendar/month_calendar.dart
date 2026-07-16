@@ -14,7 +14,7 @@ class MonthCalendar extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = SumiScope.watchTodos(context);
     final selected = dateOnly(store.selectedDate);
-    final today = dateOnly(DateTime.now());
+    final today = dateOnly(store.currentTime);
     final todayKey = dateKey(today);
 
     // 当月第一天和最后一天

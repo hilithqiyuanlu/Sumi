@@ -11,24 +11,18 @@
 
 ## 功能
 
-- **💬 AI 对话** — 首页即对话，流式输出 Markdown 渲染，支持 Thinking 过程展示与 Function Calling 工具调用（搜索/记忆/事项/信号/计时与闹钟/创建项目 7 种工具）；支持中途停止生成，设备时间自动注入 prompt 以准确理解相对时间；按日期组织对话，侧边抽屉管理会话；对话中可直接创建计时/闹钟卡片和项目
-- **📋 事项管理** — 输入 >16 字自动触发 AI 智能拆分；支持置顶、完成态（记录完成时间并按最近完成排序）、长按拖拽排序；关联项目的事项 Chip 显示项目主题色
-- **📂 学习项目** — AI 生成月度学习计划，月卡解锁机制逐月推进；AI 凝练目标摘要作为卡片标题，支持项目主题色区分
-- **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 8 维度评分，流式生成学习计划；统一生成管线（搜索→评估→确认→规划→校验→保存），支持取消/重试/跳过评估；也可从对话中由 AI 收集信息后直接启动；7 天滚动窗口自动维护系统事项，多日期批量生成减少 API 调用
-- **📅 日历导航** — 折叠日期条 + 展开月视图，垂直拖拽手势自然切换；历史日期只读，仅可查看过往对话
-- **🎤 语音输入** — 长按说话松开发送、上滑取消，支持连续识别与自动提交
-- **🧭 侧边抽屉** — 左滑唤出会话列表，新建 / 切换 / 删除对话，支持置顶与自定义标题
-- **🧠 用户记忆系统** — SQLite 驱动的结构化记忆引擎，四类记忆（明确/当前/隐性/导入）+ 证据链追溯；每次对话后自动提取长期偏好/目标/约束（explicit）或当前项目进度/困难/短期限制（current），当前记忆按项目隔离、30 天自动过期；支持替换/去重/停用；USER_MODEL.md 降级为兼容性导出
-- **⏱️ 计时与闹钟** — AI 可在对话中创建倒计时卡（1-480 分钟）或指定时刻闹钟（最长一年），支持立即开始/手动开始/暂停/完成/取消；计时结束或闹钟到点通过系统通知声音+震动提醒，即使 App 关闭或锁屏也不会错过
-- **📡 行为信号** — todo 创建/完成/编辑/拖拽、项目目标/水平/周期设定等 10 种信号自动采集，AI 通过 read_signals 工具查询历史模式；信号数据同时嵌入本地向量库供混合检索
-- **📊 日程负载** — 自动检测未来 7 天事项密度，评估日负荷与连续高负荷；超负荷时生成调整建议（将未完成事项移至较空日期），对话列表内嵌卡片确认或忽略；App 退到后台时推送系统通知提醒
-- **🔍 本地检索** — 端侧 BGE-small-zh-v1.5 嵌入模型，混合检索（语义相似度 65% + 关键词 15% + 来源可信度 12% + 时间衰减 8%），无需网络即可从历史对话/记忆/项目中检索相关内容注入 prompt
-- **🔀 模型路由** — 统一选择聊天、结构化生成、记忆提取、搜索与嵌入能力，并记录匿名耗时/成功率；聊天保持云端，短结构化任务可优先使用本地模型
-- **🔧 工具注册中心** — ChatToolRegistry 集中管理所有工具定义（名称/标签/描述/分组/JSON Schema），执行器按注册表动态启用工具；统一的 ReminderScheduler 接口抽象系统提醒能力，方便测试替换
-- **🖥️ 端侧文本生成** — 可选下载本地语言模型 Qwen3.5-0.8B（GGUF / llamadart），支持端侧结构化生成与记忆提取，无网络也能使用基础 AI 能力
-- **🏁 里程碑与每日复盘** — 识别用户明确表达的完成与突破，沉淀为可回看的学习里程碑；每日复盘将事项、对话与记忆整理为可确认的总结
-- **🛡️ AI 契约校验** — 所有 AI 结构化输出经 AiContracts 强校验（字段类型、长度、取值范围），非法输出自动拦截，防止脏数据落库
-- **🔐 本地优先** — SQLite 持久化，API Key 走 Keychain 安全存储，无需服务器
+- **💬 AI 对话** — 首页即对话，流式输出 Markdown，支持 Thinking 展示与 Function Calling（7 种工具）；中途可停止生成，设备时间自动注入以准确理解相对时间；按日期组织对话，侧边抽屉管理会话，支持置顶与自定义标题
+- **📋 事项管理** — 长文本自动 AI 拆分；支持置顶、完成态、拖拽排序；关联项目的事项 Chip 显示对应主题色
+- **📂 学习项目** — AI 生成月度学习计划，月卡解锁逐月推进，支持项目主题色区分
+- **🧠 智能评估与规划** — 输入学习目标，AI 联网搜索 + 多维度评分，流式生成学习计划；支持从对话中直接启动；滚动窗口自动维护每日事项
+- **📅 日历导航** — 折叠日期条 + 展开月视图，拖拽切换；历史日期只读可回顾
+- **🎤 语音输入** — 长按说话松开发送、上滑取消，支持连续识别
+- **🧠 用户记忆与信号** — 每次对话后自动提取偏好、目标及项目进度；操作行为自动采集为信号，AI 可查询历史模式
+- **⏱️ 计时与闹钟** — AI 可在对话中创建倒计时或指定时刻闹钟，到期通过系统通知提醒，后台/锁屏也不会错过
+- **📊 日程负载** — 自动检测事项密度，超负荷时生成调整建议，对话内卡片确认；后台时推送通知
+- **🤖 端侧 AI** — 端侧嵌入模型提供混合检索，从历史对话中注入上下文；可选下载本地语言模型，无网络也能使用基础 AI
+- **🏁 里程碑与每日复盘** — 识别学习突破与完成，沉淀为里程碑；每日复盘整理事项与记忆
+- **🔐 本地优先** — SQLite 持久化，API Key 安全存储，无需服务器
 
 ## 技术栈
 
@@ -114,11 +108,15 @@ lib/
 │   ├── local_retrieval_service.dart     # 本地检索服务
 │   ├── study_timer_service.dart          # 学习计时服务 — timer/alarm 双模式 + 生命周期对账
 │   ├── system_reminder_service.dart       # 系统提醒服务 — 后台/锁屏通知 + 精确闹钟调度
+│   ├── foreground_reminder_service.dart   # 前台提醒服务 — 应用内计时/闹钟到期浮层通知
 │   ├── timer_controller.dart             # 计时器状态控制器（ChangeNotifier）
 │   ├── local_text_generation_coordinator.dart # 端侧文本生成协调器
 │   ├── local_text_generation_runtime.dart     # 端侧文本生成运行时
 │   ├── local_text_model_package.dart          # 端侧文本模型包管理
 │   ├── local_structured_generation.dart       # 端侧结构化生成
+│   ├── local_speech_model_package.dart          # 端侧语音模型包管理
+│   ├── local_speech_recognition_coordinator.dart # 端侧语音识别协调器
+│   ├── local_speech_recognition_runtime.dart     # 端侧语音识别运行时
 │   ├── app_update_service.dart            # 应用更新检测（版本比对/APK 下载校验）
 │   ├── today_suggestion_mapper.dart       # 今日建议映射（记忆→问候语建议）
 │   ├── milestone_service.dart              # 学习里程碑存储与记忆关联
@@ -132,7 +130,8 @@ lib/
 │   │   ├── home_page.dart
 │   │   ├── side_drawer.dart
 │   │   ├── settings_panel.dart
-│   │   └── suggestion_strip.dart
+│   │   ├── suggestion_strip.dart
+│   │   └── daily_reflection_card.dart
 │   ├── chat/                            # 对话气泡、输入栏（对话 / 事项双模式）
 │   │   ├── chat_bubble.dart
 │   │   └── chat_input.dart
@@ -155,16 +154,18 @@ lib/
 │   │   ├── signal_log_page.dart
 │   │   ├── local_retrieval_page.dart       # 本地智能（检索与文本生成）
 │   │   ├── model_router_metrics_page.dart
+│   │   ├── memory_extraction_diagnostics_page.dart
 │   │   ├── app_update_page.dart
 │   │   └── user_hypotheses_page.dart
-│   ├── memory/                          # 记忆管理中心
-│   │   └── memory_center_page.dart
+│   ├── memory/                          # 记忆管理中心、用户模型
+│   │   ├── memory_center_page.dart
+│   │   └── user_model_page.dart
 │   ├── tools/                           # AI 工具浏览页
 │   │   └── tools_page.dart
 │   └── shared/                          # 拖拽把手
 │       └── drag_handle.dart
 ├── android/.../EmbeddingEngine.kt       # Android 端侧嵌入引擎
-├── test/                                # 测试套件（22 个文件）
+├── test/                                # 测试套件（25 个文件）
 ├── tools/                               # 开发工具脚本
 └── docs/                                # 技术文档
 ```

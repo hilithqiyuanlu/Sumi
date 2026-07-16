@@ -129,9 +129,10 @@ class DailyReflectionResult {
       DailyReflectionResult(
         shortSummary: json['shortSummary'] as String? ?? '',
         reflection: json['reflection'] as String? ?? '',
-        highlights: (json['highlights'] as List<Object?>?)
-                ?.whereType<String>()
-                .toList(growable: false) ??
+        highlights:
+            (json['highlights'] as List<Object?>?)?.whereType<String>().toList(
+              growable: false,
+            ) ??
             const [],
       );
 }
@@ -236,15 +237,16 @@ class _MemoryExtractionPrompt {
 只输出 JSON，不要解释。每条消息最多选择一条。
 
 长期事实 type=explicit：用户明确说出的长期 preference、goal、constraint，或对已有长期记忆的明确纠正。自然但稳定的表达同样可以保存，例如“我通常…、我一…就…、…更适合我、我不太适合…、我更容易…”。
-当前状态 type=current：仅当用户明确说出正在学习的进度 progress、当前困难 difficulty、短期限制 short_term_constraint；仅在存在当前项目数据时使用，不推断项目。
+当前状态 type=current：仅当用户明确说出正在学习的进度 progress、当前困难 difficulty、短期限制 short_term_constraint。
 忽略：一次性问题、短暂情绪、他人信息、没有稳定倾向的模糊陈述。
 可以将用户原意凝练为 content，但不得补充未说出的事实。quotedText 必须逐字摘自用户消息，优先摘取最短、能支撑结论的原话片段。
 
 格式：
 {"action":"ignore"}
-或 {"action":"save","type":"explicit","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话"}
-或 {"action":"save","type":"current","category":"progress|difficulty|short_term_constraint","content":"简短当前状态","quotedText":"用户原话"}
-或 {"action":"replace","type":"explicit","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话","replacesId":"候选 ID"}。
+confidence 必须为 0-1；只有明显、稳定、且原话足以证明的信息才给 0.85 以上。
+或 {"action":"save","type":"explicit","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话","confidence":0.9}
+或 {"action":"save","type":"current","category":"progress|difficulty|short_term_constraint","content":"简短当前状态","quotedText":"用户原话","confidence":0.9}
+或 {"action":"replace","type":"explicit","category":"preference|goal|constraint","content":"简短长期事实","quotedText":"用户原话","confidence":0.9,"replacesId":"候选 ID"}。
 replace 只能使用输入候选的 ID。''';
 }
 
@@ -354,9 +356,11 @@ class AiTransport {
 
   static const _inputClassificationPrompt = '''你负责判断一条输入是否应创建待办。只输出 JSON。
 intent 只能是 chat、createTodo、clarifyTodo。confidence 为 0 到 1。
-只有用户明确要求记录、提醒、待办或安排某个要做事项时才考虑待办；提问、聊天、讨论、规划建议都必须是 chat。
-createTodo 仅在事项和日期都明确时使用。日期必须为 YYYY-MM-DD；未指定时刻可省略 reminderTime。用户说“明早”时，日期为明天，reminderTime 固定为 09:00。
-信息像待办但事项或日期缺失时用 clarifyTodo，missingFields 为 title 或 date，clarification 只问缺失信息。低置信度宁可 clarifyTodo，不得创建。
+用户明确要求创建、添加、记录、提醒或安排一个要做事项时，使用 createTodo；“帮我创建待办”“提醒我”“帮我记下”等口语表达也属于明确创建。
+计时器、倒计时、闹钟，以及“几分钟/几小时后提醒我”属于其他工具请求，必须使用 chat 交给 Agent 工具处理，绝不能创建待办。只有明确说“待办/事项/任务”时，才可将包含这些词的内容作为待办标题。
+用户没有说日期时，直接使用输入中提供的当前本地日期，不要因为缺少日期追问。日期必须为 YYYY-MM-DD；未指定时刻可省略 reminderTime。用户说“明早”时，日期为明天，reminderTime 固定为 09:00。
+只有事项内容本身缺失或用户是否要创建仍不明确时才使用 clarifyTodo。提问、讨论、征求建议和规划分析必须是 chat。
+标题保留原意并凝练到 2-16 字。明确创建命令的 confidence 应不低于 0.9；不要仅因表达口语化降低置信度。
 格式：{"intent":"chat","confidence":0.0,"missingFields":[]}。
 createTodo 格式：{"intent":"createTodo","confidence":0.0,"title":"...","date":"YYYY-MM-DD","reminderTime":"HH:mm","missingFields":[]}。
 clarifyTodo 格式：{"intent":"clarifyTodo","confidence":0.0,"title":"可选","date":"可选","missingFields":["title"],"clarification":"..."}。''';
@@ -454,6 +458,7 @@ clarifyTodo 格式：{"intent":"clarifyTodo","confidence":0.0,"title":"可选","
       '每条 text 必须以“帮我”“我想让你”或“请帮我”开头，8-40 字，可直接填入输入框发送。\n'
       '每条 intent 表示简短问题类型；todoId/projectId 只能引用输入中存在的 ID，不相关时省略。\n'
       'feedback 中 sentIntents 表示用户真正发送过、可适度优先；notSuitableIntents 表示近期不要重复；disabledIntents 绝对不能出现。\n'
+      'suggestionPreferences 只用于同等候选问题之间的软排序，不得当作用户事实复述，也不得覆盖 activeMemories。\n'
       '禁止“你应该”“先去”“马上做”等直接命令，禁止空泛重复。\n'
       '输出 JSON：{"questions":[{"slot":0,"text":"帮我……","intent":"优先级","isToday":false,"keepExisting":false,"todoId":"可选","projectId":"可选"}]}';
 
@@ -826,6 +831,7 @@ clarifyTodo 格式：{"intent":"clarifyTodo","confidence":0.0,"title":"可选","
       content: result['content'] as String?,
       quotedText: result['quotedText'] as String?,
       replacesId: result['replacesId'] as String?,
+      confidence: (result['confidence'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -988,7 +994,7 @@ clarifyTodo 格式：{"intent":"clarifyTodo","confidence":0.0,"title":"可选","
   // ---------------------------------------------------------------------------
 
   Future<SplitResult?> splitTodo(String text) async {
-    var result = await _callValidatedJsonApi(
+    final result = await _callValidatedJsonApi(
       systemPrompt: _splitSystemPrompt,
       userPrompt: text,
       model: _modelFlash,
@@ -1289,8 +1295,11 @@ ${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: Prom
     required List<Map<String, Object?>> signals,
   }) async {
     final result = await _callValidatedJsonApi(
-      systemPrompt: '你负责为用户收束一天的学习与对话记录。只依据数据，不编造。'
+      systemPrompt:
+          '你负责收束一天的学习与对话记录。只依据数据，不编造。'
           'shortSummary 为 20-60 字，reflection 为 40-100 字，highlights 最多三条。'
+          '用自然、温和的第二人称直接对话，优先以“你今天……”或“今天你……”开头。'
+          '禁止使用“用户”“他/她”“本次记录”“该用户”等第三人称或报告口吻。'
           '不要复述聊天记录，不要提及 AI。只输出 JSON。',
       userPrompt: PromptContext.dataBlock(
         kind: 'daily_reflection_source',
@@ -1300,8 +1309,8 @@ ${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: Prom
       model: _modelFlash,
       validator: AiContracts.dailyReflection,
       thinking: false,
-      maxTokens: 500,
-      timeoutSeconds: 30,
+      maxTokens: 700,
+      timeoutSeconds: 45,
       maxAttempts: 2,
     );
     return result == null ? null : DailyReflectionResult.fromJson(result);
@@ -1408,16 +1417,17 @@ ${PromptContext.dataBlock(kind: 'domain_knowledge', source: 'tavily', data: Prom
       timeoutSeconds: 25,
     );
     if (result == null) return null;
-    final questions = (result['questions'] as List<Object?>)
-        .whereType<Map<String, Object?>>()
-        .map(
-          (item) => SuggestionQuestion.fromJson({
-            ...item,
-            'id': 'suggestion-${item['slot']}-${item['text'].hashCode}',
-          }),
-        )
-        .toList(growable: false)
-      ..sort((a, b) => a.slot.compareTo(b.slot));
+    final questions =
+        (result['questions'] as List<Object?>)
+            .whereType<Map<String, Object?>>()
+            .map(
+              (item) => SuggestionQuestion.fromJson({
+                ...item,
+                'id': 'suggestion-${item['slot']}-${item['text'].hashCode}',
+              }),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => a.slot.compareTo(b.slot));
     return questions;
   }
 
@@ -1457,18 +1467,6 @@ ${PromptContext.dataBlock(kind: 'search_results', source: 'tavily', data: Prompt
       timeoutSeconds: 60,
       useResponseFormat: false,
     );
-    if (result == null && (lastApiError?.startsWith('HTTP 400') ?? false)) {
-      result = await _callValidatedJsonApi(
-        systemPrompt: _assessmentSystemPrompt,
-        userPrompt: userPrompt,
-        model: _modelPro,
-        validator: AiContracts.assessment,
-        thinking: true,
-        maxTokens: 8000,
-        timeoutSeconds: 60,
-        useResponseFormat: false,
-      );
-    }
     if (result == null) return null;
     return GoalAssessment.fromJson(result);
   }
@@ -1674,6 +1672,7 @@ ${PromptContext.dataBlock(kind: 'search_results', source: 'tavily', data: Prompt
   static String _chatErrorMessage(int statusCode) {
     return switch (statusCode) {
       401 || 403 => 'API Key 无效或没有访问权限，请检查设置。',
+      402 => 'AI 账户余额不足或计费未开通，请充值后重试。',
       429 => '请求过于频繁，请稍后重试。',
       >= 500 => 'AI 服务暂时不可用，请稍后重试。',
       _ => '请求失败（$statusCode），请稍后重试。',

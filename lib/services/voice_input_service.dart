@@ -1,4 +1,12 @@
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+
+import 'local_speech_recognition_runtime.dart';
+import 'model_router.dart';
 
 /// 语音录音结果。
 class VoiceResult {
@@ -17,13 +25,21 @@ class VoiceInputException implements Exception {
   String toString() => message;
 }
 
-/// 语音输入服务 —— 封装系统语音识别（iOS SFSpeech / Android SpeechRecognizer）。
+/// 语音输入服务。未下载模型时继续使用系统实时识别；下载 SenseVoice 后
+/// 改为本地录音和松开后的最终识别，避免两套录音器同时抢占麦克风。
 class VoiceInputService {
   final stt.SpeechToText _speech = stt.SpeechToText();
+  final LocalSpeechRecognitionRuntime? localRuntime;
+  final bool Function() _localSpeechEnabled;
+  final ModelRouterMetricsSink? _metrics;
+  final DateTime Function() _now;
+  AudioRecorder? _recorder;
 
   bool _recording = false;
   DateTime? _startTime;
   String _latestText = '';
+  String? _recordingPath;
+  bool _recordingLocally = false;
 
   /// 实时部分识别结果回调。
   void Function(String text)? onPartialResult;
@@ -38,6 +54,19 @@ class VoiceInputService {
   VoiceState get state => _state;
 
   bool get isRecording => _recording;
+  bool get usingLocalModel =>
+      _localSpeechEnabled() && (localRuntime?.isLoaded ?? false);
+  AudioRecorder get _audioRecorder => _recorder ??= AudioRecorder();
+
+  VoiceInputService({
+    this.localRuntime,
+    bool Function()? localSpeechEnabled,
+    this._metrics,
+    DateTime Function()? now,
+  }) : _localSpeechEnabled = localSpeechEnabled ?? _alwaysEnabled,
+       _now = now ?? DateTime.now;
+
+  static bool _alwaysEnabled() => true;
 
   Duration get recordingDuration {
     if (_startTime == null) return Duration.zero;
@@ -60,7 +89,9 @@ class VoiceInputService {
   /// 检查麦克风权限是否已授权。
   Future<bool> get hasPermission async {
     try {
-      return await _speech.hasPermission;
+      return usingLocalModel
+          ? await _audioRecorder.hasPermission()
+          : await _speech.hasPermission;
     } catch (_) {
       return false;
     }
@@ -73,33 +104,59 @@ class VoiceInputService {
     _latestText = '';
     _startTime = DateTime.now();
 
-    final available = await _speech.initialize(
-      onError: (_) {},
-      onStatus: (_) {},
-    );
-    if (!available) {
+    final localAvailable =
+        usingLocalModel && await _audioRecorder.hasPermission();
+    var available = false;
+    if (!localAvailable) {
+      available = await _speech.initialize(onError: (_) {}, onStatus: (_) {});
+    }
+    if (!available && !localAvailable) {
       _setState(VoiceState.error);
-      throw const VoiceInputException(
-        '无法使用语音识别，请检查麦克风和语音识别权限。',
-      );
+      throw const VoiceInputException('无法使用语音识别，请检查麦克风和语音识别权限。');
     }
 
-    _recording = true;
-    _setState(VoiceState.recording);
-
-    await _speech.listen(
-      listenOptions: stt.SpeechListenOptions(
-        localeId: 'zh_CN',
-        listenMode: stt.ListenMode.deviceDefault,
-      ),
-      onResult: (result) {
-        _latestText = result.recognizedWords.trim();
-        onPartialResult?.call(_latestText);
-      },
-      onSoundLevelChange: (level) {
-        onSoundLevel?.call(level);
-      },
-    );
+    try {
+      if (localAvailable) {
+        final directory = await getTemporaryDirectory();
+        _recordingPath = p.join(
+          directory.path,
+          'sumi-voice-${DateTime.now().microsecondsSinceEpoch}.wav',
+        );
+        await _audioRecorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+            autoGain: true,
+            echoCancel: true,
+            noiseSuppress: true,
+          ),
+          path: _recordingPath!,
+        );
+      } else {
+        await _speech.listen(
+          listenOptions: stt.SpeechListenOptions(
+            localeId: 'zh_CN',
+            listenMode: stt.ListenMode.deviceDefault,
+          ),
+          onResult: (result) {
+            _latestText = result.recognizedWords.trim();
+            onPartialResult?.call(_latestText);
+          },
+          onSoundLevelChange: (level) {
+            onSoundLevel?.call(level);
+          },
+        );
+      }
+      _recordingLocally = localAvailable;
+      _recording = true;
+      _setState(VoiceState.recording);
+    } catch (error) {
+      _recordingPath = null;
+      _recordingLocally = false;
+      _setState(VoiceState.error);
+      throw VoiceInputException('无法开始录音：$error');
+    }
   }
 
   /// 停止录音，返回最终识别结果。
@@ -111,14 +168,85 @@ class VoiceInputService {
     _startTime = null;
     _setState(VoiceState.idle);
 
-    await _speech.stop();
-    final text = _latestText.trim();
+    final usedLocalModel = _recordingLocally;
+    _recordingLocally = false;
+    if (!usedLocalModel) await _speech.stop();
+    String text = _latestText.trim();
+    final path = usedLocalModel ? await _audioRecorder.stop() : null;
+    final localPath = path ?? _recordingPath;
+    _recordingPath = null;
+    if (usedLocalModel && localPath == null) {
+      _recordLocalRecognition(
+        succeeded: false,
+        elapsed: Duration.zero,
+        error: const VoiceInputException('本地录音文件不可用'),
+      );
+      throw const VoiceInputException('本地录音文件不可用，请重新录音。');
+    }
+    if (localPath != null && usedLocalModel) {
+      final recognitionStartedAt = _now();
+      try {
+        if (!usingLocalModel) {
+          throw const VoiceInputException('本地语音模型已被移除，请重新录音。');
+        }
+        final localText = await localRuntime!.transcribeWav(localPath);
+        if (localText.isEmpty) {
+          throw const VoiceInputException('没有识别到语音，请重试。');
+        }
+        text = localText;
+        onPartialResult?.call(text);
+        _recordLocalRecognition(
+          succeeded: true,
+          elapsed: _now().difference(recognitionStartedAt),
+          error: null,
+        );
+      } on VoiceInputException catch (error) {
+        _recordLocalRecognition(
+          succeeded: false,
+          elapsed: _now().difference(recognitionStartedAt),
+          error: error,
+        );
+        rethrow;
+      } catch (error) {
+        _recordLocalRecognition(
+          succeeded: false,
+          elapsed: _now().difference(recognitionStartedAt),
+          error: error,
+        );
+        throw VoiceInputException('本地语音识别失败：$error');
+      } finally {
+        final file = File(localPath);
+        if (await file.exists()) await file.delete();
+      }
+    }
 
     if (text.isEmpty) {
       throw const VoiceInputException('没有识别到语音，请重试。');
     }
 
     return VoiceResult(text: text, duration: duration);
+  }
+
+  void _recordLocalRecognition({
+    required bool succeeded,
+    required Duration elapsed,
+    required Object? error,
+  }) {
+    final version = localRuntime?.version;
+    _metrics?.record(
+      ModelRouterMetric(
+        occurredAt: _now(),
+        capability: ModelCapability.speechRecognition,
+        provider: 'local-sensevoice${version == null ? '' : '-$version'}',
+        outcome: succeeded
+            ? ModelRouteOutcome.success
+            : ModelRouteOutcome.failure,
+        elapsed: elapsed,
+        errorCategory: error == null
+            ? ModelRouterErrorCategory.none
+            : ModelRouterErrorClassifier.fromException(error),
+      ),
+    );
   }
 
   /// 取消录音（不发送）。
@@ -130,7 +258,14 @@ class VoiceInputService {
     _latestText = '';
     _setState(VoiceState.idle);
 
-    await _speech.stop();
+    final usedLocalModel = _recordingLocally;
+    _recordingLocally = false;
+    if (usedLocalModel) {
+      await _audioRecorder.cancel();
+    } else {
+      await _speech.stop();
+    }
+    _recordingPath = null;
   }
 
   void _setState(VoiceState s) {
@@ -141,8 +276,11 @@ class VoiceInputService {
   void dispose() {
     if (_recording) {
       _speech.stop();
+      _recorder?.cancel();
     }
+    _recorder?.dispose();
     _recording = false;
+    _recordingLocally = false;
     _startTime = null;
   }
 }

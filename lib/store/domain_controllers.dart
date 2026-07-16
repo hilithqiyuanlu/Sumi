@@ -35,6 +35,45 @@ class DailyReflectionController extends ChangeNotifier {
   }
 }
 
+enum TodoComposeResult { accepted, empty, busy }
+
+enum FutureTodoComposeStage {
+  idle,
+  generating,
+  awaitingConfirmation,
+  completed,
+  cancelled,
+}
+
+class FutureTodoComposeState {
+  final FutureTodoComposeStage stage;
+  final String? requestId;
+  final String? targetDate;
+  final String originalInput;
+  final List<String> candidates;
+
+  const FutureTodoComposeState({
+    this.stage = FutureTodoComposeStage.idle,
+    this.requestId,
+    this.targetDate,
+    this.originalInput = '',
+    this.candidates = const [],
+  });
+
+  bool get isBusy =>
+      stage == FutureTodoComposeStage.generating ||
+      stage == FutureTodoComposeStage.awaitingConfirmation;
+  bool get canCancel => isBusy;
+}
+
+class FutureTodoController {
+  final ValueNotifier<FutureTodoComposeState> state = ValueNotifier(
+    const FutureTodoComposeState(),
+  );
+
+  void dispose() => state.dispose();
+}
+
 class SettingsController extends ChangeNotifier {
   AppSettings _value = const AppSettings();
 
@@ -53,6 +92,7 @@ class ChatViewState {
   final int messageSentSequence;
   final ChatFailure? failure;
   final Set<String> milestoneSourceMessageIds;
+  final Set<String> memorySourceMessageIds;
   final ChatMessage? pendingUserMessage;
 
   const ChatViewState({
@@ -65,6 +105,7 @@ class ChatViewState {
     required this.messageSentSequence,
     required this.failure,
     this.milestoneSourceMessageIds = const {},
+    this.memorySourceMessageIds = const {},
     this.pendingUserMessage,
   });
 
@@ -78,6 +119,7 @@ class ChatViewState {
     messageSentSequence: 0,
     failure: null,
     milestoneSourceMessageIds: {},
+    memorySourceMessageIds: {},
     pendingUserMessage: null,
   );
 }

@@ -25,6 +25,7 @@ class ChatBubble extends StatelessWidget {
   final String? todoResultJson;
   final VoidCallback? onOpenTodo;
   final bool showMilestoneSaved;
+  final bool showMemorySaved;
   final VoidCallback? onDelete;
   final Future<ChatSendResult> Function(String content)? onEdit;
   final TimerController? timerController;
@@ -44,6 +45,7 @@ class ChatBubble extends StatelessWidget {
     this.todoResultJson,
     this.onOpenTodo,
     this.showMilestoneSaved = false,
+    this.showMemorySaved = false,
     this.onDelete,
     this.onEdit,
     this.timerController,
@@ -140,7 +142,8 @@ class ChatBubble extends StatelessWidget {
                 child: _buildContent(),
               ),
             ),
-          if (isUser && showMilestoneSaved) const _MilestoneSavedHint(),
+          if (isUser && (showMilestoneSaved || showMemorySaved))
+            const _MilestoneSavedHint(),
         ],
       ),
     );
@@ -354,16 +357,16 @@ class _MilestoneSavedHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: s4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.bookmark_added_outlined, size: 14, color: primary500),
-            SizedBox(width: s4),
-            Text('已收录为里程碑', style: TextStyle(fontSize: 12, color: primary500)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.only(top: s4),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: const [
+        Icon(Icons.bookmark_added_outlined, size: 14, color: primary500),
+        SizedBox(width: s4),
+        Text('已记住', style: TextStyle(fontSize: 12, color: primary500)),
+      ],
+    ),
+  );
 }
 
 class _TodoResultCard extends StatelessWidget {
@@ -410,10 +413,10 @@ class _TodoResultCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      [
-                        date,
-                        time,
-                      ].whereType<String>().where((v) => v.isNotEmpty).join('  '),
+                      [date, time]
+                          .whereType<String>()
+                          .where((v) => v.isNotEmpty)
+                          .join('  '),
                       style: const TextStyle(fontSize: 12, color: textTertiary),
                     ),
                   ],

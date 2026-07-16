@@ -98,7 +98,8 @@ class AiContracts {
     if (todoId.isNotEmpty && !validTodoIds.contains(todoId)) {
       errors.add('todoId 不在候选中');
     }
-    if (quote.length > 300 || (quote.isNotEmpty && !userMessage.contains(quote))) {
+    if (quote.length > 300 ||
+        (quote.isNotEmpty && !userMessage.contains(quote))) {
       errors.add('quotedText 必须逐字来自用户消息');
     }
     if (errors.isNotEmpty) return AiContractValidation.invalid(errors);
@@ -508,6 +509,7 @@ class AiContracts {
     final category = _text(value['category']);
     final content = _text(value['content']);
     final quotedText = _text(value['quotedText']);
+    final confidence = _finiteDouble(value['confidence']);
     final errors = <String>[];
     if (!const {'explicit', 'current'}.contains(type)) {
       errors.add('type 必须是 explicit 或 current');
@@ -524,6 +526,9 @@ class AiContracts {
     if (!_lengthBetween(quotedText, 1, 500)) {
       errors.add('quotedText 必须为 1-500 字');
     }
+    if (confidence == null || confidence < 0 || confidence > 1) {
+      errors.add('confidence 必须为 0-1');
+    }
     final replacesId = _text(value['replacesId']);
     if (action == 'replace' && replacesId.isEmpty) {
       errors.add('replace 必须提供 replacesId');
@@ -538,6 +543,7 @@ class AiContracts {
       'category': category,
       'content': content,
       'quotedText': quotedText,
+      'confidence': confidence,
       if (action == 'replace') 'replacesId': replacesId,
     });
   }
@@ -648,6 +654,9 @@ class AiContracts {
         final startImmediately = args['startImmediately'];
         if (startImmediately != null && startImmediately is! bool) {
           errors.add('startImmediately 必须是布尔值');
+        }
+        if (kind == 'alarm' && startImmediately == true) {
+          errors.add('alarm 不能立即开始；相对时长请求应使用 timer');
         }
         if (kind == 'timer') {
           final minutes = _integer(args['minutes']);

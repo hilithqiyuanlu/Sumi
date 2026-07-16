@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/local_text_generation_coordinator.dart';
 import '../../services/local_retrieval_coordinator.dart';
 import '../../services/model_package_manager.dart';
+import '../../services/local_speech_recognition_coordinator.dart';
 import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
@@ -40,6 +41,16 @@ class LocalIntelligencePage extends StatelessWidget {
     final textProgress = text.totalBytes == 0
         ? 0.0
         : text.receivedBytes / text.totalBytes;
+    final speech = store.localSpeechModelState;
+    final speechBusy = switch (speech.status) {
+      LocalSpeechModelStatus.checking ||
+      LocalSpeechModelStatus.downloading ||
+      LocalSpeechModelStatus.loading => true,
+      _ => false,
+    };
+    final speechProgress = speech.totalBytes == 0
+        ? 0.0
+        : speech.receivedBytes / speech.totalBytes;
 
     return Scaffold(
       backgroundColor: paper,
@@ -86,6 +97,45 @@ class LocalIntelligencePage extends StatelessWidget {
               style: OutlinedButton.styleFrom(foregroundColor: danger),
               icon: const Icon(Icons.delete_outline, size: iconSmall),
               label: const Text('删除模型'),
+            ),
+          const SizedBox(height: s24),
+          const _SectionLabel('本地语音识别'),
+          const SizedBox(height: s8),
+          _SpeechModelStatusCard(
+            state: speech,
+            busy: speechBusy,
+            enabled: store.localSpeechRecognitionEnabled,
+            onEnabledChanged: (value) {
+              H.click();
+              store.setLocalSpeechRecognitionEnabled(value);
+            },
+          ),
+          if (speechBusy || speech.totalBytes > 0) ...[
+            const SizedBox(height: s16),
+            _ProgressPanel(
+              title: _speechStatusLabel(speech.status),
+              value: speechProgress == 0 ? null : speechProgress,
+              detail:
+                  '${_bytes(speech.receivedBytes)} / ${_bytes(speech.totalBytes)}',
+            ),
+          ],
+          if (speech.error != null) ...[
+            const SizedBox(height: s16),
+            _ErrorPanel(speech.error!),
+          ],
+          const SizedBox(height: s16),
+          if (speech.status != LocalSpeechModelStatus.ready)
+            FilledButton.icon(
+              onPressed: speechBusy ? null : store.downloadLocalSpeechModel,
+              icon: const Icon(Icons.download_outlined, size: iconSmall),
+              label: Text(speechBusy ? '正在准备模型' : '下载高质量语音识别'),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: () => _confirmDeleteSpeechModel(context, store),
+              style: OutlinedButton.styleFrom(foregroundColor: danger),
+              icon: const Icon(Icons.delete_outline, size: iconSmall),
+              label: const Text('删除语音模型'),
             ),
           const SizedBox(height: s24),
           const _SectionLabel('本地检索'),
@@ -184,6 +234,16 @@ class LocalIntelligencePage extends StatelessWidget {
         LocalTextModelStatus.failed => '不可用',
       };
 
+  static String _speechStatusLabel(LocalSpeechModelStatus status) =>
+      switch (status) {
+        LocalSpeechModelStatus.unavailable => '尚未下载',
+        LocalSpeechModelStatus.checking => '正在检查模型包',
+        LocalSpeechModelStatus.downloading => '正在下载',
+        LocalSpeechModelStatus.loading => '正在加载',
+        LocalSpeechModelStatus.ready => '已就绪',
+        LocalSpeechModelStatus.failed => '不可用',
+      };
+
   static String _bytes(int value) => value < 1024 * 1024
       ? '${(value / 1024).toStringAsFixed(0)} KB'
       : '${(value / 1024 / 1024).toStringAsFixed(1)} MB';
@@ -231,6 +291,30 @@ class LocalIntelligencePage extends StatelessWidget {
       ),
     );
     if (confirmed == true) await store.deleteLocalTextModel();
+  }
+
+  Future<void> _confirmDeleteSpeechModel(
+    BuildContext context,
+    AppStore store,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除语音模型？'),
+        content: const Text('不会删除项目、事项、聊天或记忆。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await store.deleteLocalSpeechModel();
   }
 }
 
@@ -416,6 +500,91 @@ class _TextModelStatusCard extends StatelessWidget {
               Switch(value: enabled, onChanged: onEnabledChanged),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpeechModelStatusCard extends StatelessWidget {
+  const _SpeechModelStatusCard({
+    required this.state,
+    required this.busy,
+    required this.enabled,
+    required this.onEnabledChanged,
+  });
+  final LocalSpeechModelState state;
+  final bool busy;
+  final bool enabled;
+  final ValueChanged<bool> onEnabledChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = state.status == LocalSpeechModelStatus.ready;
+    return Container(
+      padding: const EdgeInsets.all(s16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius8),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                ready
+                    ? Icons.verified_outlined
+                    : busy
+                    ? Icons.downloading_outlined
+                    : Icons.download_outlined,
+                size: iconMedium,
+                color: ready ? success500 : primary500,
+              ),
+              const SizedBox(width: s8),
+              Expanded(
+                child: Text(
+                  LocalIntelligencePage._speechStatusLabel(state.status),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: s12),
+          const _Row(label: '模型', value: 'SenseVoice Small · ONNX INT8'),
+          const _Row(label: '用途', value: '中文、英文混说的本地识别'),
+          const _Row(label: '隐私', value: '语音仅在本机处理'),
+          if (state.version != null) _Row(label: '版本', value: state.version!),
+          if (ready) ...[
+            const Divider(height: s24),
+            Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '使用高质量语音识别',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: s2),
+                      Text(
+                        '关闭后改用系统语音识别，不删除模型',
+                        style: TextStyle(fontSize: 12, color: textTertiary),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(value: enabled, onChanged: onEnabledChanged),
+              ],
+            ),
+          ],
         ],
       ),
     );

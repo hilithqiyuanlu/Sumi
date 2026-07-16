@@ -11,6 +11,7 @@ mixin SumiStoreChat {
   ChatCapability? get chatAgent;
   ToolExecutor? get toolExecutor;
   DateTime get selectedDate;
+  DateTime get currentTime;
   set selectedDate(DateTime d);
   void triggerNavigateToToday();
   MemoryService? get memoryService;
@@ -22,10 +23,16 @@ mixin SumiStoreChat {
   String? get currentProjectId;
   void scheduleLocalIndex();
   Future<void> refreshScheduleCardsForConversation(String? conversationId);
+  Future<void> releaseScheduleCardsAfterStream(
+    String conversationId,
+    String assistantMessageId,
+  );
   Future<void> processMilestoneMessage({
     required String messageId,
     required String message,
   });
+  Future<void> removeSourcesForMessages(Iterable<String> messageIds);
+  Future<void> deleteStudyTimersForMessages(Iterable<ChatMessage> messages);
   MilestoneService get milestones;
   StructuredGenerationCapability? get structuredAi;
   Future<TodoItem?> addUserTodo(
@@ -39,6 +46,7 @@ mixin SumiStoreChat {
   // --- 状态 ---
   String? _currentConversationId;
   String? _currentDateKey;
+  int _conversationLoadRequest = 0;
   List<ChatMessage> _currentMessages = [];
   bool _isStreaming = false;
   bool _isLoadingConversation = false;
@@ -54,6 +62,8 @@ mixin SumiStoreChat {
   String? _streamConversationId;
   String? _streamAssistantMessageId;
   StreamIterator<StreamEvent>? _activeAgentIterator;
+  Future<void>? _activeSendTask;
+  final Set<Future<void>> _postStreamTasks = <Future<void>>{};
   bool _stopRequested = false;
 
   /// 用户发起对话时的首页问候语（仅首条消息注入一次上下文）
@@ -61,6 +71,7 @@ mixin SumiStoreChat {
   String? _activeToolDefaultDate;
   String? _todoDraft;
   Set<String> _milestoneSourceMessageIds = <String>{};
+  Set<String> _memorySourceMessageIds = <String>{};
   ChatMessage? _pendingUserMessage;
 
   String? get currentConversationId => _currentConversationId;
@@ -88,14 +99,45 @@ mixin SumiStoreChat {
     _publishChatState();
   }
 
+  void recordMemorySource(String messageId) {
+    if (!_memorySourceMessageIds.add(messageId)) return;
+    _publishChatState();
+  }
+
+  void removeMemorySources(Iterable<String> messageIds) {
+    final before = _memorySourceMessageIds.length;
+    _memorySourceMessageIds.removeAll(messageIds);
+    if (_memorySourceMessageIds.length == before) return;
+    _publishChatState();
+  }
+
+  void _processPersistedUserMessage(
+    ChatMessage message, {
+    required String source,
+  }) {
+    unawaited(
+      processMilestoneMessage(messageId: message.id, message: message.content),
+    );
+    final extractor = memoryExtractionService;
+    if (extractor != null) {
+      unawaited(
+        extractor.process(
+          messageId: message.id,
+          message: message.content,
+          source: source,
+        ),
+      );
+    }
+  }
+
   ChatSendResult sendUnifiedMessage(String content, {String? currentGreeting}) {
     final text = content.trim();
     if (text.isEmpty) return ChatSendResult.empty;
-    if (_isStreaming) return ChatSendResult.busy;
-    final classifier = structuredAi;
-    if (classifier == null) {
-      return sendMessage(text, currentGreeting: currentGreeting);
+    if (calendarDayMode(selectedDate, currentTime) != CalendarDayMode.today) {
+      return ChatSendResult.empty;
     }
+    if (_isStreaming) return ChatSendResult.busy;
+    final defaultDate = dateKey(selectedDate);
     _pendingUserMessage = ChatMessage(
       id: newSumiId('pending'),
       conversationId: _currentConversationId ?? '',
@@ -108,32 +150,85 @@ mixin SumiStoreChat {
     _streamAssistantMessageId = null;
     _currentToolCallLabel = '正在理解输入';
     _publishChatState();
-    unawaited(_routeUnifiedInput(text, currentGreeting: currentGreeting));
+    unawaited(
+      _routeUnifiedInput(
+        text,
+        defaultDate: defaultDate,
+        currentGreeting: currentGreeting,
+      ),
+    );
     return ChatSendResult.accepted;
   }
 
   Future<void> _routeUnifiedInput(
     String text, {
+    required String defaultDate,
     String? currentGreeting,
   }) async {
-    try {
-      final decision = await structuredAi?.classifyInput(
-        text,
-        draft: _todoDraft,
-      );
-      if (decision != null &&
-          decision.intent == InputIntent.createTodo &&
-          decision.confidence >= 0.85 &&
-          (decision.title?.trim().isNotEmpty ?? false) &&
-          (decision.date?.isNotEmpty ?? false)) {
-        await _recordTodoCreation(text, decision);
-        _todoDraft = null;
-        return;
+    if (_shouldRouteToAgentTool(text)) {
+      _todoDraft = null;
+      _isStreaming = false;
+      _currentToolCallLabel = null;
+      _publishChatState();
+      final result = sendMessage(text, currentGreeting: currentGreeting);
+      if (result != ChatSendResult.accepted) {
+        _pendingUserMessage = null;
+        _publishChatState();
       }
+      return;
+    }
+
+    InputClassification? decision;
+    try {
+      decision = await structuredAi?.classifyInput(text, draft: _todoDraft);
+    } catch (_) {
+      // 高确定性的创建命令仍可由本地规则兜底；其他输入按聊天处理。
+    }
+
+    final explicitTitle = _explicitTodoTitle(text);
+    final classifiedTitle = decision?.title?.trim() ?? '';
+    final missingOnlyDate =
+        decision?.intent == InputIntent.clarifyTodo &&
+        classifiedTitle.isNotEmpty &&
+        decision!.missingFields.isNotEmpty &&
+        decision.missingFields.every((field) => field == 'date');
+    final modelWantsTodo =
+        decision?.intent == InputIntent.createTodo || missingOnlyDate;
+    final confidence = decision?.confidence ?? 0;
+    final canDefaultMissingDate =
+        modelWantsTodo &&
+        classifiedTitle.isNotEmpty &&
+        (decision?.date?.isEmpty ?? true) &&
+        confidence >= 0.65;
+    final canTrustModel =
+        modelWantsTodo &&
+        classifiedTitle.isNotEmpty &&
+        (confidence >= 0.72 || canDefaultMissingDate || explicitTitle != null);
+    var title = canTrustModel ? classifiedTitle : explicitTitle;
+
+    if (title != null && title.isNotEmpty) {
+      if (title.length > AppStore.todoTitleMaxLength) {
+        title = (await structuredAi?.polishTodo(title))?.trim() ?? title;
+      }
+      await _recordTodoCreation(
+        text,
+        InputClassification(
+          intent: InputIntent.createTodo,
+          confidence: decision?.confidence ?? 1,
+          title: title,
+          date: (decision?.date?.isNotEmpty ?? false)
+              ? decision!.date
+              : defaultDate,
+          reminderTime: decision?.reminderTime,
+        ),
+      );
+      _todoDraft = null;
+      return;
+    }
+
+    try {
       final lacksTodoFields =
-          decision != null &&
-          ((decision.title?.trim().isEmpty ?? true) ||
-              (decision.date?.isEmpty ?? true));
+          decision != null && (decision.title?.trim().isEmpty ?? true);
       final shouldClarify =
           decision != null &&
           (decision.intent == InputIntent.clarifyTodo ||
@@ -145,8 +240,6 @@ mixin SumiStoreChat {
             decision.clarification ??
             ((decision.title?.trim().isEmpty ?? true)
                 ? '要记下什么事项？'
-                : (decision.date?.isEmpty ?? true)
-                ? '这件事准备什么时候做？'
                 : '你要我把它记成待办吗？');
         await _recordClarification(text, question);
         return;
@@ -163,6 +256,39 @@ mixin SumiStoreChat {
       _pendingUserMessage = null;
       _publishChatState();
     }
+  }
+
+  String? _explicitTodoTitle(String text) {
+    final value = text.trim();
+    final patterns = <RegExp>[
+      RegExp(
+        r'^(?:请|麻烦)?(?:你)?(?:帮我)?(?:创建|新建|添加|加上|加)(?:一下)?(?:一个|个|一条)?(?:待办事项|待办|事项|任务)',
+      ),
+      RegExp(
+        r'^(?:请|麻烦)?(?:你)?(?:帮我)?(?:记下|记录)(?:一下)?(?:一个|个|一条)?(?:待办事项|待办|事项|任务)?',
+      ),
+      RegExp(r'^(?:请|麻烦)?(?:你)?提醒我'),
+      RegExp(r'^(?:请|麻烦)?(?:你)?帮我记(?:一下|下来)?'),
+    ];
+    for (final pattern in patterns) {
+      if (!pattern.hasMatch(value)) continue;
+      final title = value
+          .replaceFirst(pattern, '')
+          .replaceFirst(RegExp(r'^[\s，,。：:]+'), '')
+          .trim();
+      return title.length >= 2 ? title : null;
+    }
+    return null;
+  }
+
+  bool _shouldRouteToAgentTool(String text) {
+    final value = text.trim();
+    final explicitlyTodo = RegExp(r'待办事项|待办|事项|任务').hasMatch(value);
+    if (explicitlyTodo) return false;
+    if (RegExp(r'计时器|倒计时|闹钟').hasMatch(value)) return true;
+    return RegExp(
+      r'(?:提醒我.{0,12}(?:\d+|[一二两三四五六七八九十半]+)(?:秒|分钟|小时)后|(?:\d+|[一二两三四五六七八九十半]+)(?:秒|分钟|小时)后.{0,12}提醒我)',
+    ).hasMatch(value);
   }
 
   Future<void> _recordClarification(String userText, String question) async {
@@ -225,7 +351,7 @@ mixin SumiStoreChat {
   }
 
   Future<void> _ensureInputConversation() async {
-    final today = dateKey(DateTime.now());
+    final today = dateKey(currentTime);
     await _getOrCreateConversationForDate(today);
   }
 
@@ -241,13 +367,8 @@ mixin SumiStoreChat {
     _currentMessages = [..._currentMessages, ...messages];
     _pendingUserMessage = null;
     for (final message in messages) {
-      if (message.role == 'user') {
-        unawaited(
-          processMilestoneMessage(
-            messageId: message.id,
-            message: message.content,
-          ),
-        );
+      if (message.role == 'user' && !temporary) {
+        _processPersistedUserMessage(message, source: 'unified_input');
       }
     }
     _messageSentSequence++;
@@ -289,6 +410,7 @@ mixin SumiStoreChat {
           ? _chatFailure
           : null,
       milestoneSourceMessageIds: Set.unmodifiable(_milestoneSourceMessageIds),
+      memorySourceMessageIds: Set.unmodifiable(_memorySourceMessageIds),
       pendingUserMessage: _pendingUserMessage,
     );
   }
@@ -306,11 +428,24 @@ mixin SumiStoreChat {
 
   void _finishStreaming(String assistantMessageId) {
     if (_streamAssistantMessageId != assistantMessageId) return;
+    final conversationId = _streamConversationId;
     _isStreaming = false;
     _streamConversationId = null;
     _streamAssistantMessageId = null;
     _currentToolCallLabel = null;
     _activeToolDefaultDate = null;
+    if (conversationId != null) {
+      final task = releaseScheduleCardsAfterStream(
+        conversationId,
+        assistantMessageId,
+      );
+      _postStreamTasks.add(task);
+      unawaited(
+        task.whenComplete(() {
+          _postStreamTasks.remove(task);
+        }),
+      );
+    }
   }
 
   /// Stops the active response while preserving content received so far.
@@ -379,63 +514,98 @@ mixin SumiStoreChat {
     _chatFailure = failure;
   }
 
-  void disposeChatView() {
+  Future<void> disposeChatView() async {
     _chatPublishTimer?.cancel();
-    unawaited(_activeAgentIterator?.cancel());
-  }
-
-  /// 判断 dateKey 是否为未来日期（相对于今天）。
-  static bool _isFutureDate(String dateKeyStr) {
-    final today = dateKey(DateTime.now());
-    return dateKeyStr.compareTo(today) > 0;
+    _stopRequested = true;
+    await _activeAgentIterator?.cancel();
+    final sendTask = _activeSendTask;
+    if (sendTask != null) {
+      try {
+        await sendTask;
+      } catch (_) {
+        // 发送错误已由聊天状态处理，关闭流程只需等待它结束。
+      }
+    }
+    if (_postStreamTasks.isNotEmpty) {
+      await Future.wait(_postStreamTasks.toList(growable: false));
+    }
   }
 
   // ---------------------------------------------------------------------------
   // 日期驱动会话
   // ---------------------------------------------------------------------------
 
-  /// 获取或创建指定日期的会话，加载其消息。
-  /// 未来日期走临时会话（内存中，不持久化）。
-  Future<void> _getOrCreateConversationForDate(String dateKey) async {
+  /// 今天可创建会话；过去只读取已有会话；未来没有会话。
+  Future<void> _getOrCreateConversationForDate(String targetDateKey) async {
     final db = chatDatabase;
-    if (_currentDateKey == dateKey && _currentConversationId != null) return;
+    final parsedDate = DateTime.tryParse(targetDateKey) ?? currentTime;
+    final mode = calendarDayMode(parsedDate, currentTime);
+    if (_currentDateKey == targetDateKey && _isLoadingConversation) return;
+    if (_currentDateKey == targetDateKey &&
+        (mode != CalendarDayMode.today || _currentConversationId != null)) {
+      return;
+    }
 
+    final request = ++_conversationLoadRequest;
     _isLoadingConversation = true;
+    _currentDateKey = targetDateKey;
+    // 立即移除上一天的数据。否则异步读取期间会把旧会话误显示在新日期下。
+    _currentConversationId = null;
+    _currentMessages = [];
+    _milestoneSourceMessageIds = <String>{};
+    _memorySourceMessageIds = <String>{};
+    _isTemporaryConversation = false;
+    unawaited(refreshScheduleCardsForConversation(null));
     _publishChatState();
 
-    final isFuture = _isFutureDate(dateKey);
+    bool isCurrentRequest() =>
+        request == _conversationLoadRequest && _currentDateKey == targetDateKey;
 
-    if (isFuture) {
-      _currentConversationId = 'temp-$dateKey';
-      _currentDateKey = dateKey;
-      _currentMessages = [];
-      _milestoneSourceMessageIds = <String>{};
-      _isTemporaryConversation = true;
+    if (mode == CalendarDayMode.future) {
+      if (!isCurrentRequest()) return;
     } else {
       if (db == null) {
+        if (!isCurrentRequest()) return;
         _isLoadingConversation = false;
         _publishChatState();
         return;
       }
-      Conversation? conv = await db.findConversationByDate(dateKey);
-      conv ??= await db.createConversationForDate(dateKey);
+      Conversation? conv = await db.findConversationByDate(targetDateKey);
+      if (conv == null && mode == CalendarDayMode.today) {
+        conv = await db.createConversationForDate(targetDateKey);
+      }
+      if (!isCurrentRequest()) return;
 
-      _currentConversationId = conv.id;
-      _currentDateKey = dateKey;
-      _currentMessages = await db.loadMessages(conv.id);
-      _milestoneSourceMessageIds = await milestones.sourceMessageIdsFor(
-        _currentMessages.map((message) => message.id),
-      );
-      _isTemporaryConversation = false;
+      if (conv != null) {
+        final messages = await db.loadMessages(conv.id);
+        final milestoneSourceIds = await milestones.sourceMessageIdsFor(
+          messages.map((message) => message.id),
+        );
+        final memorySourceIds =
+            await memoryService?.sourceMessageIdsFor(
+              messages.map((message) => message.id),
+            ) ??
+            <String>{};
+        if (!isCurrentRequest()) return;
+        _currentConversationId = conv.id;
+        _currentMessages = messages;
+        _milestoneSourceMessageIds = milestoneSourceIds;
+        _memorySourceMessageIds = memorySourceIds;
+      }
     }
 
+    if (!isCurrentRequest()) return;
     _isLoadingConversation = false;
     await refreshScheduleCardsForConversation(_currentConversationId);
+    if (!isCurrentRequest()) return;
     _publishChatState();
   }
 
   /// 删除一个消息对：从指定 user 消息开始，直到下一个 user 消息（或末尾）。
   Future<void> deleteMessagePair(int userMsgIndex) async {
+    if (calendarDayMode(selectedDate, currentTime) != CalendarDayMode.today) {
+      return;
+    }
     final db = chatDatabase;
     if (userMsgIndex < 0 || userMsgIndex >= _currentMessages.length) return;
     if (_currentMessages[userMsgIndex].role != 'user') return;
@@ -455,9 +625,16 @@ mixin SumiStoreChat {
       idsToDelete.add(_currentMessages[i].id);
     }
 
+    final messagesToDelete = _currentMessages.sublist(
+      userMsgIndex,
+      endIndex + 1,
+    );
+    await deleteStudyTimersForMessages(messagesToDelete);
+
     // 从 DB 和内存中删除（临时会话仅内存）
     if (!_isTemporaryConversation && db != null) {
       await db.deleteMessagesByIds(idsToDelete);
+      await removeSourcesForMessages(idsToDelete);
     }
     _currentMessages.removeRange(userMsgIndex, endIndex + 1);
     scheduleLocalIndex();
@@ -473,6 +650,9 @@ mixin SumiStoreChat {
     String? currentGreeting,
   }) async {
     final trimmed = content.trim();
+    if (calendarDayMode(selectedDate, currentTime) != CalendarDayMode.today) {
+      return ChatSendResult.empty;
+    }
     if (trimmed.isEmpty) return ChatSendResult.empty;
     if (_isStreaming) return ChatSendResult.busy;
     if (userMsgIndex < 0 || userMsgIndex >= _currentMessages.length) {
@@ -489,9 +669,13 @@ mixin SumiStoreChat {
     }
 
     final messagesToRemove = _currentMessages.sublist(userMsgIndex);
+    await deleteStudyTimersForMessages(messagesToRemove);
     if (!_isTemporaryConversation && chatDatabase != null) {
       await chatDatabase!.deleteMessagesByIds(
         messagesToRemove.map((message) => message.id).toList(),
+      );
+      await removeSourcesForMessages(
+        messagesToRemove.map((message) => message.id),
       );
     }
     _currentMessages.removeRange(userMsgIndex, _currentMessages.length);
@@ -507,6 +691,9 @@ mixin SumiStoreChat {
   Future<void> clearChatData() async {
     final db = chatDatabase;
     if (db != null) {
+      final messages = await db.loadAllMessages();
+      await deleteStudyTimersForMessages(messages);
+      await removeSourcesForMessages(messages.map((message) => message.id));
       await db.clearAll();
     }
     _currentConversationId = null;
@@ -526,6 +713,9 @@ mixin SumiStoreChat {
   ChatSendResult sendMessage(String content, {String? currentGreeting}) {
     final trimmed = content.trim();
     if (trimmed.isEmpty) return ChatSendResult.empty;
+    if (calendarDayMode(selectedDate, currentTime) != CalendarDayMode.today) {
+      return ChatSendResult.empty;
+    }
     if (_isStreaming) return ChatSendResult.busy;
 
     final db = chatDatabase;
@@ -544,14 +734,18 @@ mixin SumiStoreChat {
     _chatFailureConversationId = null;
     _currentToolCallLabel = '正在生成回复';
     _publishChatState();
+    final task = _sendAcceptedMessage(
+      trimmed,
+      currentGreeting: currentGreeting,
+      db: db,
+      svc: svc,
+      exec: exec,
+    );
+    _activeSendTask = task;
     unawaited(
-      _sendAcceptedMessage(
-        trimmed,
-        currentGreeting: currentGreeting,
-        db: db,
-        svc: svc,
-        exec: exec,
-      ),
+      task.whenComplete(() {
+        if (identical(_activeSendTask, task)) _activeSendTask = null;
+      }),
     );
     return ChatSendResult.accepted;
   }
@@ -566,25 +760,13 @@ mixin SumiStoreChat {
     // 记录问候语上下文（仅用于新会话首条消息）
     _activeGreeting = currentGreeting;
 
-    final today = dateKey(DateTime.now());
-    final selectedKey = dateKey(selectedDate);
-    final isFuture = _isFutureDate(selectedKey);
+    final today = dateKey(currentTime);
 
     String? userMessageId;
     String? assistantMessageId;
     String? conversationId;
     try {
-      if (isFuture) {
-        // 未来日期：留在当前日期，使用临时会话
-        await _getOrCreateConversationForDate(selectedKey);
-      } else {
-        // 非未来日期：强制切回今天的会话
-        await _getOrCreateConversationForDate(today);
-        if (selectedKey != today) {
-          selectedDate = dateOnly(DateTime.now());
-          triggerNavigateToToday();
-        }
-      }
+      await _getOrCreateConversationForDate(today);
       final convId = _currentConversationId!;
       conversationId = convId;
       if (convId.isEmpty) return;
@@ -607,21 +789,7 @@ mixin SumiStoreChat {
       _pendingUserMessage = null;
       if (!isTemporary) scheduleLocalIndex();
       if (!isTemporary) {
-        unawaited(
-          processMilestoneMessage(
-            messageId: userMessageId,
-            message: userMsg.content,
-          ),
-        );
-        final extractor = memoryExtractionService;
-        if (extractor != null) {
-          unawaited(
-            extractor.process(
-              messageId: userMessageId,
-              message: userMsg.content,
-            ),
-          );
-        }
+        _processPersistedUserMessage(userMsg, source: 'chat');
       }
       _messageSentSequence++;
       _publishChatState();
@@ -690,6 +858,9 @@ mixin SumiStoreChat {
   }
 
   Future<void> retryLastFailedMessage() async {
+    if (calendarDayMode(selectedDate, currentTime) != CalendarDayMode.today) {
+      return;
+    }
     final failure = _chatFailure;
     final svc = chatAgent;
     final exec = toolExecutor;
@@ -750,85 +921,6 @@ mixin SumiStoreChat {
       );
       _publishChatState();
     }
-  }
-
-  /// 重新生成最后一条 AI 回复。
-  Future<void> regenerateLast() async {
-    final db = chatDatabase;
-    final svc = chatAgent;
-    final exec = toolExecutor;
-    if (svc == null || exec == null) return;
-    final convId = _currentConversationId;
-    if (convId == null) return;
-    final isTemporary = _isTemporaryConversation;
-    _stopRequested = false;
-
-    // 找到并移除最后一条 AI 消息及该消息之后（同一轮）的 tool 消息，
-    // 保留更早轮次的 assistant/tool 结果，避免上下文非法。
-    final lastAiMsg = _currentMessages.cast<ChatMessage?>().lastWhere(
-      (m) => m?.role == 'assistant',
-      orElse: () => null,
-    );
-    String? lastUserContent;
-    String? lastUserId;
-    if (lastAiMsg != null) {
-      final lastAiIdx = _currentMessages.indexOf(lastAiMsg);
-      for (var i = lastAiIdx - 1; i >= 0; i--) {
-        if (_currentMessages[i].role == 'user') {
-          lastUserContent = _currentMessages[i].content;
-          lastUserId = _currentMessages[i].id;
-          break;
-        }
-      }
-      final lastAiCreatedAt = lastAiMsg.createdAt;
-      _currentMessages.removeWhere(
-        (m) =>
-            (m.role == 'assistant' || m.role == 'tool') &&
-            !m.createdAt.isBefore(lastAiCreatedAt),
-      );
-      if (!isTemporary && db != null) {
-        await db.popToolMessagesAfter(convId, lastAiMsg.id);
-        await db.popLastAssistantMessage(convId);
-      }
-      _publishChatState();
-    }
-
-    if (lastUserContent == null || lastUserId == null) return;
-
-    // 构建上下文
-    final messages = await _buildMessagesContextForAgent();
-    final msgCountBefore = messages.length;
-
-    final assistantMsgId = 'msg-${DateTime.now().microsecondsSinceEpoch}';
-    _currentMessages = [
-      ..._currentMessages,
-      ChatMessage(
-        id: assistantMsgId,
-        conversationId: convId,
-        role: 'assistant',
-        content: '',
-        createdAt: DateTime.now(),
-      ),
-    ];
-    _startStreaming(convId, assistantMsgId);
-    _publishChatState();
-
-    await _streamAndPersistReply(
-      messages: messages,
-      msgCountBefore: msgCountBefore,
-      assistantMsgId: assistantMsgId,
-      userMessageId: lastUserId,
-      convId: convId,
-      db: db,
-      svc: svc,
-      exec: exec,
-      isTemporary: isTemporary,
-    );
-
-    if (!isTemporary && db != null) {
-      await db.touchConversation(convId);
-    }
-    _publishChatState();
   }
 
   // ---------------------------------------------------------------------------
@@ -1011,7 +1103,6 @@ mixin SumiStoreChat {
       try {
         final memories = await memoryService!.hotForAgent(
           query,
-          projectId: currentProjectId,
           semanticScores: memorySemanticScores,
         );
         hotPrompt = memories

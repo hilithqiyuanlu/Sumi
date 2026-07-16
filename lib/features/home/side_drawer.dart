@@ -7,6 +7,7 @@ import '../../store/sumi_store.dart';
 import '../../sumi_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/haptics.dart';
+import '../memory/user_model_page.dart';
 
 class SideDrawer extends StatefulWidget {
   final bool isOpen;
@@ -152,16 +153,26 @@ class _SideDrawerState extends State<SideDrawer> {
         bottom: s16,
       ),
       child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: primary100,
-              borderRadius: BorderRadius.circular(radiusPill),
+          children: [
+            GestureDetector(
+              onTap: () {
+                H.click();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UserModelPage(),
+                  ),
+                );
+              },
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: primary100,
+                  borderRadius: BorderRadius.circular(radiusPill),
+                ),
+                child: const Icon(Icons.person, size: 24, color: primary500),
+              ),
             ),
-            child: const Icon(Icons.person, size: 24, color: primary500),
-          ),
           const SizedBox(width: s12),
           Expanded(
             child: InkWell(

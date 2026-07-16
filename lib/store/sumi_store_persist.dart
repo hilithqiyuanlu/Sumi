@@ -11,6 +11,7 @@ mixin SumiStorePersist {
   List<Project> get projectList;
   List<MonthCard> get monthCardList;
   DateTime get selectedDate;
+  DateTime get currentTime;
   set selectedDate(DateTime v);
   String? get currentProjectId;
   set currentProjectId(String? v);
@@ -34,10 +35,12 @@ mixin SumiStorePersist {
   void restoreSuggestionQuestionFeedback(Map<String, Object?>? value);
   void setSuggestionsDirty(bool value);
   Future<void> deleteLocalRetrievalModel();
+  Future<void> deleteLocalSpeechModel();
   Future<void> clearStudyTimers();
   Future<void> clearScheduleProposals();
   Future<void> clearMilestones();
   Future<void> clearDailyReflections();
+  Future<void> clearUserModels();
 
   Future<void> loadFromDb() async {
     final map = await _database?.readSnapshot();
@@ -121,13 +124,14 @@ mixin SumiStorePersist {
       'selectedDate': selectedDate.toIso8601String(),
       'modelRouterMetrics': modelRouterMetrics.toJson(),
       if (cachedSuggestionQuestions.isNotEmpty)
-        'suggestionQuestions':
-            cachedSuggestionQuestions.map((item) => item.toJson()).toList(),
+        'suggestionQuestions': cachedSuggestionQuestions
+            .map((item) => item.toJson())
+            .toList(),
       if (suggestionQuestionsFingerprint != null)
         'suggestionQuestionsFingerprint': suggestionQuestionsFingerprint,
       if (suggestionQuestionsGeneratedAt != null)
-        'suggestionQuestionsGeneratedAt':
-            suggestionQuestionsGeneratedAt!.toIso8601String(),
+        'suggestionQuestionsGeneratedAt': suggestionQuestionsGeneratedAt!
+            .toIso8601String(),
       'suggestionQuestionFeedback': {
         'sentIntents': acceptedSuggestionIntents.toList(growable: false),
         'notSuitableIntents': rejectedSuggestionIntents.toList(growable: false),
@@ -149,7 +153,7 @@ mixin SumiStorePersist {
     projectList.clear();
     monthCardList.clear();
     currentProjectId = null;
-    selectedDate = dateOnly(DateTime.now());
+    selectedDate = dateOnly(currentTime);
 
     appSettings = AppSettings(
       deepseekApiKey: keepSecrets ? oldDeepseek : '',
@@ -167,9 +171,13 @@ mixin SumiStorePersist {
     await clearScheduleProposals();
     await clearMilestones();
     await clearDailyReflections();
+    await clearUserModels();
     // 本地检索是可选组件；平台通道不可用时不应阻断用户数据清除。
     try {
       await deleteLocalRetrievalModel();
+    } catch (_) {}
+    try {
+      await deleteLocalSpeechModel();
     } catch (_) {}
 
     await writeToDb();

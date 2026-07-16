@@ -43,15 +43,19 @@ class _DateStripState extends State<DateStrip> {
     final viewport = _scrollController.position.viewportDimension;
     final dayIndex = selected.day;
     final selectedCenter = (dayIndex - 1) * itemExtent + 27.0;
-    final target = (selectedCenter - viewport / 2)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutQuart,
-    ).then((_) {
-      if (mounted) _programmaticScroll = false;
-    });
+    final target = (selectedCenter - viewport / 2).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController
+        .animateTo(
+          target,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutQuart,
+        )
+        .then((_) {
+          if (mounted) _programmaticScroll = false;
+        });
   }
 
   @override
@@ -60,8 +64,10 @@ class _DateStripState extends State<DateStrip> {
     final selected = dateOnly(store.selectedDate);
     final daysInMonth = DateTime(selected.year, selected.month + 1, 0).day;
     final dates = List.generate(
-        daysInMonth, (i) => DateTime(selected.year, selected.month, i + 1));
-    final today = dateOnly(DateTime.now());
+      daysInMonth,
+      (i) => DateTime(selected.year, selected.month, i + 1),
+    );
+    final today = dateOnly(store.currentTime);
 
     return Container(
       decoration: BoxDecoration(
@@ -99,7 +105,10 @@ class _DateStripState extends State<DateStrip> {
                   final isPast = date.isBefore(today) && !isToday;
                   final todayKey = dateKey(today);
                   final hasTodos = store.todoItems.any(
-                    (t) => !t.done && (t.date == dateKey(date) || (t.date == null && dateKey(date) == todayKey)),
+                    (t) =>
+                        !t.done &&
+                        (t.date == dateKey(date) ||
+                            (t.date == null && dateKey(date) == todayKey)),
                   );
                   return _DraggableDateChip(
                     date: date,
@@ -163,8 +172,7 @@ class _DateStripState extends State<DateStrip> {
     final center = offset + viewport / 2;
     const itemExtent = 60.0; // 52 + 8 spacing
     final dayIndex = (center / itemExtent).floor().clamp(0, daysInMonth - 1);
-    final centerDate =
-        DateTime(selected.year, selected.month, dayIndex + 1);
+    final centerDate = DateTime(selected.year, selected.month, dayIndex + 1);
     if (!isSameDate(centerDate, selected)) {
       H.click();
       store.selectDate(centerDate);
@@ -227,7 +235,9 @@ class _DateChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: selected ? Colors.white70 : txtColor.withValues(alpha: 0.72),
+                color: selected
+                    ? Colors.white70
+                    : txtColor.withValues(alpha: 0.72),
               ),
             ),
             const SizedBox(height: s6),
@@ -274,8 +284,7 @@ class _DraggableDateChip extends StatelessWidget {
     required this.child,
   });
 
-  bool get _isPastDate =>
-      dateOnly(date).isBefore(dateOnly(DateTime.now()));
+  bool get _isPastDate => dateOnly(date).isBefore(dateOnly(store.currentTime));
 
   @override
   Widget build(BuildContext context) {
@@ -305,8 +314,8 @@ class _DraggableDateChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(radiusCard),
             color: hovering
                 ? (_isPastDate
-                    ? Colors.red.shade100
-                    : mintDeep.withValues(alpha: 0.2))
+                      ? Colors.red.shade100
+                      : mintDeep.withValues(alpha: 0.2))
                 : Colors.transparent,
           ),
           child: child,

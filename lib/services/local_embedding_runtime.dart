@@ -78,6 +78,7 @@ class LocalEmbeddingRuntime {
   }
 
   Future<void> unload() async {
+    if (!_loaded) return;
     try {
       await _channel.invokeMethod<void>('unload');
     } finally {

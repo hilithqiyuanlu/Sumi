@@ -1,5 +1,7 @@
 // 日期与 ID 工具函数。
 
+enum CalendarDayMode { past, today, future }
+
 const _toolNameMap = {
   'search_web': '搜索',
   'read_memory': '读取记忆',
@@ -14,6 +16,14 @@ const _toolNameMap = {
 String toolDisplayName(String name) => _toolNameMap[name] ?? name;
 
 DateTime dateOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+CalendarDayMode calendarDayMode(DateTime date, DateTime now) {
+  final target = dateOnly(date);
+  final today = dateOnly(now);
+  if (target.isBefore(today)) return CalendarDayMode.past;
+  if (target.isAfter(today)) return CalendarDayMode.future;
+  return CalendarDayMode.today;
+}
 
 bool isSameDate(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;

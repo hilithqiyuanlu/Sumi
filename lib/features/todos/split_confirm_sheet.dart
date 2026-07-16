@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../store/sumi_store.dart';
 import '../../theme/app_theme.dart';
 import '../shared/drag_handle.dart';
 
 /// 弹出 AI 拆分确认面板。
-/// 返回 true 表示用户确认添加，false 表示取消。
-Future<void> showSplitConfirmSheet(
+/// 返回用户确认保留的标题；null 表示取消。
+Future<List<String>?> showSplitConfirmSheet(
   BuildContext context,
-  SumiStore store,
   List<String> items,
 ) async {
   final selected = List<bool>.filled(items.length, true);
@@ -107,11 +105,9 @@ Future<void> showSplitConfirmSheet(
     },
   );
 
-  if (confirmed == true) {
-    for (var i = 0; i < items.length; i++) {
-      if (selected[i]) {
-        await store.addUserTodo(items[i]);
-      }
-    }
-  }
+  if (confirmed != true) return null;
+  return [
+    for (var i = 0; i < items.length; i++)
+      if (selected[i]) items[i],
+  ];
 }

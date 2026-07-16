@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../data/chat_database.dart';
@@ -12,6 +13,7 @@ import '../utils/utils.dart';
 import 'memory_extraction.dart';
 import 'memory_service.dart';
 import 'model_router.dart';
+import 'prompt_context.dart';
 
 enum DailyReflectionStatus { pending, generating, ready, failed, skipped }
 
@@ -25,6 +27,7 @@ class DailyReflection {
   final DateTime? attemptedAt;
   final DateTime? generatedAt;
   final String? failureCategory;
+  final int automaticRetryCount;
 
   const DailyReflection({
     required this.dateKey,
@@ -36,6 +39,7 @@ class DailyReflection {
     this.attemptedAt,
     this.generatedAt,
     this.failureCategory,
+    this.automaticRetryCount = 0,
   });
 }
 
@@ -53,8 +57,16 @@ class DailyReflectionDatabase {
       date_key TEXT PRIMARY KEY, status TEXT NOT NULL, short_summary TEXT,
       reflection TEXT, highlights_json TEXT NOT NULL DEFAULT '[]',
       source_fingerprint TEXT, attempted_at TEXT, generated_at TEXT,
-      failure_category TEXT
+      failure_category TEXT,
+      automatic_retry_count INTEGER NOT NULL DEFAULT 0
     )''');
+    final columns = await db.rawQuery('PRAGMA table_info(daily_reflections)');
+    if (!columns.any((column) => column['name'] == 'automatic_retry_count')) {
+      await db.execute(
+        'ALTER TABLE daily_reflections '
+        'ADD COLUMN automatic_retry_count INTEGER NOT NULL DEFAULT 0',
+      );
+    }
     await db.execute(
       '''CREATE TABLE IF NOT EXISTS daily_reflection_memory_runs (
       date_key TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -88,6 +100,15 @@ class DailyReflectionDatabase {
     final db = await _db;
     await db.delete('daily_reflections');
     await db.delete('daily_reflection_memory_runs');
+  }
+
+  Future<void> delete(String date) async {
+    await _ensureTables();
+    await (await _db).delete(
+      'daily_reflections',
+      where: 'date_key = ?',
+      whereArgs: [date],
+    );
   }
 
   /// 返回 true 代表本日尚未成功补漏，可以开始一次新的处理。
@@ -154,6 +175,7 @@ class DailyReflectionDatabase {
       attemptedAt: DateTime.tryParse(row['attempted_at'] as String? ?? ''),
       generatedAt: DateTime.tryParse(row['generated_at'] as String? ?? ''),
       failureCategory: row['failure_category'] as String?,
+      automaticRetryCount: (row['automatic_retry_count'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -167,6 +189,7 @@ class DailyReflectionDatabase {
     'attempted_at': value.attemptedAt?.toIso8601String(),
     'generated_at': value.generatedAt?.toIso8601String(),
     'failure_category': value.failureCategory,
+    'automatic_retry_count': value.automaticRetryCount,
   };
 }
 
@@ -181,6 +204,9 @@ class DailyReflectionService {
   final void Function() onMemoryChanged;
   final DateTime Function() now;
   bool _running = false;
+  final _activeGenerations = <String>{};
+  static const _generatingTimeoutMinutes = 2;
+  static const _automaticRetryDelay = Duration(seconds: 3);
 
   DailyReflectionService({
     required this.database,
@@ -247,15 +273,32 @@ class DailyReflectionService {
           await _backfillMemory(date, input.userMessages);
           continue;
         }
-        if (existing?.status == DailyReflectionStatus.skipped ||
-            existing?.status == DailyReflectionStatus.generating ||
-            existing?.status == DailyReflectionStatus.failed) {
+        if (existing?.status == DailyReflectionStatus.skipped) {
           continue;
         }
-        await generate(
-          date,
-          retry: existing?.status == DailyReflectionStatus.failed,
-        );
+        if (existing != null &&
+            existing.status == DailyReflectionStatus.failed) {
+          if (!_canAutomaticallyRetry(existing)) continue;
+          await generate(date, retry: true, automaticRetry: true);
+          processed++;
+          continue;
+        }
+        if (existing?.status == DailyReflectionStatus.generating) {
+          final attemptedAt = existing?.attemptedAt;
+          if (attemptedAt != null &&
+              now().difference(attemptedAt).inMinutes <
+                  _generatingTimeoutMinutes) {
+            continue;
+          }
+          // 超时认为已中断，重置为 pending 继续处理。
+          await database.save(
+            DailyReflection(
+              dateKey: date,
+              status: DailyReflectionStatus.pending,
+            ),
+          );
+        }
+        await generate(date);
         processed++;
       }
     } catch (_) {
@@ -267,73 +310,137 @@ class DailyReflectionService {
 
   Future<void> retry(String date) async {
     final existing = await database.get(date);
-    if (existing?.status != DailyReflectionStatus.failed) return;
-    await generate(date, retry: true);
+    if (existing == null || existing.status == DailyReflectionStatus.ready) {
+      return;
+    }
+    // 允许对 pending / generating / failed 状态重新触发。
+    await generate(
+      date,
+      retry: existing.status == DailyReflectionStatus.failed,
+    );
   }
 
-  Future<void> generate(String date, {bool retry = false}) async {
-    final capability = structuredAi();
-    if (capability == null) return;
-    final existing = await database.get(date);
-    if (existing?.status == DailyReflectionStatus.ready ||
-        existing?.status == DailyReflectionStatus.generating ||
-        (existing?.status == DailyReflectionStatus.failed && !retry)) {
-      return;
-    }
-    final input = await _loadInput(date);
-    if (!input.hasContent) {
-      await database.save(
-        DailyReflection(dateKey: date, status: DailyReflectionStatus.skipped),
-      );
-      onChanged();
-      return;
-    }
-    final fingerprint = sha256
-        .convert(utf8.encode(jsonEncode(input.forFingerprint)))
-        .toString();
-    await database.save(
-      DailyReflection(
-        dateKey: date,
-        status: DailyReflectionStatus.generating,
-        sourceFingerprint: fingerprint,
-        attemptedAt: now(),
-      ),
-    );
+  Future<void> regenerate(String date) async {
+    if (_activeGenerations.contains(date)) return;
+    await database.delete(date);
     onChanged();
+    await generate(date);
+  }
+
+  Future<void> remove(String date) async {
+    await database.delete(date);
+    onChanged();
+  }
+
+  Future<void> generate(
+    String date, {
+    bool retry = false,
+    bool automaticRetry = false,
+  }) async {
+    if (_activeGenerations.contains(date)) return;
+    _activeGenerations.add(date);
+    var retryAutomatically = false;
     try {
-      final result = await capability.generateDailyReflection(
-        date: date,
-        messages: input.messagesForAi,
-        signals: input.signalsForAi,
-      );
-      if (result == null) {
-        await _saveFailure(date, fingerprint, capability.lastError);
+      final capability = structuredAi();
+      if (capability == null) return;
+      final existing = await database.get(date);
+      if (existing?.status == DailyReflectionStatus.ready) return;
+      if (existing?.status == DailyReflectionStatus.failed && !retry) return;
+      final automaticRetryCount = existing?.automaticRetryCount ?? 0;
+      final input = await _loadInput(date);
+      if (!input.hasContent) {
+        await database.save(
+          DailyReflection(dateKey: date, status: DailyReflectionStatus.skipped),
+        );
+        onChanged();
         return;
       }
+      final fingerprint = sha256
+          .convert(utf8.encode(jsonEncode(input.forFingerprint)))
+          .toString();
       await database.save(
         DailyReflection(
           dateKey: date,
-          status: DailyReflectionStatus.ready,
-          shortSummary: result.shortSummary,
-          reflection: result.reflection,
-          highlights: result.highlights,
+          status: DailyReflectionStatus.generating,
           sourceFingerprint: fingerprint,
           attemptedAt: now(),
-          generatedAt: now(),
         ),
       );
       onChanged();
-      await _backfillMemory(date, input.userMessages);
-    } catch (error) {
-      await _saveFailure(date, fingerprint, error.toString());
+      try {
+        final result = await capability.generateDailyReflection(
+          date: date,
+          messages: input.messagesForAi,
+          signals: input.signalsForAi,
+        );
+        if (result == null) {
+          final error = capability.lastError;
+          await _saveFailure(
+            date,
+            fingerprint,
+            error,
+            automaticRetryCount: automaticRetry
+                ? automaticRetryCount + 1
+                : automaticRetryCount,
+          );
+          retryAutomatically =
+              !automaticRetry &&
+              automaticRetryCount == 0 &&
+              _isRecoverableFailure(error);
+        } else {
+          await database.save(
+            DailyReflection(
+              dateKey: date,
+              status: DailyReflectionStatus.ready,
+              shortSummary: result.shortSummary,
+              reflection: result.reflection,
+              highlights: result.highlights,
+              sourceFingerprint: fingerprint,
+              attemptedAt: now(),
+              generatedAt: now(),
+            ),
+          );
+          onChanged();
+          try {
+            await _backfillMemory(date, input.userMessages);
+          } catch (error) {
+            // memory backfill 不应影响已生成总结的可展示性。
+            debugPrint('[_backfillMemory] $date failed: $error');
+          }
+        }
+      } catch (error) {
+        await _saveFailure(
+          date,
+          fingerprint,
+          error.toString(),
+          automaticRetryCount: automaticRetry
+              ? automaticRetryCount + 1
+              : automaticRetryCount,
+        );
+        retryAutomatically =
+            !automaticRetry &&
+            automaticRetryCount == 0 &&
+            _isRecoverableFailure(error.toString());
+      }
+    } finally {
+      _activeGenerations.remove(date);
     }
+    if (!retryAutomatically) return;
+    await Future<void>.delayed(_automaticRetryDelay);
+    final latest = await database.get(date);
+    if (latest?.status != DailyReflectionStatus.failed ||
+        latest?.automaticRetryCount != 0) {
+      return;
+    }
+    await generate(date, retry: true, automaticRetry: true);
   }
 
   Future<void> _saveFailure(
     String date,
     String fingerprint,
-    String? error,
-  ) async {
+    String? error, {
+    required int automaticRetryCount,
+  }) async {
     await database.save(
       DailyReflection(
         dateKey: date,
@@ -343,9 +450,37 @@ class DailyReflectionService {
         failureCategory: ModelRouterErrorClassifier.fromMessage(
           error ?? '',
         ).name,
+        automaticRetryCount: automaticRetryCount,
       ),
     );
     onChanged();
+  }
+
+  bool _canAutomaticallyRetry(DailyReflection reflection) {
+    if (reflection.automaticRetryCount >= 1) return false;
+    final attemptedAt = reflection.attemptedAt;
+    if (attemptedAt != null &&
+        now().difference(attemptedAt) < _automaticRetryDelay) {
+      return false;
+    }
+    return _isRecoverableFailure(reflection.failureCategory);
+  }
+
+  bool _isRecoverableFailure(String? error) {
+    final category = ModelRouterErrorCategory.values.firstWhere(
+      (value) => value.name == error,
+      orElse: () => ModelRouterErrorClassifier.fromMessage(error ?? ''),
+    );
+    return switch (category) {
+      ModelRouterErrorCategory.network ||
+      ModelRouterErrorCategory.timeout ||
+      ModelRouterErrorCategory.rateLimited ||
+      ModelRouterErrorCategory.validation ||
+      ModelRouterErrorCategory.unknown => true,
+      ModelRouterErrorCategory.none ||
+      ModelRouterErrorCategory.authentication ||
+      ModelRouterErrorCategory.unavailable => false,
+    };
   }
 
   Future<void> _backfillMemory(
@@ -415,18 +550,36 @@ class _DailyInput {
       .where((message) => message.role == 'user')
       .toList(growable: false);
 
-  List<Map<String, Object?>> get messagesForAi => messages
-      .map(
-        (message) => {'role': message.role, 'content': message.content.trim()},
-      )
-      .toList(growable: false);
+  List<Map<String, Object?>> get messagesForAi {
+    const maxMessages = 24;
+    const maxCharacters = 8000;
+    var remaining = maxCharacters;
+    final latest = messages.length <= maxMessages
+        ? messages
+        : messages.sublist(messages.length - maxMessages);
+    final result = <Map<String, Object?>>[];
+    for (final message in latest) {
+      if (remaining <= 0) break;
+      final content = message.content.trim();
+      final bounded = content.length <= remaining
+          ? content
+          : content.substring(0, remaining);
+      remaining -= bounded.length;
+      result.add({'role': message.role, 'content': bounded});
+    }
+    return result;
+  }
 
   List<Map<String, Object?>> get signalsForAi => signals
+      .take(40)
       .map(
         (signal) => {
           'signal': signal.signal.name,
           'time': signal.time.toIso8601String(),
-          'context': signal.context,
+          'context': PromptContext.truncate(
+            jsonEncode(SignalDatabase.contextForAi(signal)),
+            400,
+          ),
         },
       )
       .toList(growable: false);

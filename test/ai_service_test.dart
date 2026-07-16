@@ -113,6 +113,22 @@ void main() {
     }
   });
 
+  test('流式聊天会说明 402 是账户余额或计费问题', () async {
+    final client = MockClient(
+      (_) async => _jsonChatResponse('', statusCode: 402),
+    );
+    final events = await AiService(apiKey: 'key', client: client)
+        .streamChatMessages(const [
+          {'role': 'user', 'content': '你好'},
+        ])
+        .toList();
+
+    expect(
+      events.whereType<AgentErrorEvent>().single.message,
+      contains('余额不足'),
+    );
+  });
+
   test('网络或超时异常不做格式重试', () async {
     var calls = 0;
     final client = MockClient((request) async {
@@ -160,7 +176,8 @@ void main() {
       requestBody = jsonDecode(request.body) as Map<String, Object?>;
       return _jsonChatResponse('''{
         "action":"save","category":"preference",
-        "content":"偏好短时练习","quotedText":"我长期偏好短时练习"
+        "content":"偏好短时练习","quotedText":"我长期偏好短时练习",
+        "confidence":0.9
       }''');
     });
     final result = await AiService(apiKey: 'key', client: client).extractMemory(
@@ -197,7 +214,8 @@ void main() {
         calls == 1
             ? 'not json'
             : '''{"action":"save","category":"preference",
-              "content":"偏好短时练习","quotedText":"我通常更适合短时练习"}''',
+              "content":"偏好短时练习","quotedText":"我通常更适合短时练习",
+              "confidence":0.9}''',
       );
     });
 
@@ -210,31 +228,13 @@ void main() {
     expect(calls, 2);
   });
 
-  test('评估接口不支持 response_format 时自动降级一次', () async {
+  test('开启思考的评估不发送 response_format，400 不重复请求', () async {
     var calls = 0;
     final bodies = <Map<String, Object?>>[];
     final client = MockClient((request) async {
       calls++;
       bodies.add(jsonDecode(request.body) as Map<String, Object?>);
-      if (calls == 1) {
-        return _jsonChatResponse('', statusCode: 400);
-      }
-      return _jsonChatResponse(
-        jsonEncode({
-          'clarity': 0.8,
-          'feasibility': 0.8,
-          'challengeFit': 0.7,
-          'decomposability': 0.7,
-          'timeRealism': 0.6,
-          'motivationPotential': 0.5,
-          'resourceAccess': 0.9,
-          'measurability': 0.8,
-          'verdict': 'a',
-          'concerns': <String>[],
-          'suggestions': <String>[],
-          'goalSummary': '学习测试技术',
-        }),
-      );
+      return _jsonChatResponse('', statusCode: 400);
     });
 
     final result = await AiTransport(apiKey: 'key', client: client).assessGoal(
@@ -245,10 +245,10 @@ void main() {
       domainContext: '测试资料',
     );
 
-    expect(result?.goalSummary, '学习测试技术');
-    expect(calls, 2);
-    expect(bodies.first.containsKey('response_format'), isTrue);
-    expect(bodies.last.containsKey('response_format'), isFalse);
+    expect(result, isNull);
+    expect(calls, 1);
+    expect(bodies.single.containsKey('response_format'), isFalse);
+    expect(bodies.single['thinking_mode'], 'thinking');
   });
 
   test('非法工具参数不会执行工具，并作为不可信结果返回模型', () async {
@@ -314,6 +314,65 @@ void main() {
     );
     expect(toolMessage['content'], contains('"trust":"data_only"'));
     expect(toolMessage['content'], contains('projectId 不存在'));
+  });
+
+  test('相对时长计时请求会纠正模型误选的闹钟参数', () async {
+    var requests = 0;
+    ToolCall? executed;
+    final alarmAt = DateTime.now().add(const Duration(minutes: 2));
+    final client = MockClient((_) async {
+      requests++;
+      if (requests == 1) {
+        return http.Response(
+          _sse({
+            'tool_calls': [
+              {
+                'index': 0,
+                'id': 'timer-call',
+                'function': {
+                  'name': 'create_study_timer',
+                  'arguments': jsonEncode({
+                    'title': '专注学习',
+                    'kind': 'alarm',
+                    'alertAt': alarmAt.toIso8601String(),
+                    'startImmediately': true,
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+        );
+      }
+      return http.Response(
+        _sse({'content': '计时已开始'}),
+        200,
+        headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+      );
+    });
+    final service = AiRuntime.fromClient(
+      AiService(apiKey: 'key', client: client),
+    );
+
+    await service.chat
+        .sendAgentLoop(
+          messages: [
+            {'role': 'user', 'content': '开始计时，两分钟后提醒我'},
+          ],
+          executeTool: (call) async {
+            executed = call;
+            return '已开始';
+          },
+          validProjectIds: const {},
+        )
+        .toList();
+
+    expect(executed?.name, 'create_study_timer');
+    expect(executed?.arguments['kind'], 'timer');
+    expect(executed?.arguments['minutes'], 2);
+    expect(executed?.arguments['startImmediately'], isTrue);
+    expect(executed?.arguments.containsKey('alertAt'), isFalse);
   });
 
   test('Agent Loop 不向调用方暴露原始推理', () async {
@@ -386,5 +445,51 @@ void main() {
       (message) => message['role'] == 'assistant',
     );
     expect(assistant.containsKey('reasoning_content'), isFalse);
+  });
+
+  test('默认 Agent Loop 可完成第六轮工具调用后的回复', () async {
+    var requests = 0;
+    final client = MockClient((_) async {
+      requests++;
+      if (requests <= 6) {
+        return http.Response(
+          _sse({
+            'tool_calls': [
+              {
+                'index': 0,
+                'id': 'call-$requests',
+                'function': {'name': 'read_memory', 'arguments': '{}'},
+              },
+            ],
+          }),
+          200,
+          headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+        );
+      }
+      return http.Response(
+        _sse({'content': '六轮后已完成回复'}),
+        200,
+        headers: const {'content-type': 'text/event-stream; charset=utf-8'},
+      );
+    });
+    final runtime = AiRuntime.fromClient(
+      AiService(apiKey: 'key', client: client),
+    );
+    addTearDown(runtime.close);
+
+    final events = await runtime.chat
+        .sendAgentLoop(
+          messages: [
+            {'role': 'user', 'content': '连续检查学习记录'},
+          ],
+          executeTool: (_) async => '结果',
+        )
+        .toList();
+
+    expect(requests, 7);
+    expect(
+      events.whereType<ContentDelta>().map((event) => event.text),
+      contains('六轮后已完成回复'),
+    );
   });
 }

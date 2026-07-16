@@ -17,9 +17,12 @@ class _Structured implements StructuredGenerationCapability {
   int calls = 0;
   List<Map<String, Object?>>? receivedMessages;
   List<Map<String, Object?>>? receivedSignals;
+  int failuresBeforeSuccess;
+
+  _Structured({this.failuresBeforeSuccess = 0});
 
   @override
-  String? get lastError => null;
+  String? get lastError => calls <= failuresBeforeSuccess ? '网络连接失败' : null;
 
   @override
   Future<DailyReflectionResult?> generateDailyReflection({
@@ -30,6 +33,7 @@ class _Structured implements StructuredGenerationCapability {
     calls++;
     receivedMessages = messages;
     receivedSignals = signals;
+    if (calls <= failuresBeforeSuccess) return null;
     return const DailyReflectionResult(
       shortSummary: '完成了阅读练习，也明确了下一步要复盘错题。',
       reflection: '今天完成了阅读练习并讨论了学习安排，过程中确认了更适合先练习再复盘。明天可以继续完成错题整理，让学习节奏保持稳定。',
@@ -204,6 +208,59 @@ void main() {
     );
   });
 
+  test('日结不读取已删除 Todo 的标题，但保留行为信息', () async {
+    final db = await _database();
+    addTearDown(db.close);
+    final local = SumiLocalDatabase(database: db);
+    final signals = SignalDatabase(local);
+    final timestamp = DateTime(2026, 7, 14, 12);
+    await signals.insert(
+      UserSignal(
+        signal: SignalType.todoEdited,
+        time: timestamp,
+        todoId: 'deleted-todo',
+        contextJson: jsonEncode({
+          'title': '已经删除的阅读任务',
+          'oldTitle': '旧阅读任务',
+          'newTitle': '新阅读任务',
+          'changePercent': 48,
+        }),
+        createdAt: timestamp,
+      ),
+    );
+    await signals.insert(
+      UserSignal(
+        signal: SignalType.todoDeleted,
+        time: timestamp.add(const Duration(minutes: 1)),
+        todoId: 'deleted-todo',
+        contextJson: jsonEncode({'title': '已经删除的阅读任务'}),
+        createdAt: timestamp.add(const Duration(minutes: 1)),
+      ),
+    );
+    await signals.redactDeletedTodoContent(todoId: 'deleted-todo');
+
+    final structured = _Structured();
+    final service = DailyReflectionService(
+      database: DailyReflectionDatabase(local),
+      chat: ChatDatabase(local),
+      signals: signals,
+      structuredAi: () => structured,
+      memory: MemoryService(local),
+      memoryAi: () => null,
+      onChanged: () {},
+      onMemoryChanged: () {},
+      now: () => DateTime(2026, 7, 16),
+    );
+
+    await service.generate('2026-07-14');
+
+    final input = jsonEncode(structured.receivedSignals);
+    expect(input, isNot(contains('已经删除的阅读任务')));
+    expect(input, isNot(contains('旧阅读任务')));
+    expect(input, isNot(contains('新阅读任务')));
+    expect(input, contains('changePercent'));
+  });
+
   test('成功日结不重复请求，日结补漏必须有用户原话', () async {
     final db = await _database();
     addTearDown(db.close);
@@ -273,5 +330,39 @@ void main() {
       DailyReflectionStatus.ready,
     );
     expect(await service.reflectionFor(DateTime(2026, 7, 13)), isNull);
+  });
+
+  test('临时失败会自动重试一次并完成日结', () async {
+    final db = await _database();
+    addTearDown(db.close);
+    final local = SumiLocalDatabase(database: db);
+    final signals = SignalDatabase(local);
+    await signals.insert(
+      UserSignal(
+        signal: SignalType.todoCompleted,
+        time: DateTime(2026, 7, 14, 10),
+        createdAt: DateTime(2026, 7, 14, 10),
+      ),
+    );
+    var currentTime = DateTime(2026, 7, 16, 9);
+    final structured = _Structured(failuresBeforeSuccess: 1);
+    final service = DailyReflectionService(
+      database: DailyReflectionDatabase(local),
+      chat: ChatDatabase(local),
+      signals: signals,
+      structuredAi: () => structured,
+      memory: MemoryService(local),
+      memoryAi: () => null,
+      onChanged: () {},
+      onMemoryChanged: () {},
+      now: () => currentTime,
+    );
+
+    await service.generate('2026-07-14');
+    expect(structured.calls, 2);
+    expect(
+      (await service.reflectionFor(DateTime(2026, 7, 14)))?.status,
+      DailyReflectionStatus.ready,
+    );
   });
 }

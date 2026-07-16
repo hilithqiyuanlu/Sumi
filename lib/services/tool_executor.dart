@@ -149,7 +149,6 @@ class ToolExecutor {
     try {
       return await memoryService.formatForAgent(
         (args['query'] as String?)?.trim() ?? currentUserMessage(),
-        projectId: args['projectId'] as String?,
       );
     } catch (e) {
       return '读取记忆失败：$e';

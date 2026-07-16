@@ -68,12 +68,18 @@ class MemoryExtractionDiagnostics {
   final int ignored;
   final int failed;
   final Map<String, int> failuresByCategory;
+  final int retryable;
+  final int retries;
+  final Map<String, int> sources;
 
   const MemoryExtractionDiagnostics({
     required this.applied,
     required this.ignored,
     required this.failed,
     required this.failuresByCategory,
+    this.retryable = 0,
+    this.retries = 0,
+    this.sources = const {},
   });
 }
 
@@ -101,7 +107,7 @@ class MemoryService {
 
   final SumiLocalDatabase _store;
   final DateTime Function() _now;
-  static const _activeConfidence = .70;
+  static const _activeConfidence = .85;
   static const _topicTemplates = <String, String>{
     'plan': '帮我制定今天的学习计划',
     'priority': '建议我今天优先完成什么',
@@ -148,6 +154,14 @@ class MemoryService {
     );
     await _ensureRecommendationColumn(db);
     await _ensureExtractionFailureColumn(db);
+    await _ensureExtractionRunColumns(db);
+    await db.execute('DROP TABLE IF EXISTS memory_tags');
+    await db.update(
+      'memory_items',
+      {'project_id': null},
+      where: 'type IN (?, ?)',
+      whereArgs: [MemoryType.explicit.name, MemoryType.current.name],
+    );
   }
 
   Future<void> _ensureRecommendationColumn(Database db) async {
@@ -181,6 +195,22 @@ class MemoryService {
     }
   }
 
+  Future<void> _ensureExtractionRunColumns(Database db) async {
+    final columns = await db.rawQuery(
+      'PRAGMA table_info(memory_extraction_runs)',
+    );
+    if (!columns.any((row) => row['name'] == 'attempt_count')) {
+      await db.execute(
+        'ALTER TABLE memory_extraction_runs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (!columns.any((row) => row['name'] == 'source')) {
+      await db.execute(
+        "ALTER TABLE memory_extraction_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'chat'",
+      );
+    }
+  }
+
   Future<List<MemoryItem>> list({bool includeHistorical = true}) async {
     await ensureTables();
     final rows = await (await _db).query(
@@ -203,22 +233,51 @@ class MemoryService {
     return rows.map(_evidenceFromRow).toList(growable: false);
   }
 
+  Future<Set<String>> sourceMessageIdsFor(Iterable<String> messageIds) async {
+    final ids = messageIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return <String>{};
+    await ensureTables();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await (await _db).query(
+      'memory_evidence',
+      columns: const ['reference_id'],
+      where: 'kind = ? AND reference_id IN ($placeholders)',
+      whereArgs: ['user_message', ...ids],
+    );
+    return rows
+        .map((row) => row['reference_id'] as String?)
+        .whereType<String>()
+        .toSet();
+  }
+
+  Future<Set<String>> sourceMessageIdsForMemory(String memoryId) async {
+    await ensureTables();
+    final rows = await (await _db).query(
+      'memory_evidence',
+      columns: const ['reference_id'],
+      where: 'memory_id = ? AND kind = ?',
+      whereArgs: [memoryId, 'user_message'],
+    );
+    return rows
+        .map((row) => row['reference_id'] as String?)
+        .whereType<String>()
+        .toSet();
+  }
+
   static const _currentExpiry = Duration(days: 30);
 
   Future<List<MemoryExtractionCandidate>> extractionCandidates({
-    String? projectId,
     int limit = 6,
   }) async {
     await ensureTables();
     await expireStaleCurrent();
     final rows = await (await _db).query(
       'memory_items',
-      where: '''status = ? AND (type = ? OR (type = ? AND project_id = ?))''',
+      where: 'status = ? AND (type = ? OR type = ?)',
       whereArgs: [
         MemoryStatus.active.name,
         MemoryType.explicit.name,
         MemoryType.current.name,
-        projectId ?? '',
       ],
       orderBy: 'last_confirmed_at DESC, created_at DESC',
       limit: limit,
@@ -231,7 +290,6 @@ class MemoryService {
             type: item.type,
             category: item.category,
             content: item.content,
-            projectId: item.projectId,
           );
         })
         .toList(growable: false);
@@ -252,18 +310,53 @@ class MemoryService {
   }
 
   /// Claims a persisted message for exactly one background extraction run.
-  Future<bool> claimExtraction(String messageId) async {
+  Future<bool> claimExtraction(
+    String messageId, {
+    String source = 'chat',
+  }) async {
     await ensureTables();
     try {
       await (await _db).insert('memory_extraction_runs', {
         'message_id': messageId,
         'status': 'pending',
+        'attempt_count': 0,
+        'source': source,
         'processed_at': _now().toIso8601String(),
       });
       return true;
     } on DatabaseException {
       return false;
     }
+  }
+
+  Future<List<String>> retryableExtractionIds() async {
+    await ensureTables();
+    final rows = await (await _db).query(
+      'memory_extraction_runs',
+      columns: const ['message_id'],
+      where:
+          "status = ? AND error_category IN ('runtime', 'no_valid_decision') AND attempt_count < 2",
+      whereArgs: const ['failed'],
+      orderBy: 'processed_at ASC',
+      limit: 20,
+    );
+    return rows
+        .map((row) => row['message_id'] as String)
+        .toList(growable: false);
+  }
+
+  Future<bool> reclaimExtraction(String messageId) async {
+    await ensureTables();
+    final changed = await (await _db).rawUpdate(
+      '''UPDATE memory_extraction_runs
+         SET status = ?, error_category = NULL,
+             attempt_count = attempt_count + 1, processed_at = ?
+         WHERE message_id = ? AND status = ?
+           AND error_category IN ('runtime', 'no_valid_decision')
+           AND attempt_count < 2''',
+      ['pending', _now().toIso8601String(), messageId, 'failed'],
+    );
+    return changed == 1;
   }
 
   Future<void> finishExtraction(
@@ -283,9 +376,84 @@ class MemoryService {
         'error_category': errorCategory,
         'processed_at': _now().toIso8601String(),
       },
-      where: 'message_id = ?',
-      whereArgs: [messageId],
+      where: 'message_id = ? AND status != ?',
+      whereArgs: [messageId, 'cancelled'],
     );
+  }
+
+  /// Cancels queued extraction and removes message evidence. Explicit/current
+  /// memories without any remaining user quote are deleted as well.
+  Future<Set<String>> removeMessageSources(Iterable<String> messageIds) async {
+    final ids = messageIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return <String>{};
+    await ensureTables();
+    final db = await _db;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final deletedMemoryIds = <String>{};
+    await db.transaction((txn) async {
+      final now = _now().toIso8601String();
+      for (final messageId in ids) {
+        await txn.insert('memory_extraction_runs', {
+          'message_id': messageId,
+          'status': 'cancelled',
+          'attempt_count': 0,
+          'source': 'deleted_message',
+          'processed_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await txn.rawUpdate(
+        'UPDATE memory_extraction_runs SET status = ?, error_category = NULL, '
+        'processed_at = ? WHERE message_id IN ($placeholders)',
+        ['cancelled', now, ...ids],
+      );
+
+      final affected = await txn.query(
+        'memory_evidence',
+        columns: const ['memory_id'],
+        where: 'kind = ? AND reference_id IN ($placeholders)',
+        whereArgs: ['user_message', ...ids],
+      );
+      final affectedMemoryIds = affected
+          .map((row) => row['memory_id'] as String)
+          .toSet();
+      await txn.delete(
+        'memory_evidence',
+        where: 'kind = ? AND reference_id IN ($placeholders)',
+        whereArgs: ['user_message', ...ids],
+      );
+
+      for (final memoryId in affectedMemoryIds) {
+        final rows = await txn.rawQuery(
+          '''SELECT m.type,
+                    EXISTS(
+                      SELECT 1 FROM memory_evidence e
+                      WHERE e.memory_id = m.id AND e.kind = 'user_message'
+                    ) AS has_user_evidence
+             FROM memory_items m WHERE m.id = ? LIMIT 1''',
+          [memoryId],
+        );
+        if (rows.isEmpty) continue;
+        final type = rows.single['type'] as String?;
+        final hasEvidence = (rows.single['has_user_evidence'] as num?) == 1;
+        if (hasEvidence ||
+            (type != MemoryType.explicit.name &&
+                type != MemoryType.current.name)) {
+          continue;
+        }
+        await txn.delete(
+          'memory_evidence',
+          where: 'memory_id = ?',
+          whereArgs: [memoryId],
+        );
+        await txn.delete(
+          'memory_items',
+          where: 'id = ?',
+          whereArgs: [memoryId],
+        );
+        deletedMemoryIds.add(memoryId);
+      }
+    });
+    return deletedMemoryIds;
   }
 
   Future<MemoryExtractionDiagnostics> extractionDiagnostics({
@@ -294,19 +462,25 @@ class MemoryService {
     await ensureTables();
     final start = _now().subtract(Duration(days: days - 1)).toIso8601String();
     final rows = await (await _db).rawQuery(
-      '''SELECT status, error_category, COUNT(*) AS total
+      '''SELECT status, error_category, source, COUNT(*) AS total,
+                COALESCE(SUM(attempt_count), 0) AS retries
          FROM memory_extraction_runs
          WHERE processed_at >= ?
-         GROUP BY status, error_category''',
+         GROUP BY status, error_category, source''',
       [start],
     );
     var applied = 0;
     var ignored = 0;
     var failed = 0;
     final failures = <String, int>{};
+    final sources = <String, int>{};
+    var retries = 0;
     for (final row in rows) {
       final status = row['status'] as String? ?? '';
       final total = (row['total'] as num?)?.toInt() ?? 0;
+      retries += (row['retries'] as num?)?.toInt() ?? 0;
+      final source = row['source'] as String? ?? 'chat';
+      sources[source] = (sources[source] ?? 0) + total;
       switch (status) {
         case 'applied':
           applied += total;
@@ -323,6 +497,8 @@ class MemoryService {
       ignored: ignored,
       failed: failed,
       failuresByCategory: Map.unmodifiable(failures),
+      retries: retries,
+      sources: Map.unmodifiable(sources),
     );
   }
 
@@ -333,7 +509,6 @@ class MemoryService {
     required String userMessage,
     required MemoryExtractionDecision decision,
     required Set<String> candidateReplaceIds,
-    String? currentProjectId,
   }) async {
     await ensureTables();
     if (decision.action == MemoryExtractionAction.ignore) {
@@ -347,6 +522,10 @@ class MemoryService {
     final valid = isCurrent
         ? const {'progress', 'difficulty', 'short_term_constraint'}
         : const {'preference', 'goal', 'constraint'};
+    if (decision.confidence < .85) {
+      await finishExtraction(messageId, status: 'ignored', decision: decision);
+      return false;
+    }
     if (!valid.contains(category) ||
         content.length < 2 ||
         content.length > 200 ||
@@ -373,16 +552,6 @@ class MemoryService {
       );
       return false;
     }
-    if (isCurrent && (currentProjectId == null || currentProjectId.isEmpty)) {
-      await finishExtraction(
-        messageId,
-        status: 'failed',
-        decision: decision,
-        errorCategory: 'scope',
-      );
-      return false;
-    }
-
     final db = await _db;
     final now = _now();
     try {
@@ -391,11 +560,9 @@ class MemoryService {
           await txn.update(
             'memory_items',
             {'status': MemoryStatus.superseded.name},
-            where:
-                'type = ? AND project_id = ? AND category = ? AND status = ?',
+            where: 'type = ? AND category = ? AND status = ?',
             whereArgs: [
               MemoryType.current.name,
-              currentProjectId,
               category,
               MemoryStatus.active.name,
             ],
@@ -452,7 +619,7 @@ class MemoryService {
             'type': decision.type.name,
             'category': category,
             'content': content,
-            'project_id': isCurrent ? currentProjectId : null,
+            'project_id': null,
             'status': MemoryStatus.active.name,
             'confidence': 1.0,
             'source': MemorySource.userMessage.name,
@@ -565,13 +732,11 @@ class MemoryService {
     required String content,
     required String quotedText,
     required String messageId,
-    String? projectId,
     String? replacesId,
   }) => _add(
     type: type,
     category: category,
     content: content,
-    projectId: projectId,
     confidence: 1,
     source: MemorySource.userMessage,
     replacesId: replacesId,
@@ -579,25 +744,6 @@ class MemoryService {
     evidenceReferenceId: messageId,
     evidenceSummary: quotedText,
   );
-
-  Future<MemoryItem> addManual({
-    required MemoryType type,
-    required String category,
-    required String content,
-    String? projectId,
-  }) {
-    assert(type == MemoryType.explicit || type == MemoryType.current);
-    return _add(
-      type: type,
-      category: category,
-      content: content,
-      projectId: projectId,
-      confidence: 1,
-      source: MemorySource.manual,
-      evidenceKind: 'manual',
-      evidenceSummary: '用户在记忆中心添加',
-    );
-  }
 
   Future<MemoryItem> addMilestone({
     required String projectId,
@@ -664,6 +810,20 @@ class MemoryService {
     );
     final db = await _db;
     await db.transaction((txn) async {
+      if (evidenceKind == 'user_message' &&
+          evidenceReferenceId != null &&
+          evidenceReferenceId.isNotEmpty) {
+        final cancelled = await txn.query(
+          'memory_extraction_runs',
+          columns: const ['message_id'],
+          where: 'message_id = ? AND status = ?',
+          whereArgs: [evidenceReferenceId, 'cancelled'],
+          limit: 1,
+        );
+        if (cancelled.isNotEmpty) {
+          throw const FormatException('source message was deleted');
+        }
+      }
       if (replacesId != null) {
         await txn.update(
           'memory_items',
@@ -687,27 +847,89 @@ class MemoryService {
         ),
       );
     });
-    return item;
+    return MemoryItem(
+      id: item.id,
+      type: item.type,
+      category: item.category,
+      content: item.content,
+      projectId: item.projectId,
+      status: item.status,
+      confidence: item.confidence,
+      source: item.source,
+      replacesId: item.replacesId,
+      createdAt: item.createdAt,
+      lastConfirmedAt: item.lastConfirmedAt,
+    );
   }
 
   Future<void> update(
     String id, {
+    MemoryType? type,
     required String category,
     required String content,
-    String? projectId,
   }) async {
     await ensureTables();
-    await (await _db).update(
-      'memory_items',
-      {
-        'category': category.trim(),
-        'content': content.trim(),
-        'project_id': projectId,
-        'last_confirmed_at': _now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final db = await _db;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'memory_items',
+        columns: const ['type', 'category'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final previousType = MemoryType.values.firstWhere(
+        (value) => value.name == rows.single['type'],
+        orElse: () => MemoryType.imported,
+      );
+      final nextType = type ?? previousType;
+      if (nextType != MemoryType.explicit && nextType != MemoryType.current) {
+        throw const FormatException('只能编辑长期记忆或当前关注');
+      }
+      final normalizedCategory = _categoryForType(nextType, category);
+      if (nextType == MemoryType.current) {
+        await txn.update(
+          'memory_items',
+          {'status': MemoryStatus.superseded.name},
+          where: 'id != ? AND type = ? AND category = ? AND status = ?',
+          whereArgs: [
+            id,
+            MemoryType.current.name,
+            normalizedCategory,
+            MemoryStatus.active.name,
+          ],
+        );
+      }
+      await txn.update(
+        'memory_items',
+        {
+          'type': nextType.name,
+          'category': normalizedCategory,
+          'content': content.trim(),
+          'project_id': null,
+          'last_confirmed_at': _now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  static String _categoryForType(MemoryType type, String category) {
+    final normalized = category.trim();
+    if (type == MemoryType.current) {
+      return const {
+            'progress',
+            'difficulty',
+            'short_term_constraint',
+          }.contains(normalized)
+          ? normalized
+          : 'progress';
+    }
+    return const {'preference', 'goal', 'constraint'}.contains(normalized)
+        ? normalized
+        : 'preference';
   }
 
   Future<void> setStatus(String id, MemoryStatus status) async {
@@ -733,16 +955,6 @@ class MemoryService {
     });
   }
 
-  Future<void> endCurrentForProject(String projectId) async {
-    await ensureTables();
-    await (await _db).update(
-      'memory_items',
-      {'status': MemoryStatus.inactive.name},
-      where: 'type = ? AND project_id = ? AND status = ?',
-      whereArgs: [MemoryType.current.name, projectId, MemoryStatus.active.name],
-    );
-  }
-
   Future<void> expireStaleCurrent() async {
     await ensureTables();
     final cutoff = _now().subtract(_currentExpiry).toIso8601String();
@@ -757,7 +969,6 @@ class MemoryService {
 
   Future<List<MemoryItem>> search(
     String query, {
-    String? projectId,
     int limit = 8,
     Map<String, double> semanticScores = const {},
   }) async {
@@ -767,11 +978,7 @@ class MemoryService {
     final scored = candidates
         .where((item) {
           return item.type != MemoryType.imported &&
-              !(item.type == MemoryType.implicit &&
-                  item.confidence < _activeConfidence) &&
-              (projectId == null ||
-                  item.projectId == null ||
-                  item.projectId == projectId);
+              item.type != MemoryType.implicit;
         })
         .map((item) {
           final topicText = item.category == 'suggestion_topic'
@@ -781,9 +988,6 @@ class MemoryService {
               .toLowerCase();
           final keywordScore = _matchScore(normalized, haystack);
           final semanticScore = semanticScores[item.id] ?? 0;
-          final projectBoost = projectId != null && item.projectId == projectId
-              ? 2.5
-              : 0;
           final typePriority = switch (item.type) {
             MemoryType.current => 3.5,
             MemoryType.explicit => 3.0,
@@ -793,19 +997,13 @@ class MemoryService {
           };
           final categoryPriority = item.category == 'constraint' ? 1.5 : 0.0;
           final isRelevant =
-              normalized.isEmpty ||
-              keywordScore > 0 ||
-              semanticScore >= .35 ||
-              (projectId != null &&
-                  item.projectId == projectId &&
-                  item.type == MemoryType.current);
+              normalized.isEmpty || keywordScore > 0 || semanticScore >= .35;
           return (
             item: item,
             isRelevant: isRelevant,
             score:
                 (keywordScore * 1.2) +
                 (semanticScore * 5) +
-                projectBoost +
                 typePriority +
                 categoryPriority,
           );
@@ -821,24 +1019,16 @@ class MemoryService {
 
   Future<List<MemoryItem>> hotForAgent(
     String query, {
-    String? projectId,
     Map<String, double> semanticScores = const {},
-  }) => search(
-    query,
-    projectId: projectId,
-    limit: 4,
-    semanticScores: semanticScores,
-  );
+  }) => search(query, limit: 4, semanticScores: semanticScores);
 
   Future<String> formatForAgent(
     String query, {
-    String? projectId,
     int limit = 8,
     Map<String, double> semanticScores = const {},
   }) async {
     final items = await search(
       query,
-      projectId: projectId,
       limit: limit,
       semanticScores: semanticScores,
     );
@@ -850,7 +1040,6 @@ class MemoryService {
           'type': item.type.name,
           'category': item.category,
           'content': item.content,
-          if (item.projectId != null) 'projectId': item.projectId,
           'confidence': item.confidence,
         },
     ]);
@@ -1141,7 +1330,7 @@ class MemoryService {
       String block(String title, Iterable<MemoryItem> selected) =>
           '## $title\\n${selected.map((item) => '- ${item.content}').join('\\n')}\\n';
       final text =
-          '# Sumi 对你的记忆\\n\\n${block('正在关注', items.where((item) => item.type == MemoryType.current && item.status == MemoryStatus.active))}\\n${block('明确记忆', items.where((item) => item.type == MemoryType.explicit && item.status == MemoryStatus.active))}\\n${block('里程碑', items.where((item) => item.type == MemoryType.milestone && item.status == MemoryStatus.active))}\\n${block('系统从反馈中学到的', items.where((item) => item.type == MemoryType.implicit && item.status == MemoryStatus.active))}';
+          '# Sumi 对你的记忆\\n\\n${block('正在关注', items.where((item) => item.type == MemoryType.current && item.status == MemoryStatus.active))}\\n${block('明确记忆', items.where((item) => item.type == MemoryType.explicit && item.status == MemoryStatus.active))}\\n${block('里程碑', items.where((item) => item.type == MemoryType.milestone && item.status == MemoryStatus.active))}';
       await file.writeAsString(text);
     } catch (_) {
       // Export is compatibility-only; SQLite remains the source of truth.

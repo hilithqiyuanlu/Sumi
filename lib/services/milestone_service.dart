@@ -41,6 +41,8 @@ class MilestoneService {
       message_id TEXT NOT NULL, todo_id TEXT NOT NULL, quote TEXT NOT NULL, occurred_at TEXT NOT NULL,
       created_at TEXT NOT NULL, UNIQUE(message_id, todo_id))''',
     );
+    await db.execute('''CREATE TABLE IF NOT EXISTS cancelled_milestone_sources (
+      message_id TEXT PRIMARY KEY, cancelled_at TEXT NOT NULL)''');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_milestones_project_month ON milestones(project_id, month_index, occurred_at)',
     );
@@ -91,13 +93,23 @@ class MilestoneService {
     required DateTime occurredAt,
   }) async {
     await ensureTables();
-    await (await _db).insert('pending_milestone_statements', {
-      'message_id': messageId,
-      'todo_id': todoId,
-      'quote': quote,
-      'occurred_at': occurredAt.toIso8601String(),
-      'created_at': _now().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await (await _db).transaction((txn) async {
+      final cancelled = await txn.query(
+        'cancelled_milestone_sources',
+        columns: const ['message_id'],
+        where: 'message_id = ?',
+        whereArgs: [messageId],
+        limit: 1,
+      );
+      if (cancelled.isNotEmpty) return;
+      await txn.insert('pending_milestone_statements', {
+        'message_id': messageId,
+        'todo_id': todoId,
+        'quote': quote,
+        'occurred_at': occurredAt.toIso8601String(),
+        'created_at': _now().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    });
   }
 
   Future<List<PendingMilestoneStatement>> pendingStatements() async {
@@ -133,22 +145,34 @@ class MilestoneService {
     await ensureTables();
     final id = newSumiId('milestone');
     try {
-      await (await _db).insert('milestones', {
-        'id': id,
-        'project_id': todo.projectId,
-        'todo_id': todo.id,
-        'source_message_id': sourceMessageId,
-        'quote': quote.trim(),
-        'todo_title': todo.title,
-        'month_index': monthIndex,
-        'occurred_at': occurredAt.toIso8601String(),
-        'created_at': _now().toIso8601String(),
+      final created = await (await _db).transaction((txn) async {
+        final cancelled = await txn.query(
+          'cancelled_milestone_sources',
+          columns: const ['message_id'],
+          where: 'message_id = ?',
+          whereArgs: [sourceMessageId],
+          limit: 1,
+        );
+        if (cancelled.isNotEmpty) return false;
+        await txn.insert('milestones', {
+          'id': id,
+          'project_id': todo.projectId,
+          'todo_id': todo.id,
+          'source_message_id': sourceMessageId,
+          'quote': quote.trim(),
+          'todo_title': todo.title,
+          'month_index': monthIndex,
+          'occurred_at': occurredAt.toIso8601String(),
+          'created_at': _now().toIso8601String(),
+        });
+        await txn.delete(
+          'pending_milestone_statements',
+          where: 'message_id = ? AND todo_id = ?',
+          whereArgs: [sourceMessageId, todo.id],
+        );
+        return true;
       });
-      await (await _db).delete(
-        'pending_milestone_statements',
-        where: 'message_id = ? AND todo_id = ?',
-        whereArgs: [sourceMessageId, todo.id],
-      );
+      if (!created) return null;
       return Milestone(
         id: id,
         projectId: todo.projectId!,
@@ -200,6 +224,40 @@ class MilestoneService {
     return _deleteWhere('todo_id = ?', [todoId]);
   }
 
+  Future<List<Milestone>> deleteForSourceMessages(
+    Iterable<String> messageIds,
+  ) async {
+    final ids = messageIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return const [];
+    await ensureTables();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final db = await _db;
+    return db.transaction((txn) async {
+      for (final messageId in ids) {
+        await txn.insert('cancelled_milestone_sources', {
+          'message_id': messageId,
+          'cancelled_at': _now().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await txn.delete(
+        'pending_milestone_statements',
+        where: 'message_id IN ($placeholders)',
+        whereArgs: ids,
+      );
+      final rows = await txn.query(
+        'milestones',
+        where: 'source_message_id IN ($placeholders)',
+        whereArgs: ids,
+      );
+      await txn.delete(
+        'milestones',
+        where: 'source_message_id IN ($placeholders)',
+        whereArgs: ids,
+      );
+      return rows.map(_milestone).toList(growable: false);
+    });
+  }
+
   Future<List<Milestone>> deleteForProject(String projectId) =>
       _deleteWhere('project_id = ?', [projectId]);
 
@@ -224,6 +282,7 @@ class MilestoneService {
     final db = await _db;
     await db.delete('milestones');
     await db.delete('pending_milestone_statements');
+    await db.delete('cancelled_milestone_sources');
   }
 
   Milestone _milestone(Map<String, Object?> row) => Milestone(

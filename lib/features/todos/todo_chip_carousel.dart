@@ -29,7 +29,7 @@ class _TodoChipCarouselState extends State<TodoChipCarousel> {
 
   List<TodoItem> _getFilteredTodos(SumiStore store) {
     final selectedDate = dateKey(dateOnly(store.selectedDate));
-    final todayKey = dateKey(dateOnly(DateTime.now()));
+    final todayKey = dateKey(dateOnly(store.currentTime));
     final todos = store.todoItems
         .where((t) => TodoItem.belongsToDate(t, selectedDate, todayKey))
         .toList();
@@ -113,12 +113,20 @@ class _TodoChip extends StatelessWidget {
         child: Opacity(
           opacity: 0.85,
           child: _TodoChipView(
-              todo: todo, isDone: isDone, isDragging: true, projectColor: projectColor),
+            todo: todo,
+            isDone: isDone,
+            isDragging: true,
+            projectColor: projectColor,
+          ),
         ),
       ),
       childWhenDragging: Opacity(
         opacity: 0.3,
-        child: _TodoChipView(todo: todo, isDone: isDone, projectColor: projectColor),
+        child: _TodoChipView(
+          todo: todo,
+          isDone: isDone,
+          projectColor: projectColor,
+        ),
       ),
       onDragStarted: () => H.medium(),
       child: GestureDetector(
@@ -126,7 +134,11 @@ class _TodoChip extends StatelessWidget {
           H.light();
           showTodoEditSheet(context, store, todo);
         },
-        child: _TodoChipView(todo: todo, isDone: isDone, projectColor: projectColor),
+        child: _TodoChipView(
+          todo: todo,
+          isDone: isDone,
+          projectColor: projectColor,
+        ),
       ),
     );
   }
@@ -154,12 +166,10 @@ class _TodoChipView extends StatelessWidget {
         color: isDone
             ? neutral200
             : (projectColor != null
-                ? projectCardBackground(projectColor!)
-                : surfaceChip),
+                  ? projectCardBackground(projectColor!)
+                  : surfaceChip),
         borderRadius: BorderRadius.circular(radiusPill),
-        border: isDragging
-            ? Border.all(color: primary500, width: 1.5)
-            : null,
+        border: isDragging ? Border.all(color: primary500, width: 1.5) : null,
         boxShadow: isDragging ? const [...shadow2] : null,
       ),
       child: Row(

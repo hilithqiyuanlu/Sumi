@@ -11,6 +11,7 @@ class MemoryExtractionDecision {
   final String? content;
   final String? quotedText;
   final String? replacesId;
+  final double confidence;
 
   const MemoryExtractionDecision({
     required this.action,
@@ -19,6 +20,7 @@ class MemoryExtractionDecision {
     this.content,
     this.quotedText,
     this.replacesId,
+    this.confidence = 1,
   });
 
   Map<String, Object?> toJson() => {
@@ -28,6 +30,7 @@ class MemoryExtractionDecision {
     if (content != null) 'content': content,
     if (quotedText != null) 'quotedText': quotedText,
     if (replacesId != null) 'replacesId': replacesId,
+    'confidence': confidence,
   };
 }
 
@@ -36,14 +39,12 @@ class MemoryExtractionCandidate {
   final MemoryType type;
   final String category;
   final String content;
-  final String? projectId;
 
   const MemoryExtractionCandidate({
     required this.id,
     this.type = MemoryType.explicit,
     required this.category,
     required this.content,
-    this.projectId,
   });
 
   Map<String, Object?> toJson() => {
@@ -51,7 +52,6 @@ class MemoryExtractionCandidate {
     'type': type.name,
     'category': category,
     'content': content,
-    if (projectId != null) 'projectId': projectId,
   };
 }
 
@@ -68,19 +68,29 @@ class MemoryExtractionService {
   final MemoryService memory;
   final MemoryExtractionCapability capability;
   final void Function() onMemoryChanged;
-  final String? Function() currentProjectId;
+  final void Function(String messageId) onMemorySaved;
   Future<void> _queue = Future<void>.value();
 
   MemoryExtractionService({
     required this.memory,
     required this.capability,
     required this.onMemoryChanged,
-    required this.currentProjectId,
+    required this.onMemorySaved,
   });
 
-  Future<void> process({required String messageId, required String message}) {
+  Future<void> process({
+    required String messageId,
+    required String message,
+    String source = 'chat',
+    bool retry = false,
+  }) {
     _queue = _queue.then(
-      (_) => _process(messageId: messageId, message: message),
+      (_) => _process(
+        messageId: messageId,
+        message: message,
+        source: source,
+        retry: retry,
+      ),
     );
     return _queue;
   }
@@ -88,14 +98,15 @@ class MemoryExtractionService {
   Future<void> _process({
     required String messageId,
     required String message,
+    required String source,
+    required bool retry,
   }) async {
     try {
-      if (!await memory.claimExtraction(messageId)) return;
-      final projectId = currentProjectId();
-      final candidates = await memory.extractionCandidates(
-        projectId: projectId,
-        limit: 6,
-      );
+      final claimed = retry
+          ? await memory.reclaimExtraction(messageId)
+          : await memory.claimExtraction(messageId, source: source);
+      if (!claimed) return;
+      final candidates = await memory.extractionCandidates(limit: 6);
       final decision = await capability.extractMemory(
         message: message,
         candidates: candidates,
@@ -113,11 +124,12 @@ class MemoryExtractionService {
         userMessage: message,
         decision: decision,
         candidateReplaceIds: candidates.map((item) => item.id).toSet(),
-        currentProjectId: projectId,
       );
       if (!applied) return;
       if (decision.action != MemoryExtractionAction.ignore) {
         await memory.exportUserModel();
+        if (!await memory.hasUserMessageEvidence(messageId)) return;
+        onMemorySaved(messageId);
         onMemoryChanged();
       }
     } catch (_) {
@@ -131,6 +143,16 @@ class MemoryExtractionService {
       } catch (_) {
         // The app may have been closed while this best-effort task was running.
       }
+    }
+  }
+
+  Future<void> retryRecoverable(
+    Future<String?> Function(String messageId) messageForId,
+  ) async {
+    for (final messageId in await memory.retryableExtractionIds()) {
+      final message = await messageForId(messageId);
+      if (message == null || message.trim().isEmpty) continue;
+      await process(messageId: messageId, message: message, retry: true);
     }
   }
 }

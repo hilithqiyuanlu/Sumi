@@ -30,6 +30,9 @@ import '../services/local_retrieval_service.dart';
 import '../services/local_text_generation_coordinator.dart';
 import '../services/local_text_generation_runtime.dart';
 import '../services/local_text_model_package.dart';
+import '../services/local_speech_model_package.dart';
+import '../services/local_speech_recognition_coordinator.dart';
+import '../services/local_speech_recognition_runtime.dart';
 import '../services/local_structured_generation.dart';
 import '../services/model_package_manager.dart';
 import '../services/model_router_metrics.dart';
@@ -83,15 +86,19 @@ class AppStore
   late final LocalRetrievalCoordinator _localRetrievalCoordinator;
   late final LocalTextGenerationRuntime _localTextRuntime;
   late final LocalTextGenerationCoordinator _localTextCoordinator;
+  late final LocalSpeechRecognitionRuntime _localSpeechRuntime;
+  late final LocalSpeechRecognitionCoordinator _localSpeechCoordinator;
   late final AppUpdateService _appUpdates;
   late final TimerController timerController;
   late final StudyTimerService _studyTimers;
   late final MilestoneService _milestones;
+  late final UserModelStore _userModels;
   late final ScheduleProposalDatabase _scheduleProposals;
   final ScheduleLoadAssessor _scheduleLoadAssessor = ScheduleLoadAssessor();
   ScheduleRebalanceProposal? _pendingScheduleProposal;
   List<ScheduleRebalanceProposal> _scheduleCards = const [];
   bool _scheduleAssessmentRunning = false;
+  int _scheduleCardsRequest = 0;
   bool _rollingPlanningRunning = false;
   Timer? _todayLoadWindowTimer;
   Timer? _regularSuggestionTimer;
@@ -107,6 +114,7 @@ class AppStore
   final MilestoneController milestoneController = MilestoneController();
   final DailyReflectionController dailyReflectionController =
       DailyReflectionController();
+  final FutureTodoController futureTodoController = FutureTodoController();
   ChatDatabase? _chatDatabase;
   ToolExecutor? _toolExecutor;
   VoiceInputService? _voiceService;
@@ -122,6 +130,7 @@ class AppStore
   UserModelService? _legacyUserModelService;
   MemoryService? _memoryService;
   MemoryExtractionService? _memoryExtractionService;
+  Future<void>? _memoryExtractionRetryTask;
   SignalService? _signalService;
   late final DailyReflectionDatabase _dailyReflectionDatabase;
   late final DailyReflectionService _dailyReflections;
@@ -137,6 +146,7 @@ class AppStore
   MemoryService? get memoryServiceForStore => _memoryService;
   @override
   MilestoneService get milestones => _milestones;
+  UserModelStore get userModels => _userModels;
   @override
   MemoryExtractionService? get memoryExtractionService =>
       _memoryExtractionService;
@@ -147,8 +157,17 @@ class AppStore
   Future<void> retryDailyReflection(DateTime date) =>
       _dailyReflections.retry(dateKey(dateOnly(date)));
 
+  Future<void> regenerateDailyReflection(DateTime date) =>
+      _dailyReflections.regenerate(dateKey(dateOnly(date)));
+
+  Future<void> removeDailyReflection(DateTime date) =>
+      _dailyReflections.remove(dateKey(dateOnly(date)));
+
   @override
   Future<void> clearDailyReflections() => _dailyReflectionDatabase.clearAll();
+
+  @override
+  Future<void> clearUserModels() => _userModels.clearAll();
 
   /// 首页建议可使用本地计数选模板，但这些统计不进入 Agent 记忆上下文。
   Future<Map<String, String>> legacyRealtimeStats() async =>
@@ -219,8 +238,12 @@ class AppStore
 
   @override
   Future<void> onProjectTodoDeleted(TodoItem todo) async {
-    if (todo.projectId == null) return;
-    await _removeMilestones(await _milestones.deleteForTodo(todo.id));
+    await _signalDb?.redactDeletedTodoContent(todoId: todo.id);
+    await _embeddingDocuments.delete(EmbeddingDocumentSource.todo, todo.id);
+    if (todo.projectId != null) {
+      await _removeMilestones(await _milestones.deleteForTodo(todo.id));
+    }
+    _scheduleLocalIndex();
   }
 
   @override
@@ -320,6 +343,7 @@ class AppStore
       ..clear()
       ..addAll(read('sentIntents'));
   }
+
   bool _suggestionsDirty = true;
   bool get suggestionsDirty => _suggestionsDirty;
   DateTime? lastForegroundTime;
@@ -336,7 +360,11 @@ class AppStore
   LocalRetrievalState get localRetrievalState =>
       _localRetrievalCoordinator.state;
   LocalTextModelState get localTextModelState => _localTextCoordinator.state;
+  LocalSpeechModelState get localSpeechModelState =>
+      _localSpeechCoordinator.state;
   bool get localTextGenerationEnabled => appSettings.localTextGenerationEnabled;
+  bool get localSpeechRecognitionEnabled =>
+      appSettings.localSpeechRecognitionEnabled;
   AppUpdateState get appUpdateState => _appUpdates.state.value;
   @override
   StructuredGenerationCapability? get structuredAi {
@@ -410,6 +438,33 @@ class AppStore
   Future<void> finishStudyTimer(String id) => _studyTimers.finish(id);
   Future<void> cancelStudyTimer(String id) => _studyTimers.cancel(id);
   Future<void> deleteStudyTimer(String id) => _studyTimers.delete(id);
+  @override
+  Future<void> deleteStudyTimersForMessages(
+    Iterable<ChatMessage> messages,
+  ) async {
+    final toolCallIds = <String>{};
+    for (final message in messages) {
+      final raw = message.toolCallsJson;
+      if (raw == null || raw.isEmpty) continue;
+      try {
+        final calls = jsonDecode(raw) as List<Object?>;
+        for (final call in calls) {
+          if (call is! Map<String, Object?>) continue;
+          final function = call['function'] as Map<String, Object?>?;
+          if (function?['name'] != 'create_study_timer') continue;
+          final id = call['id'] as String?;
+          if (id != null && id.isNotEmpty) toolCallIds.add(id);
+        }
+      } catch (_) {
+        // Corrupt historical tool metadata must not block message deletion.
+      }
+    }
+    for (final toolCallId in toolCallIds) {
+      final timer = timerController.byToolCallId(toolCallId);
+      if (timer != null) await _studyTimers.delete(timer.id);
+    }
+  }
+
   ValueListenable<StudyTimer?> get activeStudyTimerReminder =>
       _studyTimers.activeReminder;
   @override
@@ -423,6 +478,49 @@ class AppStore
     await _memoryService?.exportUserModel();
     removeMilestoneSources(removed.map((item) => item.sourceMessageId));
     milestoneController.markChanged();
+    settingsController.markChanged();
+    _scheduleLocalIndex();
+  }
+
+  Future<void> deleteMemory(String memoryId) async {
+    final memory = _memoryService;
+    if (memory == null) return;
+    final sourceIds = await memory.sourceMessageIdsForMemory(memoryId);
+    await memory.delete(memoryId);
+    final stillSaved = await memory.sourceMessageIdsFor(sourceIds);
+    removeMemorySources(sourceIds.where((id) => !stillSaved.contains(id)));
+    await memory.exportUserModel();
+    _scheduleLocalIndex();
+    settingsController.markChanged();
+  }
+
+  Future<void> setUserModelStatus(String id, UserModelStatus status) async {
+    await _userModels.setStatus(id, status);
+    setSuggestionsDirty(true);
+    settingsController.markChanged();
+    _scheduleRegularSuggestionRefresh();
+  }
+
+  Future<void> deleteUserModel(String id) async {
+    await _userModels.delete(id);
+    setSuggestionsDirty(true);
+    settingsController.markChanged();
+    _scheduleRegularSuggestionRefresh();
+  }
+
+  @override
+  Future<void> removeSourcesForMessages(Iterable<String> messageIds) async {
+    final ids = messageIds.toSet();
+    if (ids.isEmpty) return;
+    final removedMilestones = await _milestones.deleteForSourceMessages(ids);
+    await _removeMilestones(removedMilestones);
+    final memory = _memoryService;
+    if (memory != null) {
+      await memory.removeMessageSources(ids);
+      await memory.exportUserModel();
+    }
+    removeMemorySources(ids);
+    removeMilestoneSources(ids);
     settingsController.markChanged();
     _scheduleLocalIndex();
   }
@@ -443,6 +541,8 @@ class AppStore
 
   @override
   DateTime get selectedDate => todoController._selectedDate;
+  @override
+  DateTime get currentTime => _now();
   @override
   set selectedDate(DateTime value) => todoController._selectedDate = value;
   @override
@@ -491,17 +591,27 @@ class AppStore
     _closed = true;
     _todayLoadWindowTimer?.cancel();
     _regularSuggestionTimer?.cancel();
+    await disposeChatView();
+    final memoryRetryTask = _memoryExtractionRetryTask;
+    if (memoryRetryTask != null) {
+      try {
+        await memoryRetryTask;
+      } catch (_) {
+        // 后台补采失败不阻塞资源释放。
+      }
+    }
     await flushPersistence();
-    disposeChatView();
     _voiceService?.dispose();
     await _localRetrievalCoordinator.close();
     await _localTextCoordinator.close();
+    await _localSpeechCoordinator.close();
     _appUpdates.close();
     await _studyTimers.dispose();
     timerController.dispose();
     projectGenerationController.dispose();
     milestoneController.dispose();
     dailyReflectionController.dispose();
+    futureTodoController.dispose();
     _aiRuntime?.close();
     todoController.dispose();
     projectController.dispose();
@@ -549,10 +659,13 @@ class AppStore
 
     // 07 轮：初始化信号数据库和用户模型服务
     store._signalDb = signalDatabaseOverride ?? SignalDatabase(db);
+    await store._signalDb!.redactDeletedTodoContent();
     store._legacyUserModelService =
         userModelServiceOverride ?? UserModelService(store._signalDb!);
     store._memoryService = MemoryService(db, now: store._now);
     await store._memoryService!.ensureTables();
+    store._userModels = UserModelStore(db, now: store._now);
+    await store._userModels.ensureTables();
     store._dailyReflectionDatabase = DailyReflectionDatabase(db);
     store._dailyReflections = DailyReflectionService(
       database: store._dailyReflectionDatabase,
@@ -613,11 +726,18 @@ class AppStore
       runtime: store._localTextRuntime,
       onState: (_) => store.settingsController.markChanged(),
     );
+    store._localSpeechRuntime = LocalSpeechRecognitionRuntime();
+    store._localSpeechCoordinator = LocalSpeechRecognitionCoordinator(
+      packages: LocalSpeechModelPackage(),
+      runtime: store._localSpeechRuntime,
+      onState: (_) => store.settingsController.markChanged(),
+    );
     store._appUpdates = AppUpdateService();
     store._appUpdates.state.addListener(store.settingsController.markChanged);
 
     // Import legacy files once, then generate USER_MODEL.md only as export.
     await store._migrateLegacyMemory();
+    await store._userModels.syncFromImplicit(store._memoryService!);
 
     // 从安全存储读取 API Key（并行读取，减少启动延迟）
     final keyResults = await Future.wait([
@@ -646,13 +766,17 @@ class AppStore
     store._initAiService(override: aiServiceOverride);
     unawaited(store._localRetrievalCoordinator.restore());
     unawaited(store._localTextCoordinator.restore());
+    unawaited(store._localSpeechCoordinator.restore());
     unawaited(store._dailyReflections.runBacklog());
 
     // 加载今天的会话
     await store._getOrCreateConversationForDate(dateKey(store.selectedDate));
 
-    // 检测并生成每日 todo —— 不阻塞启动，后台静默执行
-    unawaited(store._runRollingPlanning());
+    // 只为启动时已经存在的项目补齐滚动计划。否则后台任务可能在
+    // 新项目刚提交后才开始运行，造成计划外补项和重复快照写入。
+    if (store.projectList.isNotEmpty) {
+      unawaited(store._runRollingPlanning());
+    }
     unawaited(store._runStartupTodayLoadScreening());
 
     return store;
@@ -695,7 +819,27 @@ class AppStore
           _scheduleRegularSuggestionRefresh();
           settingsController.markChanged();
         },
-        currentProjectId: () => currentProjectId,
+        onMemorySaved: recordMemorySource,
+      );
+      final retryTask = _memoryExtractionService!.retryRecoverable((
+        messageId,
+      ) async {
+        final messages =
+            await _chatDatabase?.loadAllMessages() ?? const <ChatMessage>[];
+        for (final message in messages) {
+          if (message.id == messageId && message.role == 'user') {
+            return message.content;
+          }
+        }
+        return null;
+      });
+      _memoryExtractionRetryTask = retryTask;
+      unawaited(
+        retryTask.whenComplete(() {
+          if (identical(_memoryExtractionRetryTask, retryTask)) {
+            _memoryExtractionRetryTask = null;
+          }
+        }),
       );
       _toolExecutor = ToolExecutor(
         searchService: _modelRouter!.search,
@@ -742,7 +886,12 @@ class AppStore
     }
 
     // 语音输入服务（不依赖 API key）
-    _voiceService ??= VoiceInputService();
+    _voiceService ??= VoiceInputService(
+      localRuntime: _localSpeechRuntime,
+      localSpeechEnabled: () => localSpeechRecognitionEnabled,
+      metrics: modelRouterMetrics,
+      now: _now,
+    );
   }
 
   /// AI todo 拆分入口。
@@ -808,6 +957,141 @@ class AppStore
     return SplitResult(split: true, items: polishedItems);
   }
 
+  TodoComposeResult startFutureTodoCreation(String content) {
+    final text = content.trim();
+    if (text.isEmpty) return TodoComposeResult.empty;
+    if (futureTodoController.state.value.isBusy) {
+      return TodoComposeResult.busy;
+    }
+    if (calendarDayMode(selectedDate, _now()) != CalendarDayMode.future) {
+      return TodoComposeResult.empty;
+    }
+    final requestId = newSumiId('future-todo');
+    final targetDate = dateKey(selectedDate);
+    futureTodoController.state.value = FutureTodoComposeState(
+      stage: FutureTodoComposeStage.generating,
+      requestId: requestId,
+      targetDate: targetDate,
+      originalInput: text,
+    );
+    unawaited(
+      _prepareFutureTodoCreation(
+        requestId: requestId,
+        targetDate: targetDate,
+        text: text,
+      ),
+    );
+    return TodoComposeResult.accepted;
+  }
+
+  Future<void> _prepareFutureTodoCreation({
+    required String requestId,
+    required String targetDate,
+    required String text,
+  }) async {
+    bool cancelled() =>
+        futureTodoController.state.value.requestId != requestId ||
+        futureTodoController.state.value.stage ==
+            FutureTodoComposeStage.cancelled;
+    var candidates = <String>[text];
+    var requiresConfirmation = false;
+    final ai = structuredAi;
+    if (ai != null) {
+      try {
+        final result = await ai.splitTodo(text);
+        if (cancelled()) return;
+        if (result != null && result.items.isNotEmpty) {
+          candidates = result.items.toList(growable: false);
+        }
+        final polished = <String>[];
+        for (final candidate in candidates) {
+          if (cancelled()) return;
+          final normalized = candidate.trim();
+          if (normalized.isEmpty) continue;
+          if (normalized.length > todoTitleMaxLength) {
+            polished.add(
+              (await ai.polishTodo(normalized) ?? normalized).trim(),
+            );
+          } else {
+            polished.add(normalized);
+          }
+        }
+        candidates = polished
+            .where((item) => item.isNotEmpty)
+            .toSet()
+            .toList(growable: false);
+        if (candidates.isEmpty) candidates = <String>[text];
+        requiresConfirmation = candidates.length > 1;
+      } catch (_) {
+        candidates = <String>[text];
+        requiresConfirmation = false;
+      }
+    }
+    if (cancelled()) return;
+    if (requiresConfirmation) {
+      futureTodoController.state.value = FutureTodoComposeState(
+        stage: FutureTodoComposeStage.awaitingConfirmation,
+        requestId: requestId,
+        targetDate: targetDate,
+        originalInput: text,
+        candidates: candidates,
+      );
+      return;
+    }
+    await addUserTodosForDate(
+      candidates.take(1).toList(growable: false),
+      date: targetDate,
+      condensedFrom: text,
+    );
+    if (cancelled()) return;
+    futureTodoController.state.value = FutureTodoComposeState(
+      stage: FutureTodoComposeStage.completed,
+      requestId: requestId,
+      targetDate: targetDate,
+      originalInput: text,
+      candidates: candidates.take(1).toList(growable: false),
+    );
+  }
+
+  Future<void> confirmFutureTodoCreation(
+    String requestId,
+    List<String> selectedTitles, {
+    required String targetDate,
+  }) async {
+    final state = futureTodoController.state.value;
+    if (state.requestId != requestId ||
+        state.stage != FutureTodoComposeStage.awaitingConfirmation ||
+        state.targetDate == null ||
+        state.targetDate != targetDate) {
+      return;
+    }
+    await addUserTodosForDate(
+      selectedTitles,
+      date: targetDate,
+      condensedFrom: state.originalInput,
+    );
+    if (futureTodoController.state.value.requestId != requestId) return;
+    futureTodoController.state.value = FutureTodoComposeState(
+      stage: FutureTodoComposeStage.completed,
+      requestId: requestId,
+      targetDate: targetDate,
+      originalInput: state.originalInput,
+      candidates: selectedTitles,
+    );
+  }
+
+  void cancelFutureTodoCreation() {
+    final state = futureTodoController.state.value;
+    if (!state.canCancel) return;
+    futureTodoController.state.value = FutureTodoComposeState(
+      stage: FutureTodoComposeStage.cancelled,
+      requestId: state.requestId,
+      targetDate: state.targetDate,
+      originalInput: state.originalInput,
+      candidates: state.candidates,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Settings
   // ---------------------------------------------------------------------------
@@ -828,6 +1112,11 @@ class AppStore
 
   void setLocalTextGenerationEnabled(bool value) {
     appSettings = appSettings.copyWith(localTextGenerationEnabled: value);
+    afterSettingsMutation();
+  }
+
+  void setLocalSpeechRecognitionEnabled(bool value) {
+    appSettings = appSettings.copyWith(localSpeechRecognitionEnabled: value);
     afterSettingsMutation();
   }
 
@@ -877,6 +1166,10 @@ class AppStore
   // ---------------------------------------------------------------------------
 
   Future<void> selectDate(DateTime date) async {
+    final composing = futureTodoController.state.value;
+    if (composing.isBusy && composing.targetDate != dateKey(dateOnly(date))) {
+      cancelFutureTodoCreation();
+    }
     selectedDate = dateOnly(date);
     afterSelectionMutation();
     // 切换到该日期的会话
@@ -961,12 +1254,15 @@ class AppStore
   }
 
   @override
-  void afterProjectMutation({bool affectsTodayLoad = false}) {
+  void afterProjectMutation({
+    bool affectsTodayLoad = false,
+    bool scheduleRollingPlanning = true,
+  }) {
     _persist();
     projectController.markChanged();
     todoController.markChanged();
     _scheduleLocalIndex();
-    if (!_rollingPlanningRunning) {
+    if (scheduleRollingPlanning && !_rollingPlanningRunning) {
       unawaited(_runRollingPlanning());
     }
     _scheduleRegularSuggestionRefresh();
@@ -982,6 +1278,20 @@ class AppStore
     await _studyTimers.handleLifecycle(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       _appInForeground = true;
+      if (_memoryExtractionRetryTask == null) {
+        final extractor = _memoryExtractionService;
+        final chat = _chatDatabase;
+        if (extractor != null && chat != null) {
+          final messages = await chat.loadAllMessages();
+          final contentById = {
+            for (final message in messages)
+              if (message.role == 'user') message.id: message.content,
+          };
+          await extractor.retryRecoverable(
+            (messageId) async => contentById[messageId],
+          );
+        }
+      }
       await _runRollingPlanning();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
@@ -1053,8 +1363,12 @@ class AppStore
 
   Future<Map<String, Object?>> _suggestionQuestionContext() async {
     final todayKey = dateKey(_now());
-    final memories = await _memoryService?.list(includeHistorical: false) ?? const <MemoryItem>[];
-    final signals = await _signalDb?.query(range: '7d', limit: 40) ?? const <UserSignal>[];
+    final memories =
+        await _memoryService?.list(includeHistorical: false) ??
+        const <MemoryItem>[];
+    final signals =
+        await _signalDb?.query(range: '7d', limit: 40) ?? const <UserSignal>[];
+    final modelObservations = await _userModels.activeForSuggestions();
     final currentProject = projectList.cast<Project?>().firstWhere(
       (item) => item?.id == currentProjectId,
       orElse: () => null,
@@ -1080,7 +1394,15 @@ class AppStore
               'type': item.type.name,
               'category': item.category,
               'content': item.content,
-              if (item.projectId != null) 'projectId': item.projectId,
+            },
+          )
+          .toList(growable: false),
+      'suggestionPreferences': modelObservations
+          .map(
+            (item) => {
+              'kind': item.kind,
+              'content': item.content,
+              'confidence': item.confidence,
             },
           )
           .toList(growable: false),
@@ -1096,7 +1418,9 @@ class AppStore
           .toList(growable: false),
       'suggestionFeedback': {
         'sentIntents': _acceptedSuggestionIntents.toList(growable: false),
-        'notSuitableIntents': _rejectedSuggestionIntents.toList(growable: false),
+        'notSuitableIntents': _rejectedSuggestionIntents.toList(
+          growable: false,
+        ),
         'disabledIntents': _disabledSuggestionIntents.toList(growable: false),
       },
       if (appSettings.scheduleLoadAnalysisEnabled &&
@@ -1126,7 +1450,9 @@ class AppStore
   }
 
   static bool _sameSuggestionDay(DateTime left, DateTime right) =>
-      left.year == right.year && left.month == right.month && left.day == right.day;
+      left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
 
   Future<List<SuggestionQuestion>?> rejectSuggestionQuestion(
     SuggestionQuestion question, {
@@ -1563,9 +1889,31 @@ class AppStore
   Future<void> refreshScheduleCardsForConversation(
     String? conversationId,
   ) async {
-    _scheduleCards = conversationId == null
-        ? const []
-        : await _scheduleProposals.visibleForConversation(conversationId);
+    final request = ++_scheduleCardsRequest;
+    if (conversationId == null) {
+      _scheduleCards = const [];
+      return;
+    }
+    final cards = await _scheduleProposals.visibleForConversation(
+      conversationId,
+    );
+    if (request == _scheduleCardsRequest) _scheduleCards = cards;
+  }
+
+  @override
+  Future<void> releaseScheduleCardsAfterStream(
+    String conversationId,
+    String assistantMessageId,
+  ) async {
+    final released = await _scheduleProposals.releaseDisplayAnchor(
+      conversationId: conversationId,
+      assistantMessageId: assistantMessageId,
+    );
+    if (!released) return;
+    if (currentConversationId == conversationId) {
+      await refreshScheduleCardsForConversation(conversationId);
+      todoController.markChanged();
+    }
   }
 
   Future<void> downloadLocalRetrievalModel() =>
@@ -1577,6 +1925,9 @@ class AppStore
       _localRetrievalCoordinator.deleteModel();
   Future<void> downloadLocalTextModel() => _localTextCoordinator.download();
   Future<void> deleteLocalTextModel() => _localTextCoordinator.delete();
+  Future<void> downloadLocalSpeechModel() => _localSpeechCoordinator.download();
+  @override
+  Future<void> deleteLocalSpeechModel() => _localSpeechCoordinator.delete();
   void cancelLocalRetrievalWork() => _localRetrievalCoordinator.cancel();
 
   Timer? _localIndexTimer;
@@ -1644,7 +1995,7 @@ class AppStore
   String _readTodosForTool({String? filter}) {
     List<TodoItem> source;
     if (filter == 'today') {
-      final today = dateKey(DateTime.now());
+      final today = dateKey(currentTime);
       source = todoItems
           .where((t) => t.date == today || t.date == null)
           .toList();

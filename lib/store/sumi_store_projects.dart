@@ -15,7 +15,10 @@ mixin SumiStoreProjects {
   MemoryService? get memoryServiceForStore;
   Future<void> onProjectDeleted(String projectId);
   Future<void> onProjectTodoDeleted(TodoItem todo);
-  void afterProjectMutation({bool affectsTodayLoad = false});
+  void afterProjectMutation({
+    bool affectsTodayLoad = false,
+    bool scheduleRollingPlanning = true,
+  });
 
   /// 更新项目字段。编辑保存后，若影响规划的字段变更则自动重新规划。
   Future<void> updateProject(
@@ -99,7 +102,6 @@ mixin SumiStoreProjects {
     if (currentProjectId == id) {
       currentProjectId = projectList.isNotEmpty ? projectList.first.id : null;
     }
-    await memoryServiceForStore?.endCurrentForProject(id);
     afterProjectMutation();
   }
 
@@ -107,20 +109,6 @@ mixin SumiStoreProjects {
   void selectProject(String id) {
     currentProjectId = id;
     afterProjectMutation();
-  }
-
-  /// 指定项目进度 +1（不超过 cycleMonths）。
-  void advanceCurrentMonth({String? projectId}) {
-    final project = projectId == null
-        ? currentProject
-        : projectList.cast<Project?>().firstWhere(
-            (p) => p?.id == projectId,
-            orElse: () => null,
-          );
-    if (project == null) return;
-    final next = project.currentMonthIndex + 1;
-    if (next >= project.cycleMonths) return;
-    updateProject(project.id, currentMonthIndex: next);
   }
 
   // ---------------------------------------------------------------------------
@@ -413,7 +401,7 @@ mixin SumiStoreProjects {
     }
 
     await signalService?.emitProjectGoalSet(updated, existing?.goal);
-    afterProjectMutation();
+    afterProjectMutation(scheduleRollingPlanning: false);
   }
 
   /// 添加系统 todo（指定日期），去重检查。
@@ -461,8 +449,6 @@ mixin SumiStoreProjects {
       return null;
     }
   }
-
-  List<MonthCard> get monthCards => List.unmodifiable(monthCardList);
 
   List<MonthCard> monthCardsFor(String projectId) =>
       monthCardList.where((m) => m.projectId == projectId).toList();

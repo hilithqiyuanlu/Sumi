@@ -81,6 +81,7 @@ class SignalService {
         time: DateTime.now(),
         contextJson: _ctx(
           todo: todo,
+          includeTodoContent: false,
           extra: reason == null ? null : {'reason': reason},
         ),
         projectId: todo.projectId,
@@ -272,14 +273,20 @@ class SignalService {
   String _ctx({
     required TodoItem todo,
     bool? completedOnTime,
+    bool includeTodoContent = true,
     Map<String, dynamic>? extra,
   }) {
     final now = DateTime.now();
     final map = <String, dynamic>{
-      'title': todo.title,
       'hourOfDay': now.hour,
       'source': todo.source.name,
     };
+    if (includeTodoContent) {
+      map['title'] = todo.title;
+      if (todo.body != null && todo.body!.trim().isNotEmpty) {
+        map['body'] = todo.body;
+      }
+    }
     if (todo.projectId != null) {
       map['projectId'] = todo.projectId;
       final project = projectForId?.call(todo.projectId!);

@@ -10,7 +10,12 @@ class ModelRouterMetricsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metrics = SumiScope.read(context).modelRouterMetrics.summaries();
+    final metricStore = SumiScope.read(context).modelRouterMetrics;
+    final metrics = metricStore.summaries();
+    final speechEvents = metricStore.recentEvents(
+      capability: ModelCapability.speechRecognition,
+      providerPrefix: 'local-',
+    );
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -39,6 +44,7 @@ class ModelRouterMetricsPage extends StatelessWidget {
                   .where((metric) => metric.provider.startsWith('local-'))
                   .toList(growable: false),
               emptyLabel: '近 7 天暂无本地智能调用记录',
+              speechEvents: speechEvents,
             ),
           ],
         ),
@@ -50,14 +56,19 @@ class ModelRouterMetricsPage extends StatelessWidget {
 class _MetricsPanel extends StatelessWidget {
   final List<ModelRouterMetricsSummary> metrics;
   final String emptyLabel;
+  final List<ModelRouterMetricEvent> speechEvents;
 
-  const _MetricsPanel({required this.metrics, required this.emptyLabel});
+  const _MetricsPanel({
+    required this.metrics,
+    required this.emptyLabel,
+    this.speechEvents = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
     if (metrics.isEmpty) {
       return Center(
-        child: Text(emptyLabel, style: const TextStyle(color: textSecondary)),
+        child: Text(emptyLabel, style: const TextStyle(color: textTertiary)),
       );
     }
     final total = metrics.fold<int>(0, (sum, item) => sum + item.total);
@@ -78,13 +89,26 @@ class _MetricsPanel extends StatelessWidget {
           degraded: degraded,
           average: average,
         ),
+        if (speechEvents.isNotEmpty) ...[
+          const SizedBox(height: s20),
+          const Text(
+            '每次语音识别',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textTertiary,
+            ),
+          ),
+          const SizedBox(height: s8),
+          ...speechEvents.map(_SpeechRecognitionRow.new),
+        ],
         const SizedBox(height: s20),
         const Text(
           '按天汇总',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: textSecondary,
+            color: textTertiary,
           ),
         ),
         const SizedBox(height: s8),
@@ -111,9 +135,8 @@ class _Summary extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(s16),
     decoration: BoxDecoration(
-      color: primary50,
-      borderRadius: BorderRadius.circular(radius8),
-      border: Border.all(color: primary100),
+      color: surfaceAlt,
+      borderRadius: BorderRadius.circular(radiusCard),
     ),
     child: Row(
       children: [
@@ -143,13 +166,13 @@ class _Stat extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
             color: ink,
           ),
         ),
         const SizedBox(height: s2),
-        Text(label, style: const TextStyle(fontSize: 11, color: textSecondary)),
+        Text(label, style: const TextStyle(fontSize: 11, color: textTertiary)),
       ],
     ),
   );
@@ -171,14 +194,16 @@ class _MetricRow extends StatelessWidget {
       ModelCapability.memoryExtraction => '记忆提取',
       ModelCapability.webSearch => '搜索',
       ModelCapability.embedding => '语义检索',
+      ModelCapability.speechRecognition => '语音识别',
     };
     return Container(
       margin: const EdgeInsets.only(bottom: s8),
       padding: const EdgeInsets.all(s14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(radius8),
-        border: Border.all(color: surfaceChip),
+        borderRadius: BorderRadius.circular(radiusCard),
+        border: Border.all(color: line.withValues(alpha: 0.15), width: 0.5),
+        boxShadow: const [...shadow1],
       ),
       child: Row(
         children: [
@@ -213,6 +238,67 @@ class _MetricRow extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: primary500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpeechRecognitionRow extends StatelessWidget {
+  final ModelRouterMetricEvent event;
+
+  const _SpeechRecognitionRow(this.event);
+
+  @override
+  Widget build(BuildContext context) {
+    final time =
+        '${event.occurredAt.month}月${event.occurredAt.day}日 '
+        '${event.occurredAt.hour.toString().padLeft(2, '0')}:'
+        '${event.occurredAt.minute.toString().padLeft(2, '0')}';
+    final succeeded = event.outcome == ModelRouteOutcome.success;
+    final outcome = succeeded ? '识别成功' : '识别失败';
+    final color = succeeded ? primary500 : danger;
+    return Container(
+      margin: const EdgeInsets.only(bottom: s8),
+      padding: const EdgeInsets.all(s14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radiusCard),
+        border: Border.all(color: line.withValues(alpha: 0.15), width: 0.5),
+        boxShadow: const [...shadow1],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.graphic_eq_rounded, color: primary500, size: 20),
+          const SizedBox(width: s10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  time,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: ink,
+                  ),
+                ),
+                const SizedBox(height: s2),
+                Text(
+                  '${event.provider} · ${event.durationMs}ms',
+                  style: const TextStyle(fontSize: 12, color: textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            outcome,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: color,
             ),
           ),
         ],

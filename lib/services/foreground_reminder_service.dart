@@ -15,13 +15,14 @@ abstract interface class ForegroundReminder {
 
 /// 在应用可见时循环播放提醒音，并持续提供强触觉反馈。
 class ForegroundReminderService implements ForegroundReminder {
-  final AudioPlayer _player;
+  AudioPlayer? _player;
   final ValueNotifier<StudyTimer?> _activeReminder = ValueNotifier(null);
   Timer? _hapticTimer;
   bool _prepared = false;
 
-  ForegroundReminderService({AudioPlayer? player})
-    : _player = player ?? AudioPlayer();
+  ForegroundReminderService();
+
+  AudioPlayer get _audioPlayer => _player ??= AudioPlayer();
 
   @override
   ValueListenable<StudyTimer?> get activeReminder => _activeReminder;
@@ -36,13 +37,14 @@ class ForegroundReminderService implements ForegroundReminder {
       H.heavy();
     });
     try {
+      final player = _audioPlayer;
       if (!_prepared) {
-        await _player.setAsset('assets/audio/sumi_alarm.wav');
-        await _player.setLoopMode(LoopMode.one);
+        await player.setAsset('assets/audio/sumi_alarm.wav');
+        await player.setLoopMode(LoopMode.one);
         _prepared = true;
       }
-      await _player.seek(Duration.zero);
-      await _player.play();
+      await player.seek(Duration.zero);
+      await player.play();
     } catch (_) {
       // 音频不可用时仍显示全屏提醒并保留触觉反馈。
     }
@@ -53,8 +55,10 @@ class ForegroundReminderService implements ForegroundReminder {
     _hapticTimer?.cancel();
     _hapticTimer = null;
     _activeReminder.value = null;
+    final player = _player;
+    if (player == null) return;
     try {
-      await _player.stop();
+      await player.stop();
     } catch (_) {
       // 播放器已释放或平台音频会话不可用时无需阻断停止流程。
     }
@@ -63,7 +67,8 @@ class ForegroundReminderService implements ForegroundReminder {
   @override
   Future<void> dispose() async {
     await stop();
-    await _player.dispose();
+    await _player?.dispose();
+    _player = null;
     _activeReminder.dispose();
   }
 }

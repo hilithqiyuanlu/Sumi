@@ -146,7 +146,7 @@ class ChatToolRegistry {
         'function': {
           'name': 'create_study_timer',
           'description':
-              '仅在用户明确提出学习计时、倒计时或闹钟请求时调用。timer 需要 minutes；alarm 需要未来的 alertAt。用户说“现在开始”时 startImmediately 为 true。',
+              '创建学习计时器或闹钟。相对时长、“开始计时”和“几分钟后提醒”必须使用 timer + minutes；绝对时刻或用户明确说闹钟时才使用 alarm + alertAt。不得把相对时长换算成 alarm。',
           'parameters': {
             'type': 'object',
             'properties': {
@@ -154,7 +154,7 @@ class ChatToolRegistry {
               'kind': {
                 'type': 'string',
                 'enum': ['timer', 'alarm'],
-                'description': 'timer 为倒计时，alarm 为指定时刻提醒',
+                'description': 'timer 为相对时长倒计时；alarm 仅用于明确的绝对时刻提醒',
               },
               'minutes': {
                 'type': 'integer',

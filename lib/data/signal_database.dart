@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -60,6 +62,59 @@ class SignalDatabase {
     } catch (e, stack) {
       debugPrint('[SignalDB] 写入失败: $e');
       debugPrint('[SignalDB] 堆栈: $stack');
+    }
+  }
+
+  /// Keeps behavioural events while removing readable Todo content after the
+  /// Todo has been deleted. This applies to the deletion event itself and to
+  /// all earlier events for the same Todo.
+  Future<void> redactDeletedTodoContent({String? todoId}) async {
+    await _ensureTable();
+    final db = await _db;
+    final todoIds = todoId == null
+        ? (await db.query(
+            'signals',
+            columns: const ['todo_id'],
+            where: 'signal = ? AND todo_id IS NOT NULL',
+            whereArgs: [SignalType.todoDeleted.name],
+            distinct: true,
+          )).map((row) => row['todo_id'] as String).toSet()
+        : <String>{todoId};
+    if (todoIds.isEmpty) return;
+
+    for (final id in todoIds) {
+      final rows = await db.query(
+        'signals',
+        columns: const ['id', 'context_json'],
+        where: 'todo_id = ?',
+        whereArgs: [id],
+      );
+      for (final row in rows) {
+        final original = row['context_json'] as String? ?? '{}';
+        Map<String, Object?> context;
+        try {
+          final decoded = jsonDecode(original);
+          context = decoded is Map<String, Object?>
+              ? Map<String, Object?>.of(decoded)
+              : <String, Object?>{};
+        } catch (_) {
+          context = <String, Object?>{};
+        }
+        context.remove('title');
+        context.remove('body');
+        context.remove('oldTitle');
+        context.remove('newTitle');
+        context.remove('todoTitle');
+        context.remove('condensedFrom');
+        final redacted = jsonEncode(context);
+        if (redacted == original) continue;
+        await db.update(
+          'signals',
+          {'context_json': redacted},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+      }
     }
   }
 
@@ -215,6 +270,22 @@ class SignalDatabase {
     );
   }
 
+  /// Returns a defensive AI projection. The database migration removes content
+  /// for every deleted Todo; this also protects a newly written deletion event
+  /// before a cleanup task has finished.
+  static Map<String, Object?> contextForAi(UserSignal signal) {
+    final context = Map<String, Object?>.of(signal.context);
+    if (signal.signal == SignalType.todoDeleted) {
+      context.remove('title');
+      context.remove('body');
+      context.remove('oldTitle');
+      context.remove('newTitle');
+      context.remove('todoTitle');
+      context.remove('condensedFrom');
+    }
+    return context;
+  }
+
   /// 将信号列表格式化为 AI 可读文本。
   static String formatForPrompt(List<UserSignal> signals, {int maxItems = 50}) {
     if (signals.isEmpty) return '（暂无信号）';
@@ -223,7 +294,7 @@ class SignalDatabase {
         ? signals.take(maxItems)
         : signals;
     for (final s in display) {
-      final ctx = s.context;
+      final ctx = contextForAi(s);
       final time = s.time.toIso8601String().substring(0, 16);
       final title = ctx['title'] ?? '';
       final project = ctx['projectName'] ?? ctx['project'] ?? '';
