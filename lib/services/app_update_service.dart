@@ -153,9 +153,10 @@ class PlatformAppUpdateInstaller implements AppUpdateInstaller {
 /// Downloads only a signed ARM64 APK. Models live in application support and
 /// are never read, moved, or deleted by this service.
 class AppUpdateService {
-  /// 国内用户通过 GitHub Releases 下载 CDN 获取，不走 raw.githubusercontent.com（被墙）。
+  /// 通过 jsDelivr CDN 代理 GitHub 原始文件，国内可访问。
+  /// 更新 json 只需 push 到 main 分支，无需每次手动上传 Release assets。
   static final manifestUrl = Uri.parse(
-    'https://github.com/hilithqiyuanlu/Sumi/releases/latest/download/update.json',
+    'https://cdn.jsdelivr.net/gh/hilithqiyuanlu/Sumi@main/release/update.json',
   );
 
   final http.Client _client;
