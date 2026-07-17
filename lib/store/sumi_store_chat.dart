@@ -285,6 +285,14 @@ mixin SumiStoreChat {
     final value = text.trim();
     final explicitlyTodo = RegExp(r'待办事项|待办|事项|任务').hasMatch(value);
     if (explicitlyTodo) return false;
+
+    // 项目、学习计划、课程规划等应交给 Agent 工具处理，不要创建为待办。
+    if (RegExp(
+      r'(?:创建|新建|规划|制定).{0,8}(?:项目|计划|学习|课程|路径|方案)',
+    ).hasMatch(value)) {
+      return true;
+    }
+
     if (RegExp(r'计时器|倒计时|闹钟').hasMatch(value)) return true;
     return RegExp(
       r'(?:提醒我.{0,12}(?:\d+|[一二两三四五六七八九十半]+)(?:秒|分钟|小时)后|(?:\d+|[一二两三四五六七八九十半]+)(?:秒|分钟|小时)后.{0,12}提醒我)',
