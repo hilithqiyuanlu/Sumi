@@ -424,7 +424,11 @@ class AppStore
 
   void updateEnabledTools(Iterable<String> names) {
     final values = names.where(ChatToolRegistry.allNames.contains).toSet()
-      ..add('write_todo');
+      ..add('write_todo')
+      ..add('move_todo_date')
+      ..add('edit_todo')
+      ..add('delete_todo')
+      ..add('toggle_todo_completion');
     appSettings = appSettings.copyWith(
       enabledTools: values.toList(growable: false),
     );
@@ -867,6 +871,14 @@ class AppStore
               projectId: projectId,
               body: body,
             ),
+        moveTodoDate:
+            ({required String todoId, String? date}) =>
+                updateTodoDate(todoId, date),
+        editTodo:
+            ({required String todoId, String? title, String? body}) =>
+                updateTodo(todoId, title: title, body: body),
+        deleteTodo: _deleteTodoForTool,
+        toggleTodoCompletion: _toggleTodoCompletionForTool,
         createStudyTimer: _createStudyTimerForTool,
         startProjectGeneration: _startProjectGenerationForTool,
       );
@@ -894,6 +906,17 @@ class AppStore
     );
   }
 
+  /// 判断输入是否像包含多项待办。
+  /// 命中分隔符、数字序号或常见连词时认为可能包含多项，需要走 AI 拆分。
+  static bool _looksLikeMultipleTodos(String text) {
+    const separatorPattern = r'[;；,，、]';
+    const numberingPattern = r'\d+[\.\、\)\）]|\(\d+\)|（\d+）';
+    const conjunctionPattern =
+        r'(和|与|以及|并且|还有|同时|顺便|然后|再|之后|接着|随后|继而)';
+    return RegExp('$separatorPattern|$numberingPattern|$conjunctionPattern')
+        .hasMatch(text);
+  }
+
   /// AI todo 拆分入口。
   /// 返回 null 表示已降级直接创建（调用方无需再处理）。
   /// 返回 SplitResult(split: false) 表示 AI 判断无需拆分，已直接创建。
@@ -903,6 +926,14 @@ class AppStore
     bool Function()? isCancelled,
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
+
+    // 短文本且不像多项时直接创建，避免无意义的 AI 调用。
+    if (text.length <= todoTitleMaxLength && !_looksLikeMultipleTodos(text)) {
+      if (cancelled()) return null;
+      addUserTodo(text);
+      return null;
+    }
+
     final ai = structuredAi;
     if (ai == null) {
       recordAiDegraded(ModelCapability.structured);
@@ -993,6 +1024,26 @@ class AppStore
         futureTodoController.state.value.requestId != requestId ||
         futureTodoController.state.value.stage ==
             FutureTodoComposeStage.cancelled;
+
+    // 短文本且不像多项时直接创建，避免无意义的 AI 调用。
+    if (text.length <= todoTitleMaxLength && !_looksLikeMultipleTodos(text)) {
+      if (cancelled()) return;
+      await addUserTodosForDate(
+        [text],
+        date: targetDate,
+        condensedFrom: text,
+      );
+      if (cancelled()) return;
+      futureTodoController.state.value = FutureTodoComposeState(
+        stage: FutureTodoComposeStage.completed,
+        requestId: requestId,
+        targetDate: targetDate,
+        originalInput: text,
+        candidates: [text],
+      );
+      return;
+    }
+
     var candidates = <String>[text];
     var requiresConfirmation = false;
     final ai = structuredAi;
@@ -1992,6 +2043,14 @@ class AppStore
   // ---------------------------------------------------------------------------
 
   /// 供工具调用的 todo 查询，返回格式化文本。
+  ///
+  /// filter 支持：
+  /// - `today`：今天 + 未分配日期
+  /// - `project:<id>`：指定项目下的所有待办（含系统与用户创建）
+  /// - `date:<YYYY-MM-DD>`：指定日期
+  /// - `system`：仅系统/项目创建的待办
+  /// - `user`：仅用户创建的待办
+  /// - 不传 / `all`：全部待办
   String _readTodosForTool({String? filter}) {
     List<TodoItem> source;
     if (filter == 'today') {
@@ -2002,17 +2061,39 @@ class AppStore
     } else if (filter != null && filter.startsWith('project:')) {
       final pid = filter.substring(8);
       source = todoItems.where((t) => t.projectId == pid).toList();
+    } else if (filter != null && filter.startsWith('date:')) {
+      final d = filter.substring(5);
+      source = todoItems.where((t) => t.date == d).toList();
+    } else if (filter == 'system') {
+      source = todoItems.where((t) => t.source == TodoSource.system).toList();
+    } else if (filter == 'user') {
+      source = todoItems.where((t) => t.source == TodoSource.user).toList();
     } else {
       source = List.of(todoItems);
     }
 
     if (source.isEmpty) return '暂无待办事项。';
 
+    source = source
+      ..sort((a, b) {
+        if (a.done != b.done) return a.done ? 1 : -1;
+        return b.sortOrder.compareTo(a.sortOrder);
+      });
+
     final buf = StringBuffer();
     for (final t in source.take(20)) {
-      final status = t.done ? '[✓]' : '[ ]';
-      buf.writeln('$status ${t.title}');
+      final status = t.done ? '[已完成]' : '[未完成]';
+      final sourceLabel = t.source == TodoSource.system ? '系统' : '用户';
+      buf.writeln('$status ${t.title}（id: ${t.id}，来源: $sourceLabel）');
       if (t.date != null) buf.writeln('   日期：${t.date}');
+      if (t.projectId != null) {
+        final project = projectList.cast<Project?>().firstWhere(
+          (p) => p?.id == t.projectId,
+          orElse: () => null,
+        );
+        final projectLabel = project?.name ?? t.projectId;
+        buf.writeln('   项目：$projectLabel');
+      }
       if (t.body != null && t.body!.isNotEmpty) {
         buf.writeln('   备注：${t.body}');
       }
@@ -2035,6 +2116,23 @@ class AppStore
       return;
     }
     await addSystemTodo(title, projectId, date: date, body: body);
+  }
+
+  /// 供工具调用的 todo 删除。
+  Future<void> _deleteTodoForTool({required String todoId}) async {
+    await deleteTodo(todoId);
+  }
+
+  /// 供工具调用的 todo 完成状态切换。
+  Future<void> _toggleTodoCompletionForTool({
+    required String todoId,
+    required bool completed,
+  }) async {
+    final i = todoItems.indexWhere((t) => t.id == todoId);
+    if (i == -1) return;
+    if (todoItems[i].done != completed) {
+      await toggleTodo(todoId);
+    }
   }
 
   Future<String> _createStudyTimerForTool({

@@ -14,6 +14,7 @@ class SignalLogPage extends StatefulWidget {
 
 class _SignalLogPageState extends State<SignalLogPage> {
   List<UserSignal> _signals = [];
+  List<Object> _cachedFlatItems = [];
   bool _loading = true;
   String _range = '7d';
 
@@ -36,9 +37,9 @@ class _SignalLogPageState extends State<SignalLogPage> {
         if (mounted) setState(() => _loading = false);
         return;
       }
-      final signals = await db.query(type: null, range: _range, limit: 100);
+      final signals = await db.query(type: null, range: _range, limit: 50);
       debugPrint('[SignalLogPage] 查询结果: ${signals.length} 条信号 (range=$_range)');
-      if (mounted) setState(() { _signals = signals; _loading = false; });
+      if (mounted) setState(() { _signals = signals; _cachedFlatItems = _computeFlatItems(); _loading = false; });
     } catch (e, stack) {
       debugPrint('[SignalLogPage] ❌ 查询异常: $e');
       debugPrint('[SignalLogPage] 堆栈: $stack');
@@ -103,7 +104,7 @@ class _SignalLogPageState extends State<SignalLogPage> {
   }
 
   /// 构建扁平列表数据源（日期标题 + 信号行交替）。
-  List<Object> _buildFlatItems() {
+  List<Object> _computeFlatItems() {
     final groups = _groupByDate();
     final items = <Object>[];
     for (final entry in groups.entries) {
@@ -115,18 +116,58 @@ class _SignalLogPageState extends State<SignalLogPage> {
     return items;
   }
 
-  /// 信号描述文本。
+  /// 信号描述文本 —— 根据信号类型展示完整上下文。
   String _signalDesc(UserSignal s) {
     final ctx = s.context;
-    final title = ctx['title'] is String ? (ctx['title'] as String?) ?? '' : '';
     final action = _typeLabels[s.signal] ?? s.signal.name;
-    if (title.isNotEmpty) return '$action「$title」';
+
+    switch (s.signal) {
+      case SignalType.todoEdited:
+        final oldTitle = ctx['oldTitle'] is String ? (ctx['oldTitle'] as String?) ?? '' : '';
+        final newTitle = ctx['newTitle'] is String ? (ctx['newTitle'] as String?) ?? '' : '';
+        if (oldTitle.isNotEmpty && newTitle.isNotEmpty) {
+          return '$action「$oldTitle」→「$newTitle」';
+        }
+        break;
+      case SignalType.todoMovedDate:
+        final title = ctx['title'] is String ? (ctx['title'] as String?) ?? '' : '';
+        final oldDate = ctx['oldDate'] is String ? (ctx['oldDate'] as String?) ?? '' : '';
+        final newDate = ctx['newDate'] is String ? (ctx['newDate'] as String?) ?? '' : '';
+        if (oldDate.isNotEmpty && newDate.isNotEmpty) {
+          final label = title.isNotEmpty ? '「$title」' : '';
+          return '$action$label ${_formatDateStr(oldDate)} → ${_formatDateStr(newDate)}';
+        }
+        break;
+      case SignalType.projectGoalSet:
+      case SignalType.projectLevelSet:
+      case SignalType.projectCycleSet:
+      case SignalType.projectTimeSet:
+        final name = ctx['name'] is String ? (ctx['name'] as String?) ?? '' : '';
+        if (name.isNotEmpty) return '$action「$name」';
+        return action;
+      default:
+        break;
+    }
+
+    final title = ctx['title'] is String ? (ctx['title'] as String?) ?? '' : '';
+    final body = ctx['body'] is String ? (ctx['body'] as String?) ?? '' : '';
+    if (title.isNotEmpty) {
+      if (body.isNotEmpty) return '$action「$title」— $body';
+      return '$action「$title」';
+    }
     return action;
+  }
+
+  /// 将日期字符串格式化为简短中文日期。
+  String _formatDateStr(String dateStr) {
+    final d = DateTime.tryParse(dateStr);
+    if (d == null) return dateStr;
+    return '${d.month}月${d.day}日';
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _buildFlatItems();
+    final items = _cachedFlatItems;
 
     return Scaffold(
       backgroundColor: paper,
@@ -245,7 +286,7 @@ class _SignalLogPageState extends State<SignalLogPage> {
             child: Text(
               desc,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: ink, height: 1.4),
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),

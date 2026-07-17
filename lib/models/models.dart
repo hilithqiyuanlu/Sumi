@@ -116,6 +116,10 @@ class AppSettings {
       'read_todos',
       'read_signals',
       'write_todo',
+      'move_todo_date',
+      'edit_todo',
+      'delete_todo',
+      'toggle_todo_completion',
       'create_study_timer',
       'start_project_generation',
     ],
@@ -187,6 +191,10 @@ class AppSettings {
             'start_project_generation',
           },
       'write_todo',
+      'move_todo_date',
+      'edit_todo',
+      'delete_todo',
+      'toggle_todo_completion',
     }.toList(growable: false),
   );
 }

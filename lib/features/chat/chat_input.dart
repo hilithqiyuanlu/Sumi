@@ -850,6 +850,18 @@ class _VoiceIdlePrompt extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: s10),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (current, previousChildren) {
+            return Stack(
+              alignment: Alignment.centerLeft,
+              children: <Widget>[
+                ...previousChildren,
+                // ignore: use_null_aware_elements
+                if (current != null) current,
+              ],
+            );
+          },
           child: Text(
             mode == ChatInputMode.todo ? '新建事项' : '发消息或按住说话，带图也行',
             key: ValueKey(mode),

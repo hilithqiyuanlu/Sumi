@@ -226,6 +226,34 @@ class SignalDatabase {
     await db.delete('signals');
   }
 
+  /// 仅保留最近 [keepCount] 条信号，删除更早的记录。
+  /// 在每日后台任务中调用，防止信号表无限增长。
+  Future<void> pruneOldSignals({int keepCount = 200}) async {
+    await _ensureTable();
+    final db = await _db;
+    final countResult =
+        await db.rawQuery('SELECT COUNT(*) as cnt FROM signals');
+    final total = (countResult.first['cnt'] as int?) ?? 0;
+    if (total <= keepCount) return;
+
+    // 找到第 keepCount 条信号的时间戳，删除比它更早的记录
+    final rows = await db.query(
+      'signals',
+      columns: ['time'],
+      orderBy: 'time DESC',
+      limit: 1,
+      offset: keepCount - 1,
+    );
+    if (rows.isEmpty) return;
+    final cutoff = rows.first['time'] as String;
+    final deleted = await db.delete(
+      'signals',
+      where: 'time < ?',
+      whereArgs: [cutoff],
+    );
+    debugPrint('[SignalDB] 清理了 $deleted 条旧信号（保留最近 $keepCount 条）');
+  }
+
   /// 获取用户活跃天数（有信号的日期数）。
   Future<int> activeDays({int days = 7}) async {
     await _ensureTable();

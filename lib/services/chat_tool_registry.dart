@@ -26,6 +26,10 @@ class ChatToolRegistry {
     'read_todos',
     'read_signals',
     'write_todo',
+    'move_todo_date',
+    'edit_todo',
+    'delete_todo',
+    'toggle_todo_completion',
     'create_study_timer',
     'start_project_generation',
   ];
@@ -132,6 +136,108 @@ class ChatToolRegistry {
               'body': {'type': 'string'},
             },
             'required': ['title'],
+          },
+        },
+      },
+    ),
+    ChatToolDefinition(
+      name: 'move_todo_date',
+      label: '移动事项日期',
+      description: '将已有待办移动到其他日期，或从日期中移除。',
+      group: '创建与执行',
+      system: true,
+      schema: {
+        'type': 'function',
+        'function': {
+          'name': 'move_todo_date',
+          'description':
+              '根据待办 id 将其移动到指定日期。date 传 null 或空字符串表示取消日期分配。',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'todoId': {'type': 'string'},
+              'date': {
+                'type': 'string',
+                'description': '目标日期，格式 YYYY-MM-DD；为空则取消日期',
+              },
+            },
+            'required': ['todoId'],
+          },
+        },
+      },
+    ),
+    ChatToolDefinition(
+      name: 'edit_todo',
+      label: '编辑事项',
+      description: '修改已有待办的标题或备注。',
+      group: '创建与执行',
+      system: true,
+      schema: {
+        'type': 'function',
+        'function': {
+          'name': 'edit_todo',
+          'description': '根据待办 id 修改标题或备注，未提供的字段保持原样。',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'todoId': {'type': 'string'},
+              'title': {'type': 'string'},
+              'body': {'type': 'string'},
+            },
+            'required': ['todoId'],
+          },
+        },
+      },
+    ),
+    ChatToolDefinition(
+      name: 'delete_todo',
+      label: '删除事项',
+      description: '删除已有待办，执行前需要用户明确确认。',
+      group: '创建与执行',
+      system: true,
+      schema: {
+        'type': 'function',
+        'function': {
+          'name': 'delete_todo',
+          'description':
+              '根据待办 id 删除待办。必须先向用户说明要删除哪一条，并获得明确同意（confirmed=true）后方可执行。',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'todoId': {'type': 'string'},
+              'confirmed': {
+                'type': 'boolean',
+                'description': '用户已明确确认删除',
+              },
+            },
+            'required': ['todoId'],
+          },
+        },
+      },
+    ),
+    ChatToolDefinition(
+      name: 'toggle_todo_completion',
+      label: '标记完成/未完成',
+      description: '将待办标记为完成或未完成，执行前需要用户明确确认。',
+      group: '创建与执行',
+      system: true,
+      schema: {
+        'type': 'function',
+        'function': {
+          'name': 'toggle_todo_completion',
+          'description':
+              '根据待办 id 设置完成状态。必须先向用户说明要修改哪一条及目标状态，并获得明确同意（confirmed=true）后方可执行。',
+          'parameters': {
+            'type': 'object',
+            'properties': {
+              'todoId': {'type': 'string'},
+              'completed': {'type': 'boolean'},
+              'confirmed': {
+                'type': 'boolean',
+                'description': '用户已明确确认修改完成状态',
+              },
+            },
+            'required': ['todoId', 'completed'],
           },
         },
       },

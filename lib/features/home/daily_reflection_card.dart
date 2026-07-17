@@ -58,27 +58,52 @@ class _DailyReflectionSlotState extends State<DailyReflectionSlot> {
   }
 
   Future<void> _showActions() async {
-    final action = await showDialog<_ReflectionAction>(
+    final action = await showModalBottomSheet<_ReflectionAction>(
       context: context,
-      builder: (context) => AlertDialog(
-        content: const Text('日结'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, _ReflectionAction.remove),
-            child: const Text('取消'),
+      backgroundColor: paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCardHeader)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(s20, s10, s20, s8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 拖拽手柄
+              Center(
+                child: Container(
+                  width: 34,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: neutral300,
+                    borderRadius: BorderRadius.circular(radiusPill),
+                  ),
+                ),
+              ),
+              const SizedBox(height: s16),
+              // 重新生成
+              ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusCard),
+                ),
+                leading: const Icon(Icons.refresh, color: primary500),
+                title: const Text('重新生成'),
+                subtitle: const Text('基于今天的对话重新整理',
+                    style: TextStyle(fontSize: 12, color: textTertiary)),
+                onTap: () => Navigator.pop(context, _ReflectionAction.refresh),
+              ),
+              const SizedBox(height: s8),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, _ReflectionAction.refresh),
-            child: const Text('更新'),
-          ),
-        ],
+        ),
       ),
     );
     if (!mounted || action == null) return;
     setState(() => _isRetrying = true);
     if (action == _ReflectionAction.refresh) {
       await widget.store.regenerateDailyReflection(widget.date);
-    } else {
+    } else if (action == _ReflectionAction.remove) {
       await widget.store.removeDailyReflection(widget.date);
     }
     if (!mounted) return;
@@ -125,7 +150,7 @@ class _DailyReflectionSlotState extends State<DailyReflectionSlot> {
                 ],
               ),
               child: isLoading
-                  ? _LoadingBody(onTap: apiUnavailable ? null : _retry)
+                  ? _LoadingInline()
                   : isReady
                   ? _ReadyBody(item: item)
                   : _FailedBody(
@@ -151,36 +176,28 @@ class _DailyReflectionSlotState extends State<DailyReflectionSlot> {
 enum _ReflectionAction { refresh, remove }
 
 // ---------------------------------------------------------------------------
-// Loading
+// Loading (inline, no card)
 // ---------------------------------------------------------------------------
 
-class _LoadingBody extends StatelessWidget {
-  final VoidCallback? onTap;
-
-  const _LoadingBody({this.onTap});
-
+class _LoadingInline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(28),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(28),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(s20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(s20, s16, s20, s14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              SizedBox(width: 40, height: 40, child: _SpinningIcon()),
-              const SizedBox(height: s12),
+              SizedBox(width: 36, height: 36, child: _SpinningIcon()),
+              const SizedBox(width: s10),
               const Text(
                 '正在整理这一天……',
-                style: TextStyle(fontSize: 14, height: 1.4, color: ink),
+                style: TextStyle(fontSize: 14, height: 1.4, color: textSecondary),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -190,66 +207,107 @@ class _LoadingBody extends StatelessWidget {
 // Ready
 // ---------------------------------------------------------------------------
 
-class _ReadyBody extends StatelessWidget {
+class _ReadyBody extends StatefulWidget {
   final DailyReflection item;
 
   const _ReadyBody({required this.item});
 
   @override
+  State<_ReadyBody> createState() => _ReadyBodyState();
+}
+
+class _ReadyBodyState extends State<_ReadyBody> {
+  bool _canScrollMore = false;
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(s20, 18, s20, s14),
+      padding: const EdgeInsets.fromLTRB(s20, s16, s20, s14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 总结正文（可滚动）
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.reflection ?? '',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.65,
-                      color: ink,
+            child: Stack(
+              children: [
+                NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification is ScrollUpdateNotification) {
+                      final m = notification.metrics;
+                      setState(() {
+                        _canScrollMore =
+                            m.maxScrollExtent > 0 &&
+                            m.pixels < m.maxScrollExtent - 8;
+                      });
+                    }
+                    return false;
+                  },
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.item.reflection ?? '',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.65,
+                            color: ink,
+                          ),
+                        ),
+                        if (widget.item.highlights.isNotEmpty) ...[
+                          const SizedBox(height: s14),
+                          ...widget.item.highlights.map(
+                            (value) => Padding(
+                              padding: const EdgeInsets.only(bottom: s8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: Icon(Icons.circle,
+                                        size: 5, color: primary500),
+                                  ),
+                                  const SizedBox(width: s8),
+                                  Expanded(
+                                    child: Text(
+                                      value,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        height: 1.45,
+                                        color: ink,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (item.highlights.isNotEmpty) ...[
-                    const SizedBox(height: s14),
-                    ...item.highlights.map(
-                      (value) => Padding(
-                        padding: const EdgeInsets.only(bottom: s8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 6),
-                              child: Icon(
-                                Icons.circle,
-                                size: 5,
-                                color: primary500,
-                              ),
-                            ),
-                            const SizedBox(width: s8),
-                            Expanded(
-                              child: Text(
-                                value,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  height: 1.45,
-                                  color: ink,
-                                ),
-                              ),
-                            ),
-                          ],
+                ),
+                if (_canScrollMore)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        height: 36,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              primary50.withValues(alpha: 0),
+                              primary50,
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ],
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ],

@@ -21,6 +21,23 @@ class ToolExecutor {
     String? body,
   })
   writeTodo;
+  final Future<void> Function({
+    required String todoId,
+    String? date,
+  })
+  moveTodoDate;
+  final Future<void> Function({
+    required String todoId,
+    String? title,
+    String? body,
+  })
+  editTodo;
+  final Future<void> Function({required String todoId}) deleteTodo;
+  final Future<void> Function({
+    required String todoId,
+    required bool completed,
+  })
+  toggleTodoCompletion;
   final Future<String> Function({
     required String toolCallId,
     required String conversationId,
@@ -51,6 +68,10 @@ class ToolExecutor {
     required this.defaultTodoDate,
     required this.readTodos,
     required this.writeTodo,
+    required this.moveTodoDate,
+    required this.editTodo,
+    required this.deleteTodo,
+    required this.toggleTodoCompletion,
     required this.createStudyTimer,
     required this.startProjectGeneration,
   });
@@ -67,6 +88,14 @@ class ToolExecutor {
         return _readTodos(call.arguments);
       case 'write_todo':
         return await _writeTodo(call.arguments);
+      case 'move_todo_date':
+        return await _moveTodoDate(call.arguments);
+      case 'edit_todo':
+        return await _editTodo(call.arguments);
+      case 'delete_todo':
+        return await _deleteTodo(call.arguments);
+      case 'toggle_todo_completion':
+        return await _toggleTodoCompletion(call.arguments);
       case 'read_signals':
         return await _readSignals(call.arguments);
       case 'create_study_timer':
@@ -183,6 +212,89 @@ class ToolExecutor {
       return '已创建事项：$title';
     } catch (e) {
       return '创建事项失败：$e';
+    }
+  }
+
+  Future<String> _moveTodoDate(Map<String, Object?> args) async {
+    final todoId = (args['todoId'] as String?)?.trim();
+    if (todoId == null || todoId.isEmpty) {
+      return '错误：未提供待办 id';
+    }
+    final date = args['date'] as String?;
+    try {
+      await moveTodoDate(
+        todoId: todoId,
+        date: date == null || date.isEmpty ? null : date,
+      );
+      return date == null || date.isEmpty
+          ? '已将该事项从日期中移除。'
+          : '已将该事项移动到 $date。';
+    } catch (e) {
+      return '移动事项失败：$e';
+    }
+  }
+
+  Future<String> _editTodo(Map<String, Object?> args) async {
+    final todoId = (args['todoId'] as String?)?.trim();
+    if (todoId == null || todoId.isEmpty) {
+      return '错误：未提供待办 id';
+    }
+    final title = (args['title'] as String?)?.trim();
+    final body = (args['body'] as String?)?.trim();
+    if ((title == null || title.isEmpty) &&
+        (body == null || body.isEmpty)) {
+      return '错误：未提供要修改的标题或备注';
+    }
+    try {
+      await editTodo(
+        todoId: todoId,
+        title: title == null || title.isEmpty ? null : title,
+        body: body == null || body.isEmpty ? null : body,
+      );
+      return '已更新事项内容。';
+    } catch (e) {
+      return '编辑事项失败：$e';
+    }
+  }
+
+  Future<String> _deleteTodo(Map<String, Object?> args) async {
+    final todoId = (args['todoId'] as String?)?.trim();
+    if (todoId == null || todoId.isEmpty) {
+      return '错误：未提供待办 id';
+    }
+    final confirmed = args['confirmed'] as bool? ?? false;
+    if (!confirmed) {
+      return '即将删除该待办，请向用户确认是否继续；确认后请再次调用并传入 confirmed=true。';
+    }
+    try {
+      await deleteTodo(todoId: todoId);
+      return '已删除该事项。';
+    } catch (e) {
+      return '删除事项失败：$e';
+    }
+  }
+
+  Future<String> _toggleTodoCompletion(Map<String, Object?> args) async {
+    final todoId = (args['todoId'] as String?)?.trim();
+    if (todoId == null || todoId.isEmpty) {
+      return '错误：未提供待办 id';
+    }
+    final completed = args['completed'] as bool?;
+    if (completed == null) {
+      return '错误：未提供目标完成状态';
+    }
+    final confirmed = args['confirmed'] as bool? ?? false;
+    if (!confirmed) {
+      return '即将把该待办标记为${completed ? '已完成' : '未完成'}，请向用户确认是否继续；确认后请再次调用并传入 confirmed=true。';
+    }
+    try {
+      await toggleTodoCompletion(
+        todoId: todoId,
+        completed: completed,
+      );
+      return '已将该事项标记为${completed ? '已完成' : '未完成'}。';
+    } catch (e) {
+      return '标记完成状态失败：$e';
     }
   }
 

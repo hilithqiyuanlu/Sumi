@@ -12,6 +12,7 @@ mixin SumiStoreProjects {
   set currentProjectId(String? v);
   StructuredGenerationCapability? get structuredAi;
   SignalService? get signalService; // 07 轮
+  SignalDatabase? get signalDb;
   MemoryService? get memoryServiceForStore;
   Future<void> onProjectDeleted(String projectId);
   Future<void> onProjectTodoDeleted(TodoItem todo);
@@ -192,6 +193,9 @@ mixin SumiStoreProjects {
         affectsTodayLoad: beforeTodayCount != afterTodayCount,
       );
     }
+
+    // 每次日检后裁剪旧信号，防止信号表无限增长
+    signalDb?.pruneOldSignals(keepCount: 200);
   }
 
   Future<void> _fillRollingWindowForProject(

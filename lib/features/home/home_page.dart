@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -172,6 +173,23 @@ class _HomePageState extends State<HomePage>
   ];
   String _chatGreeting = _chatGreetings[0];
 
+  // 未来日期问候语（随机轮播）
+  static const _futureGreetings = [
+    '这一天还没到，可以先安排事项',
+    '前方的区域还没有开放，过段时间再来探索吧',
+    '先写一下待办，让我看看这 O 不 OK',
+    '你说，我记 (´・ω・`)',
+    '提前写下 Todo，就等这天到了',
+    '需要 Sumi 帮你记点啥，随便讲',
+    '预言一波，你记不过我你信吗 (っ●ω●)っ',
+    '₍^. .^₎⟆ ₍^. .^₎⟆ ₍^. .^₎⟆',
+    '404 not found，过段时间再来探索吧',
+    '快点 do something 啊 (╯°□°)╯︵ ┻━┻',
+  ];
+  String _futureGreeting = _futureGreetings[0];
+  Timer? _futureGreetingTimer;
+  final _random = Random();
+
   @override
   void initState() {
     super.initState();
@@ -179,6 +197,7 @@ class _HomePageState extends State<HomePage>
     _monthController = AnimationController(vsync: this);
     _monthController.addListener(() => setState(() {}));
     _refreshChatGreeting();
+    _pickRandomFutureGreeting();
     _store = SumiScope.read(context);
     _lastSelectedDate = _store.selectedDate;
     _lastSuggestionsDirty = _store.suggestionsDirty;
@@ -202,6 +221,7 @@ class _HomePageState extends State<HomePage>
     _store.futureTodoController.state.removeListener(_onFutureTodoChanged);
     _scrollController.dispose();
     _monthController.dispose();
+    _futureGreetingTimer?.cancel();
     super.dispose();
   }
 
@@ -278,6 +298,26 @@ class _HomePageState extends State<HomePage>
   void _refreshChatGreeting() {
     _chatGreeting =
         _chatGreetings[DateTime.now().millisecond % _chatGreetings.length];
+  }
+
+  void _pickRandomFutureGreeting() {
+    _futureGreeting = _futureGreetings[_random.nextInt(_futureGreetings.length)];
+  }
+
+  void _startFutureGreetingTimer() {
+    _futureGreetingTimer?.cancel();
+    _futureGreetingTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) {
+        if (!mounted) return;
+        setState(() => _pickRandomFutureGreeting());
+      },
+    );
+  }
+
+  void _stopFutureGreetingTimer() {
+    _futureGreetingTimer?.cancel();
+    _futureGreetingTimer = null;
   }
 
   Future<void> _generateSuggestions() async {
@@ -521,18 +561,37 @@ class _HomePageState extends State<HomePage>
     // 检测日期切换 → 重载建议
     if (_lastSelectedDate != null &&
         !isSameDate(selectedDate, _lastSelectedDate!)) {
+      final lastMode = calendarDayMode(_lastSelectedDate!, store.currentTime);
+      final wasFuture = lastMode == CalendarDayMode.future;
       _lastSelectedDate = selectedDate;
       _showScrollToBottom = false; // 日期切换时重置悬浮按钮状态
       final savedDraft = _draftsByDate[dateKey(selectedDate)] ?? '';
       _inputDraft = savedDraft;
       _inputDraftRevision++;
       if (dayMode == CalendarDayMode.today) {
+        _stopFutureGreetingTimer();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _generateSuggestions();
         });
+      } else if (dayMode == CalendarDayMode.future) {
+        // 从未来的某天切到未来的某天，不立即刷新问候语
+        if (!wasFuture) {
+          _pickRandomFutureGreeting();
+        }
+        _startFutureGreetingTimer();
+      } else {
+        _stopFutureGreetingTimer();
       }
     }
     _lastSelectedDate ??= selectedDate;
+
+    // 确保 Timer 状态与当前 dayMode 一致（处理首次构建等边界情况）
+    if (dayMode == CalendarDayMode.future && _futureGreetingTimer == null) {
+      _startFutureGreetingTimer();
+    } else if (dayMode != CalendarDayMode.future &&
+        _futureGreetingTimer != null) {
+      _stopFutureGreetingTimer();
+    }
 
     // 检测数据变更 → 刷新建议
     if (store.dataVersion != _lastDataVersion) {
@@ -763,7 +822,7 @@ class _HomePageState extends State<HomePage>
     if (isPast) {
       title = '这一天没有对话';
     } else if (isFuture) {
-      title = '这一天还没到，可以先安排事项';
+      title = _futureGreeting;
     } else {
       title = '嗨 $userName，今天要和 Sumi 一起做点什么？';
     }

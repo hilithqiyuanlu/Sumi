@@ -240,6 +240,10 @@ class _MemoryCenterPageState extends State<MemoryCenterPage> {
       appBar: AppBar(title: const Text('记忆')),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          : groups.isEmpty
+          ? const Center(
+              child: Text('暂时没有记忆', style: TextStyle(color: textSecondary)),
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(s16, s8, s16, s32),
               children: [
