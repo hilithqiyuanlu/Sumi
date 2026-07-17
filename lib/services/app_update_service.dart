@@ -153,8 +153,9 @@ class PlatformAppUpdateInstaller implements AppUpdateInstaller {
 /// Downloads only a signed ARM64 APK. Models live in application support and
 /// are never read, moved, or deleted by this service.
 class AppUpdateService {
+  /// 国内用户通过 GitHub Releases 下载 CDN 获取，不走 raw.githubusercontent.com（被墙）。
   static final manifestUrl = Uri.parse(
-    'https://raw.githubusercontent.com/hilithqiyuanlu/Sumi/main/release/update.json',
+    'https://github.com/hilithqiyuanlu/Sumi/releases/latest/download/update.json',
   );
 
   final http.Client _client;
@@ -222,7 +223,8 @@ class AppUpdateService {
       final manifest = AppUpdateManifest.fromJson(payload);
       _emit(
         AppUpdateState(
-          status: manifest.buildNumber > current.buildNumber
+          status: _isNewer(manifest.version, manifest.buildNumber,
+                           current.version, current.buildNumber)
               ? AppUpdateStatus.available
               : AppUpdateStatus.latest,
           currentVersion: current,
@@ -378,6 +380,29 @@ class AppUpdateService {
     }
     final actual = (await sha256.bind(file.openRead()).first).toString();
     return actual.toLowerCase() == manifest.sha256.toLowerCase();
+  }
+
+  /// 先比较语义版本号，再比较构建号，防止旧包 buildNumber 异常偏大（如测试包）
+  /// 导致新版本被误判为无需更新。
+  static bool _isNewer(
+    String newVersion, int newBuild,
+    String oldVersion, int oldBuild,
+  ) {
+    final cmp = _compareVersion(newVersion, oldVersion);
+    if (cmp != 0) return cmp > 0;
+    return newBuild > oldBuild;
+  }
+
+  static int _compareVersion(String a, String b) {
+    final aParts = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final bParts = b.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final length = aParts.length > bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < length; i++) {
+      final aVal = i < aParts.length ? aParts[i] : 0;
+      final bVal = i < bParts.length ? bParts[i] : 0;
+      if (aVal != bVal) return aVal.compareTo(bVal);
+    }
+    return 0;
   }
 
   void _fail(
