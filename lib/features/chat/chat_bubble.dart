@@ -383,7 +383,9 @@ class _TodoResultCard extends StatelessWidget {
       final date = data['date'] as String? ?? '';
       final time = data['reminderTime'] as String?;
       return GestureDetector(
-        onTap: onOpen,
+        // onTapUp 在指针抬起时立即触发，不受父级 onDoubleTap
+        // 手势竞技场 ~300ms 延迟的影响。
+        onTapUp: (_) => onOpen?.call(),
         child: Container(
           width: MediaQuery.of(context).size.width * 0.78,
           margin: const EdgeInsets.only(bottom: s4),

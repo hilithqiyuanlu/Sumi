@@ -660,13 +660,18 @@ class _HomePageState extends State<HomePage>
                   valueListenable: store.chatView,
                   builder: (context, chat, _) => GestureDetector(
                     behavior: HitTestBehavior.translucent,
-                    onDoubleTap: () {
-                      final store = SumiScope.read(context);
-                      final today = dateOnly(store.currentTime);
-                      if (!isSameDate(store.selectedDate, today)) {
-                        store.selectDate(today);
-                      }
-                    },
+                    // 仅在非今天时注册双击——今天无需"回到今天"，同时避免
+                    // DoubleTapGestureRecognizer 使子级 onTap 等待 ~300ms。
+                    onDoubleTap: dayMode == CalendarDayMode.today
+                        ? null
+                        : () {
+                            if (!isSameDate(
+                              store.selectedDate,
+                              dateOnly(store.currentTime),
+                            )) {
+                              store.selectDate(dateOnly(store.currentTime));
+                            }
+                          },
                     child: Stack(
                       children: [
                         // 日程卡有独立的显示锚点，删除消息后可能仍在缓存中却
@@ -832,14 +837,20 @@ class _HomePageState extends State<HomePage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w300,
-              color: ink,
-              height: 1.4,
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: Text(
+              title,
+              key: ValueKey(title),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w300,
+                color: ink,
+                height: 1.4,
+              ),
             ),
           ),
           if (isPast || isFuture) ...[
@@ -880,6 +891,12 @@ class _HomePageState extends State<HomePage>
       }
     }
 
+    // 预建待办 ID 索引，避免 onOpenTodo 闭包内 O(n) 扫描
+    final todoById = <String, TodoItem>{};
+    for (final t in store.todoItems) {
+      todoById[t.id] = t;
+    }
+
     final cards = store.scheduleCards
         .where(
           (card) =>
@@ -908,6 +925,17 @@ class _HomePageState extends State<HomePage>
           addCard(card);
         }
       }
+      // 预解析关联 TodoItem（构建时完成，点击时零开销）
+      TodoItem? relatedTodo;
+      if (canMutateConversation && message.todoResultJson != null) {
+        try {
+          final data =
+              jsonDecode(message.todoResultJson!) as Map<String, Object?>;
+          final id = data['todoId'] as String?;
+          if (id != null) relatedTodo = todoById[id];
+        } catch (_) {}
+      }
+
       final originalIndex = messages.indexOf(message);
       listItems.add(
         ChatBubble(
@@ -922,26 +950,9 @@ class _HomePageState extends State<HomePage>
           todoResultJson: message.todoResultJson,
           showMilestoneSaved: milestoneSourceIds.contains(message.id),
           showMemorySaved: memorySourceIds.contains(message.id),
-          onOpenTodo: !canMutateConversation || message.todoResultJson == null
-              ? null
-              : () {
-                  try {
-                    final data = jsonDecode(
-                      message.todoResultJson!,
-                    ) as Map<String, Object?>;
-                    final id = data['todoId'] as String?;
-                    TodoItem? todo;
-                    if (id != null) {
-                      for (final item in store.todoItems) {
-                        if (item.id == id) {
-                          todo = item;
-                          break;
-                        }
-                      }
-                    }
-                    if (todo != null) showTodoEditSheet(context, store, todo);
-                  } catch (_) {}
-                },
+          onOpenTodo: relatedTodo != null
+              ? () => showTodoEditSheet(context, store, relatedTodo!)
+              : null,
           timerController: store.timerController,
           onStartTimer: store.startStudyTimer,
           onPauseTimer: store.pauseStudyTimer,
